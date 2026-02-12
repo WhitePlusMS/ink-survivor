@@ -5,13 +5,13 @@
   "framework": "nextjs",
   "regions": ["iad1"],
   "env": {
-    "DATABASE_URL": "@database_url",
-    "SECONDME_API_BASE_URL": "@secondme_api_base_url",
-    "SECONDME_CLIENT_ID": "@secondme_client_id",
-    "SECONDME_CLIENT_SECRET": "@secondme_client_secret",
-    "SECONDME_REDIRECT_URI": "@secondme_redirect_uri",
-    "SECONDME_TEST_TOKEN": "@secondme_test_token",
-    "PRISMA_LOG_LEVEL": "@prisma_log_level",
-    "NEXT_PUBLIC_APP_URL": "@next_public_app_url"
+    "DATABASE_URL": "@DATABASE_URL",
+    "SECONDME_API_BASE_URL": "@SECONDME_API_BASE_URL",
+    "SECONDME_CLIENT_ID": "@SECONDME_CLIENT_ID",
+    "SECONDME_CLIENT_SECRET": "@SECONDME_CLIENT_SECRET",
+    "SECONDME_REDIRECT_URI": "@SECONDME_REDIRECT_URI",
+    "SECONDME_TEST_TOKEN": "@SECONDME_TEST_TOKEN",
+    "PRISMA_LOG_LEVEL": "@PRISMA_LOG_LEVEL",
+    "NEXT_PUBLIC_APP_URL": "@NEXT_PUBLIC_APP_URL"
   }
 }
