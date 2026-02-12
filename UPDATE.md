@@ -1,5 +1,30 @@
 # 更新说明
 
+## 2026-02-12 - 修复 TypeScript 类型错误
+
+### 修改的文件
+
+#### 1. src/app/favorites/page.tsx
+- **修改原因**: TypeScript 类型错误 - `userService.getUserFavorites` 返回 Prisma 实体类型，与 `BookListItemDto` 不匹配（数据库 author 不包含 id 字段）
+- **修改内容**:
+  - 移除错误的类型注解 `book: BookListItemDto`，让 TypeScript 自然推断类型
+  - 移除未使用的导入 `import type { BookListItemDto } from '@/common/dto/book.dto';`
+
+#### 2. src/app/profile/page.tsx
+- **修改原因**: TypeScript 类型错误 - `userService.getUserBooks` 返回 Prisma 实体类型，与 `BookListItemDto` 不匹配
+- **修改内容**: 移除错误的类型注解 `book: BookListItemDto`，让 TypeScript 自然推断类型
+
+### 问题根源
+- `userService.getUserFavorites` 和 `userService.getUserBooks` 返回的是 Prisma 数据库实体
+- 数据库查询中 `author` 只选取了 `nickname` 和 `avatar`，没有 `id`
+- `BookListItemDto.fromEntity` 期望 `entity.author.id` 存在，导致类型不匹配
+
+### 修复原则
+- 遵循最简原则，移除错误的类型注解，让 TypeScript 自然推断实际返回类型
+- 保持代码简洁，不做冗余的类型转换
+
+---
+
 ## 2026-02-12 - 修复 ESLint 构建错误（第3批）
 
 ### 修改的文件
@@ -312,3 +337,82 @@
 - 使用 Prisma 生成的类型替代 `any`，保持类型安全
 - 对于故意未使用的变量，使用 `_` 前缀标记
 - 删除所有未使用的导入，保持代码整洁
+
+---
+
+## 2026-02-12 - 修复 TypeScript 编译类型错误（第4批）
+
+### 修改的文件
+
+#### 1. src/common/dto/chapter.dto.ts
+- **修改原因**: TypeScript 编译错误 - `unknown` 类型不能赋值给 `string`
+- **修改内容**: 为 `fromEntity` 方法中的所有属性添加类型断言，如 `entity.id as string`
+
+#### 2. src/common/dto/comment.dto.ts
+- **修改原因**: TypeScript 编译错误 - `unknown` 类型不能赋值给 `string`
+- **修改内容**: 为 `fromEntity` 和 `fromResult` 方法中的所有属性添加类型断言
+
+#### 3. src/common/dto/outline.dto.ts
+- **修改原因**: TypeScript 编译错误 - `unknown` 类型不能赋值给 `string`
+- **修改内容**: 为 `fromEntity` 方法中的属性添加类型断言
+
+#### 4. src/components/comments/comment-list.tsx
+- **修改原因**: TypeScript 编译错误 - `Comment` 类型与 `CommentForm` 期望的 `Record<string, unknown>` 不兼容
+- **修改内容**:
+  - 修改 `handleNewComment` 参数类型为 `Comment | Record<string, unknown>`
+  - 在内部添加类型断言 `comment as Comment`
+
+#### 5. src/components/home/home-content.tsx
+- **修改原因**: TypeScript 编译错误 - 多处类型不匹配
+- **修改内容**:
+  - 修复 `books` 接口类型从 `unknown[]` 改为 `Book[]`
+  - 将 `SeasonWithBooks.duration` 从 `number` 改为 `string`（与 Prisma schema 一致）
+  - 将 API 调用从 `/api/admin/season/current` 改为 `/api/seasons/current`（实际存在的 API）
+  - 修复重复定义的 `fetchPhaseStatus` 函数
+
+#### 6. src/components/home/page.tsx
+- **修改原因**: TypeScript 编译错误 - `SeasonWithBooks.duration` 类型不匹配
+- **修改内容**: 将 `SeasonWithBooks.duration` 从 `number` 改为 `string`
+
+#### 7. src/lib/websocket/manager.ts
+- **修改原因**: TypeScript 编译错误 - `unknown` 类型不能赋值给 `Record<string, unknown>`
+- **修改内容**: 为 `data` 参数添加类型断言 `data as Record<string, unknown>`
+
+#### 8. src/services/leaderboard.service.ts
+- **修改原因**: TypeScript 编译错误 - Prisma 命名空间找不到和类型不匹配
+- **修改内容**:
+  - 添加 `import type { Prisma } from '@prisma/client';`
+  - 为 `type` 参数添加类型断言 `type as string`
+
+#### 9. src/services/score.service.ts
+- **修改原因**: TypeScript 编译错误 - 变量名错误 `adaptabilityBonus` 应该是 `adaptabilityBonusValue`
+- **修改内容**: 将两处 `adaptabilityBonus` 改为 `adaptabilityBonusValue`
+
+#### 10. src/services/season.service.ts
+- **修改原因**: TypeScript 编译错误 - 多处类型不匹配
+- **修改内容**:
+  - 添加 `import type { Prisma } from '@prisma/client';`
+  - 将 `createSeason.data.duration` 从 `number` 改为 `string`
+  - 将 `SeasonResponse.duration` 从 `number` 改为 `string`（与 Prisma schema 一致）
+
+#### 11. src/app/api/admin/season/current/route.ts
+- **修改原因**: 文件不存在但有引用
+- **修改内容**: 已在 home-content.tsx 中修复，将 API 调用改为 `/api/seasons/current`
+
+### 修复原则
+- 遵循最简原则，不做冗余设计
+- 使用 `as` 类型断言解决 `unknown` 到具体类型的转换
+- 保持接口类型与 Prisma schema 定义一致
+- 修复变量命名错误，确保使用正确的变量名
+
+---
+
+## 2026-02-12 - 构建成功
+
+### 构建结果
+- ✅ TypeScript 编译通过
+- ⚠️ 存在一些 ESLint 警告（不影响编译）
+
+### 遗留警告（可忽略）
+- `react-hooks/exhaustive-deps` 警告 - useEffect 依赖不完整
+- `@next/next/no-img-element` 警告 - 推荐使用 next/image

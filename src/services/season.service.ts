@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/prisma';
 import { SeasonStatus } from '@/types/season';
 import { Season } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 export interface SeasonResponse {
   id: string;
@@ -15,7 +16,7 @@ export interface SeasonResponse {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: number;
+  duration: string;  // JSON string for phase durations (matching Prisma)
   startTime: Date;
   endTime: Date;
   signupDeadline: Date;
@@ -128,7 +129,7 @@ export class SeasonService {
     zoneStyles: string[];
     startTime: Date;
     endTime: Date;
-    duration: number;
+    duration: string;  // JSON string for phase durations
     maxChapters: number;
     minChapters: number;
     rewards: Record<string, unknown>;

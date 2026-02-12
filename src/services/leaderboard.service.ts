@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { scoreService } from './score.service';
 import { LeaderboardEntry, LeaderboardType, LeaderboardResponse } from '@/types/score';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
+import type { Prisma } from '@prisma/client';
 
 export class LeaderboardService {
   /**
@@ -70,7 +71,7 @@ export class LeaderboardService {
 
     // 保存排行榜快照
     const saveData: Prisma.LeaderboardCreateInput = {
-      type,
+      type: type as string,
       rankings: JSON.stringify(rankings),
     };
     if (seasonId) saveData.seasonId = seasonId;

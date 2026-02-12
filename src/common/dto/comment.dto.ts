@@ -76,27 +76,28 @@ export class CommentResponseDto {
 
   static fromEntity(entity: Record<string, unknown>): CommentResponseDto {
     const dto = new CommentResponseDto();
-    dto.id = entity.id;
-    dto.bookId = entity.bookId;
-    dto.chapterId = entity.chapterId;
-    dto.userId = entity.userId;
+    dto.id = entity.id as string;
+    dto.bookId = entity.bookId as string;
+    dto.chapterId = entity.chapterId as string | null;
+    dto.userId = entity.userId as string;
     dto.user = {
-      id: entity.user?.id || '',
-      nickname: entity.user?.nickname || '',
-      avatar: entity.user?.avatar || null,
+      id: (entity.user as Record<string, unknown>)?.id as string || '',
+      nickname: (entity.user as Record<string, unknown>)?.nickname as string || '',
+      avatar: (entity.user as Record<string, unknown>)?.avatar as string | null || null,
     };
-    dto.content = entity.content;
-    dto.isHuman = entity.isHuman;
-    dto.aiRole = entity.aiRole;
-    dto.sentiment = entity.sentiment;
-    dto.suggestionType = entity.suggestionType;
-    dto.isAdopted = entity.isAdopted;
-    dto.adoptedAt = entity.adoptedAt;
-    dto.createdAt = entity.createdAt;
+    dto.content = entity.content as string;
+    dto.isHuman = entity.isHuman as boolean;
+    dto.aiRole = entity.aiRole as string | null;
+    dto.sentiment = entity.sentiment as number | null;
+    dto.suggestionType = entity.suggestionType as string | null;
+    dto.isAdopted = entity.isAdopted as boolean;
+    dto.adoptedAt = entity.adoptedAt as string | null;
+    dto.createdAt = entity.createdAt as string;
     // 包含章节信息
-    dto.chapter = entity.chapter ? {
-      chapterNumber: entity.chapter.chapterNumber,
-      title: entity.chapter.title || undefined,
+    const chapterEntity = entity.chapter as Record<string, unknown> | null;
+    dto.chapter = chapterEntity ? {
+      chapterNumber: chapterEntity.chapterNumber as number,
+      title: chapterEntity.title as string | undefined,
     } : null;
     return dto;
   }
@@ -120,9 +121,9 @@ export class ToggleFavoriteResponseDto {
 
   static fromResult(result: Record<string, unknown>): ToggleFavoriteResponseDto {
     const dto = new ToggleFavoriteResponseDto();
-    dto.success = result.success;
-    dto.favorited = result.favorited;
-    dto.heat = result.heat ?? 0;
+    dto.success = result.success as boolean;
+    dto.favorited = result.favorited as boolean;
+    dto.heat = (result.heat as number) ?? 0;
     return dto;
   }
 }
@@ -134,9 +135,9 @@ export class ToggleLikeResponseDto {
 
   static fromResult(result: Record<string, unknown>): ToggleLikeResponseDto {
     const dto = new ToggleLikeResponseDto();
-    dto.success = result.success;
-    dto.liked = result.liked;
-    dto.heat = result.heat ?? 0;
+    dto.success = result.success as boolean;
+    dto.liked = result.liked as boolean;
+    dto.heat = (result.heat as number) ?? 0;
     return dto;
   }
 }
@@ -150,8 +151,8 @@ export class GiftResponseDto {
 
   static fromResult(result: Record<string, unknown>): GiftResponseDto {
     const dto = new GiftResponseDto();
-    dto.success = result.success;
-    dto.amount = result.amount;
+    dto.success = result.success as boolean;
+    dto.amount = result.amount as number;
     return dto;
   }
 }
@@ -164,7 +165,7 @@ export class PokeResponseDto {
 
   static fromResult(result: Record<string, unknown>): PokeResponseDto {
     const dto = new PokeResponseDto();
-    dto.success = result.success;
+    dto.success = result.success as boolean;
     return dto;
   }
 }

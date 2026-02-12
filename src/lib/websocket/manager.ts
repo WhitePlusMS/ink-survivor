@@ -252,7 +252,7 @@ class WebSocketManager {
    * 发送用户通知
    */
   sendNotification(userId: string, type: string, message: string, data?: unknown) {
-    this.emitToUser(userId, 'notification', { type, message, data });
+    this.emitToUser(userId, 'notification', { type, message, data: data as Record<string, unknown> | undefined });
   }
 
   /**

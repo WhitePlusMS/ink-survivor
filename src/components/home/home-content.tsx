@@ -40,7 +40,7 @@ interface SeasonWithBooks {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: number;
+  duration: string;  // JSON string for phase durations (matching Prisma)
   startTime: Date | string;
   endTime: Date | string;
   signupDeadline: Date | string;
@@ -65,7 +65,7 @@ interface FinishedSeasonBrief {
 interface HomeContentProps {
   season: Season | null;
   realParticipantCount?: number; // 真实参与数
-  books: unknown[] | null | undefined;
+  books: Book[] | null | undefined;
   seasonsWithBooks?: SeasonWithBooks[]; // 已结束赛季的前5名书籍
   latestFinishedSeason?: FinishedSeasonBrief | null; // 最新结束的赛季信息
   previousSeason?: FinishedSeasonBrief | null; // 上一赛季（用于折叠面板显示）
@@ -216,44 +216,25 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
   };
 
   // 获取阶段状态
-  const fetchPhaseStatus = async () => {
-    try {
-      const response = await fetch('/api/admin/test/next-phase');
-      const result = await response.json();
-      if (result.code === 0 && result.data) {
-        setPhaseStatus({
-          currentRound: result.data.currentRound,
-          currentPhase: result.data.currentPhase,
-          phaseDisplayName: result.data.phaseDisplayName,
-        });
-      }
-    } catch (err) {
-      console.error('获取阶段状态失败:', err);
-    }
-  };
-
-  // 获取 S0 赛季状态时也获取阶段状态
   useEffect(() => {
-    const fetchS0Status = async () => {
+    const fetchPhaseStatus = async () => {
       try {
-        const response = await fetch('/api/seasons/status');
+        const response = await fetch('/api/seasons/current');
         const result = await response.json();
         if (result.code === 0 && result.data) {
-          setS0Status({
-            exists: result.data !== null,
-            hasAgents: true,
-            canStart: result.data !== null,
+          setPhaseStatus({
+            currentRound: result.data.currentRound || 1,
+            currentPhase: result.data.roundPhase || 'NONE',
+            phaseDisplayName: result.data.phaseDisplayName || '准备中',
           });
         }
-        // 获取阶段状态
-        await fetchPhaseStatus();
       } catch (err) {
-        console.error('Failed to fetch S0 status:', err);
+        console.error('Failed to fetch phase status:', err);
       }
     };
 
     if (user) {
-      fetchS0Status();
+      fetchPhaseStatus();
     }
   }, [user]);
 
@@ -461,7 +442,7 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
         <ZoneTabs />
 
         {/* 书籍列表 */}
-        <BookList initialBooks={books || []} />
+        <BookList initialBooks={(books as Book[]) || []} />
       </>
     );
   }

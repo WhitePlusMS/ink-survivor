@@ -25,15 +25,15 @@ export class OutlineResponseDto {
 
   static fromEntity(entity: Record<string, unknown>): OutlineResponseDto {
     const dto = new OutlineResponseDto();
-    dto.id = entity.id;
-    dto.bookId = entity.bookId;
-    dto.originalIntent = entity.originalIntent;
-    dto.characters = JSON.parse(entity.characters || '[]');
-    dto.chapters = JSON.parse(entity.chaptersPlan || '[]');
+    dto.id = entity.id as string;
+    dto.bookId = entity.bookId as string;
+    dto.originalIntent = entity.originalIntent as string;
+    dto.characters = JSON.parse((entity.characters as string) || '[]');
+    dto.chapters = JSON.parse((entity.chaptersPlan as string) || '[]');
     dto.themes = [];
     dto.tone = '';
-    dto.createdAt = entity.createdAt;
-    dto.updatedAt = entity.updatedAt;
+    dto.createdAt = entity.createdAt as string;
+    dto.updatedAt = entity.updatedAt as string;
     return dto;
   }
 }

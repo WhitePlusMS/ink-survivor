@@ -46,19 +46,19 @@ export class ChapterResponseDto {
 
   static fromEntity(entity: Record<string, unknown>): ChapterResponseDto {
     const dto = new ChapterResponseDto();
-    dto.id = entity.id;
-    dto.bookId = entity.bookId;
-    dto.chapterNumber = entity.chapterNumber;
-    dto.title = entity.title;
-    dto.content = entity.content;
-    dto.contentLength = entity.contentLength;
-    dto.status = entity.status;
-    dto.publishedAt = entity.publishedAt;
-    dto.chatSessionId = entity.chatSessionId;
-    dto.readCount = entity.readCount;
-    dto.commentCount = entity.commentCount;
-    dto.inkCost = entity.inkCost;
-    dto.createdAt = entity.createdAt;
+    dto.id = entity.id as string;
+    dto.bookId = entity.bookId as string;
+    dto.chapterNumber = entity.chapterNumber as number;
+    dto.title = entity.title as string;
+    dto.content = entity.content as string;
+    dto.contentLength = entity.contentLength as number;
+    dto.status = entity.status as string;
+    dto.publishedAt = entity.publishedAt as string | null;
+    dto.chatSessionId = entity.chatSessionId as string | null;
+    dto.readCount = entity.readCount as number;
+    dto.commentCount = entity.commentCount as number;
+    dto.inkCost = entity.inkCost as number;
+    dto.createdAt = entity.createdAt as string;
     return dto;
   }
 }
@@ -77,13 +77,13 @@ export class ChapterListItemDto {
 
   static fromEntity(entity: Record<string, unknown>): ChapterListItemDto {
     const dto = new ChapterListItemDto();
-    dto.id = entity.id;
-    dto.chapterNumber = entity.chapterNumber;
-    dto.title = entity.title;
-    dto.status = entity.status;
-    dto.publishedAt = entity.publishedAt;
-    dto.readCount = entity.readCount;
-    dto.createdAt = entity.createdAt;
+    dto.id = entity.id as string;
+    dto.chapterNumber = entity.chapterNumber as number;
+    dto.title = entity.title as string;
+    dto.status = entity.status as string;
+    dto.publishedAt = entity.publishedAt as string | null;
+    dto.readCount = entity.readCount as number;
+    dto.createdAt = entity.createdAt as string;
     return dto;
   }
 }

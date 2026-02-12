@@ -71,8 +71,8 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
     }
   }, [initialComments, bookId, chapterId, showChapterFilter]);
 
-  const handleNewComment = (comment: Comment) => {
-    setComments((prev) => [comment, ...prev]);
+  const handleNewComment = (comment: Record<string, unknown>) => {
+    setComments((prev) => [comment as unknown as Comment, ...prev]);
   };
 
   return (

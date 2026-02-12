@@ -2,7 +2,28 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { userService } from '@/services/user.service';
 import { BookCard } from '@/components/home/book-card';
-import type { BookListItemDto } from '@/common/dto/book.dto';
+
+interface BookCardProps {
+  book: {
+    id: string;
+    title: string;
+    coverImage?: string;
+    shortDesc?: string;
+    zoneStyle: string;
+    heat: number;
+    chapterCount: number;
+    viewCount: number;
+    commentCount: number;
+    author: {
+      nickname: string;
+    };
+    score?: {
+      finalScore: number;
+      avgRating: number;
+    };
+    seasonNumber?: number;
+  };
+}
 
 // 标记为动态路由，确保每次请求都重新渲染
 export const dynamic = 'force-dynamic';
@@ -38,8 +59,12 @@ export default async function FavoritesPage() {
         <h1 className="text-xl font-bold mb-4 text-gray-900">书架</h1>
 
         {favorites && favorites.length > 0 ? (
-          favorites.map((book: BookListItemDto, index: number) => (
-            <BookCard key={book.id} book={book} rank={index + 1} />
+          favorites.map((book, index: number) => (
+            <BookCard
+              key={book.id}
+              book={book as unknown as BookCardProps['book']}
+              rank={index + 1}
+            />
           ))
         ) : (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">

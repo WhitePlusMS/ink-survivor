@@ -206,7 +206,7 @@ export class ScoreService {
         finalScore,
         heatValue,
         completenessBonus: completenessBonus > 1 ? 50 : 0,
-        adaptabilityBonus,
+        adaptabilityBonus: adaptabilityBonusValue,
         lastCalculated: new Date(),
       },
     });
@@ -218,7 +218,7 @@ export class ScoreService {
       sentimentScore,
       finalScore,
       heatValue,
-      adaptabilityBonus,
+      adaptabilityBonus: adaptabilityBonusValue,
       completenessBonus,
     };
   }

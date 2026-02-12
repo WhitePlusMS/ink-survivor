@@ -11,7 +11,7 @@ interface SeasonWithBooks {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: number;
+  duration: string;  // JSON string for phase durations (matching Prisma)
   startTime: Date;
   endTime: Date;
   signupDeadline: Date;

@@ -8,8 +8,6 @@ import { StatsCard } from '@/components/profile/stats-card';
 import { SeasonCard } from '@/components/profile/season-card';
 import { LogoutButton } from '@/components/profile/logout-button';
 
-import { BookListItemDto } from '@/common/dto/book.dto';
-
 export default async function ProfilePage() {
   const authToken = cookies().get('auth_token')?.value;
 
@@ -126,7 +124,7 @@ export default async function ProfilePage() {
 
           {books && books.length > 0 ? (
             <div className="space-y-2">
-              {books.map((book: BookListItemDto) => (
+              {books.map((book) => (
                 <Link
                   key={book.id}
                   href={`/book/${book.id}`}

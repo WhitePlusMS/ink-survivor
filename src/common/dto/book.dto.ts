@@ -51,26 +51,26 @@ export class BookResponseDto {
    */
   static fromEntity(entity: Record<string, unknown>): BookResponseDto {
     const dto = new BookResponseDto();
-    dto.id = entity.id;
-    dto.title = entity.title;
-    dto.coverImage = entity.coverImage;
-    dto.authorId = entity.authorId;
+    dto.id = entity.id as string;
+    dto.title = entity.title as string;
+    dto.coverImage = entity.coverImage as string | null;
+    dto.authorId = entity.authorId as string;
     dto.author = {
-      id: entity.author.id,
-      nickname: entity.author.nickname,
-      avatar: entity.author.avatar,
+      id: (entity.author as Record<string, unknown>)?.id as string,
+      nickname: (entity.author as Record<string, unknown>)?.nickname as string,
+      avatar: (entity.author as Record<string, unknown>)?.avatar as string | null,
     };
-    dto.seasonId = entity.seasonId;
-    dto.zoneStyle = entity.zoneStyle;
-    dto.shortDesc = entity.shortDesc;
-    dto.longDesc = entity.longDesc;
-    dto.status = entity.status;
-    dto.currentChapter = entity.currentChapter;
-    dto.plannedChapters = entity.plannedChapters;
-    dto.inkBalance = entity.inkBalance;
-    dto.heat = entity.heat;
-    dto.chapterCount = entity.chapterCount;
-    dto.createdAt = entity.createdAt;
+    dto.seasonId = entity.seasonId as string | null;
+    dto.zoneStyle = entity.zoneStyle as string;
+    dto.shortDesc = entity.shortDesc as string | null;
+    dto.longDesc = entity.longDesc as string | null;
+    dto.status = entity.status as string;
+    dto.currentChapter = entity.currentChapter as number;
+    dto.plannedChapters = entity.plannedChapters as number | null;
+    dto.inkBalance = entity.inkBalance as number;
+    dto.heat = entity.heat as number;
+    dto.chapterCount = entity.chapterCount as number;
+    dto.createdAt = entity.createdAt as string;
     return dto;
   }
 }
@@ -96,20 +96,20 @@ export class BookListItemDto {
 
   static fromEntity(entity: Record<string, unknown>): BookListItemDto {
     const dto = new BookListItemDto();
-    dto.id = entity.id;
-    dto.title = entity.title;
-    dto.coverImage = entity.coverImage;
+    dto.id = entity.id as string;
+    dto.title = entity.title as string;
+    dto.coverImage = entity.coverImage as string | null;
     dto.author = {
-      id: entity.author.id,
-      nickname: entity.author.nickname,
-      avatar: entity.author.avatar,
+      id: (entity.author as Record<string, unknown>)?.id as string,
+      nickname: (entity.author as Record<string, unknown>)?.nickname as string,
+      avatar: (entity.author as Record<string, unknown>)?.avatar as string | null,
     };
-    dto.zoneStyle = entity.zoneStyle;
-    dto.shortDesc = entity.shortDesc;
-    dto.status = entity.status;
-    dto.heat = entity.heat;
-    dto.chapterCount = entity.chapterCount;
-    dto.createdAt = entity.createdAt;
+    dto.zoneStyle = entity.zoneStyle as string;
+    dto.shortDesc = entity.shortDesc as string | null;
+    dto.status = entity.status as string;
+    dto.heat = entity.heat as number;
+    dto.chapterCount = entity.chapterCount as number;
+    dto.createdAt = entity.createdAt as string;
     return dto;
   }
 }
