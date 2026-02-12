@@ -126,6 +126,20 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    const adminSecondMeId = process.env.ADMIN_SECONDME_ID || '2267794';
+    const adminNickname = process.env.ADMIN_NICKNAME || 'WhitePlusMS';
+    const adminPhone = process.env.ADMIN_PHONE || '+8618801318191';
+    if (
+      userInfo.userId === adminSecondMeId ||
+      userInfo.userId === adminPhone ||
+      userInfo.name === adminNickname
+    ) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isAdmin: true },
+      });
+    }
+
     // 4. 存储 Token
     await saveUserToken(user.id, tokens);
 
