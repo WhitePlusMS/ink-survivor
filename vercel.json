@@ -3,15 +3,5 @@
   "devCommand": "next dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "env": {
-    "DATABASE_URL": "@DATABASE_URL",
-    "SECONDME_API_BASE_URL": "@SECONDME_API_BASE_URL",
-    "SECONDME_CLIENT_ID": "@SECONDME_CLIENT_ID",
-    "SECONDME_CLIENT_SECRET": "@SECONDME_CLIENT_SECRET",
-    "SECONDME_REDIRECT_URI": "@SECONDME_REDIRECT_URI",
-    "SECONDME_TEST_TOKEN": "@SECONDME_TEST_TOKEN",
-    "PRISMA_LOG_LEVEL": "@PRISMA_LOG_LEVEL",
-    "NEXT_PUBLIC_APP_URL": "@NEXT_PUBLIC_APP_URL"
-  }
+  "regions": ["iad1"]
 }
