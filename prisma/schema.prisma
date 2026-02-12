@@ -1,0 +1,363 @@
+// Prisma Schema - 番茄小说创作平台数据库设计
+// 根据 PRD 产品需求文档定义数据模型
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 用户与认证 ====================
+
+model User {
+  id              String    @id @default(cuid())
+  secondMeId      String    @unique
+  nickname        String
+  avatar          String?
+  email           String?
+
+  // 管理员权限
+  isAdmin         Boolean   @default(false)  // 是否为管理员
+
+  // Agent 配置
+  agentConfig     String?   // 作者配置
+  readerConfig    String?   // 读者配置
+
+  // 统计数据
+  totalInk        Int       @default(0)
+  booksWritten    Int       @default(0)
+  seasonsJoined   Int       @default(0)
+  highestRank     Int       @default(0)  // 历史最高排名，0表示无排名
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // 关联
+  token          UserToken?
+  books          Book[]
+  comments       Comment[]
+  readings       Reading[]
+}
+
+model UserToken {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  accessToken     String
+  refreshToken    String
+  tokenType       String    @default("Bearer")
+  expiresAt       DateTime
+  refreshExpiresAt DateTime
+  scope           String
+
+  isValid         Boolean   @default(true)
+  lastRefreshed   DateTime  @default(now())
+  refreshCount    Int       @default(0)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserLevel {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+
+  level           Int       @default(1)
+  title           String    @default("新手作者")
+  totalPoints     Int       @default(0)
+  seasonPoints    Int       @default(0)
+
+  booksWritten    Int       @default(0)
+  booksCompleted  Int       @default(0)
+  totalCoins      Int       @default(0)
+  totalFavorites  Int       @default(0)
+  unlockedFeatures String    @default("[]") // JSON 数组格式
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ==================== 赛季模块 ====================
+
+model Season {
+  id              String    @id @default(cuid())
+  seasonNumber    Int
+  status          String    @default("PENDING")  // PENDING, ACTIVE, FINISHED, CANCELLED
+
+  themeKeyword    String
+  constraints     String    // JSON 数组
+  zoneStyles      String    // JSON 数组
+
+  signupDeadline  DateTime
+  startTime       DateTime
+  endTime         DateTime
+
+  duration        String   @default("{\"reading\": 10, \"outline\": 5, \"writing\": 5}")  // 各阶段时长(JSON)
+  maxChapters     Int       @default(10)
+  minChapters     Int       @default(3)
+
+  rewards         String    // JSON
+  participantCount Int      @default(0)
+
+  // 赛季轮次状态
+  currentRound    Int       @default(0)      // 当前轮次 (0=报名期刚结束, 1=第一轮, 2=第二轮...)
+  roundPhase      String    @default("NONE") // NONE, READING, OUTLINE, WRITING
+  roundStartTime  DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  participations  SeasonParticipation[]
+  books           Book[]
+
+  @@unique([seasonNumber])
+}
+
+model SeasonParticipation {
+  id              String    @id @default(cuid())
+  seasonId        String
+  season          Season    @relation(fields: [seasonId], references: [id])
+  userId          String
+
+  bookTitle       String
+  shortDescription String
+  zoneStyle       String
+  plannedChapters Int?
+
+  status          String    @default("PENDING")
+  submittedAt     DateTime  @default(now())
+  chatSessionId   String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([seasonId, userId])
+}
+
+model Leaderboard {
+  id              String    @id @default(cuid())
+  seasonId        String?
+  zoneStyle       String?
+  type            String    // 'heat', 'score', 'new'
+  rankings        String    // JSON
+  calculatedAt    DateTime  @default(now())
+
+  @@index([seasonId, zoneStyle, type])
+}
+
+// ==================== 赛季队列管理 ====================
+
+// 预配置的赛季队列
+model SeasonQueue {
+  id              String    @id @default(cuid())
+  seasonNumber    Int       @unique  // 赛季编号
+  themeKeyword    String
+
+  // 赛季配置
+  constraints     String    // JSON 数组
+  zoneStyles      String    // JSON 数组
+  maxChapters     Int       @default(7)
+  minChapters     Int       @default(3)
+  duration        String    // JSON: 各阶段时长
+  rewards         String    // JSON
+
+  // 发布计划
+  plannedStartTime DateTime? // 计划开始时间
+  intervalHours   Int       @default(2)  // 与上一赛季的间隔时间(小时)
+
+  // 状态
+  status          String    @default("DRAFT")  // DRAFT, SCHEDULED, PUBLISHED, SKIPPED
+  publishedAt     DateTime?
+  publishedSeasonId String?  // 实际发布后关联的 Season ID
+
+  // LLM 优化建议
+  llmSuggestion   String?   // LLM 生成的优化建议
+  llmOptimized    Boolean   @default(false)  // 是否已应用 LLM 优化
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// 系统设置
+model SystemSettings {
+  id              String    @id @default(cuid())
+  key             String    @unique
+  value           String    // JSON 值
+  description     String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ==================== 书籍模块 ====================
+
+model Book {
+  id              String    @id @default(cuid())
+  title           String
+  coverImage      String?
+
+  authorId        String
+  author          User      @relation(fields: [authorId], references: [id])
+  seasonId        String?
+  season          Season?   @relation(fields: [seasonId], references: [id])
+
+  zoneStyle       String
+  shortDesc       String?
+  longDesc        String?
+
+  status          String    @default("DRAFT")
+  currentChapter  Int       @default(0)
+  plannedChapters Int?
+
+  inkBalance      Int       @default(0)
+  heat            Int       @default(0)
+  chapterCount    Int       @default(0)
+
+  participationId String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  outline         Outline?
+  chapters        Chapter[]
+  comments        Comment[]
+  readings        Reading[]
+  score           BookScore?
+}
+
+model Outline {
+  id              String    @id @default(cuid())
+  bookId          String    @unique
+  book            Book      @relation(fields: [bookId], references: [id])
+
+  originalIntent  String
+  characters      String    // JSON
+  chaptersPlan    String    // JSON 数组
+  modificationLog String?   // JSON 数组
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Chapter {
+  id              String    @id @default(cuid())
+  bookId          String
+  book            Book      @relation(fields: [bookId], references: [id])
+
+  chapterNumber   Int
+  title           String
+  content         String    @default("")
+  contentLength   Int       @default(0)
+
+  status          String    @default("DRAFT")
+  publishedAt     DateTime?
+
+  chatSessionId   String?
+
+  readCount       Int       @default(0)
+  commentCount    Int       @default(0)
+  likeCount      Int       @default(0)
+  inkCost         Int       @default(10)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // 反向关系
+  comments        Comment[]
+  readings        Reading[]
+  likes           Like[]
+
+  @@unique([bookId, chapterNumber])
+}
+
+// ==================== 互动模块 ====================
+
+model BookScore {
+  id              String    @id @default(cuid())
+  bookId          String    @unique
+  book            Book      @relation(fields: [bookId], references: [id])
+
+  viewCount       Int       @default(0)
+  favoriteCount   Int       @default(0)
+  likeCount       Int       @default(0)
+  coinCount       Int       @default(0)
+  completionRate  Float     @default(0)
+
+  avgSentiment    Float     @default(0)
+  readerCount     Int       @default(0)
+  avgRating       Float     @default(0)
+
+  interactionScore Float    @default(0)
+  sentimentScore  Float     @default(0)
+  finalScore      Float     @default(0)
+  heatValue       Float     @default(0)
+  completenessBonus Float   @default(0)
+
+  adaptabilityBonus Float    @default(0)
+  adoptionRate     Float    @default(0)
+  adoptedComments  Int      @default(0)
+
+  lastCalculated   DateTime @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Comment {
+  id              String    @id @default(cuid())
+  bookId          String
+  book            Book      @relation(fields: [bookId], references: [id])
+  chapterId       String?
+  chapter         Chapter?  @relation(fields: [chapterId], references: [id])
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+
+  isHuman         Boolean
+  aiRole          String?
+
+  content         String
+
+  sentiment       Float?
+  suggestionType  String?
+
+  isAdopted       Boolean   @default(false)
+  adoptedAt       DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([bookId])
+}
+
+model Reading {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  bookId          String
+  book            Book      @relation(fields: [bookId], references: [id])
+  chapterId       String
+  chapter         Chapter   @relation(fields: [chapterId], references: [id])
+
+  readAt          DateTime  @default(now())
+  finished        Boolean   @default(false)
+  readingTime     Int?
+
+  createdAt       DateTime  @default(now())
+
+  @@index([userId, bookId])
+}
+
+model Like {
+  id              String    @id @default(cuid())
+  userId          String
+  chapterId       String
+  chapter         Chapter   @relation(fields: [chapterId], references: [id])
+
+  createdAt       DateTime  @default(now())
+
+  // 同一用户对同一章节只能点赞一次
+  @@unique([userId, chapterId])
+  @@index([chapterId])
+}

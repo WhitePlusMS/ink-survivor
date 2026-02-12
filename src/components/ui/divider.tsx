@@ -1,0 +1,23 @@
+import { cn } from '@/lib/utils';
+import { forwardRef } from 'react';
+
+export interface DividerProps extends React.HTMLAttributes<HTMLDivElement> {
+  orientation?: 'horizontal' | 'vertical';
+  label?: string;
+  labelPosition?: 'left' | 'center' | 'right';
+}
+
+export const Divider = forwardRef<HTMLDivElement, DividerProps>(
+  ({ className, orientation = 'horizontal', label, labelPosition = 'center', ...props }, ref) => {
+    if (orientation === 'vertical') {
+      return <div ref={ref} className={cn('w-px h-full bg-surface-200', className)} {...props} />;
+    }
+    if (label) {
+      return (
+        <div ref={ref} className={cn('flex items-center text-surface-400 text-sm', 'before:content-[attr(data-label)] before:mr-3', 'after:content-[attr(data-label)] after:ml-3', 'before:bg-surface-200 before:h-px after:bg-surface-200 after:h-px', labelPosition === 'left' ? 'before:flex-1' : labelPosition === 'right' ? 'after:flex-1' : 'before:flex-1 after:flex-1', className)} data-label={label} {...props}>{label}</div>
+      );
+    }
+    return <div ref={ref} className={cn('w-full h-px bg-surface-200', className)} {...props} />;
+  }
+);
+Divider.displayName = 'Divider';

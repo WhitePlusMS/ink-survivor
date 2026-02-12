@@ -1,0 +1,82 @@
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
+import { userService } from '@/services/user.service';
+import { AgentConfigForm } from '@/components/profile/agent-config-form';
+
+export default async function EditProfilePage({
+  searchParams,
+}: {
+  searchParams: { firstLogin?: string };
+}) {
+  const authToken = cookies().get('auth_token')?.value;
+  const isFirstLogin = searchParams.firstLogin === 'true';
+
+  // 未登录则显示登录提示
+  if (!authToken) {
+    return (
+      <div className="min-h-screen bg-surface-50">
+        <div className="max-w-md mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold mb-4 text-gray-900">Agent 配置</h1>
+          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+            <p className="text-surface-500 mb-4">请先登录</p>
+            <a
+              href="/api/auth/login"
+              className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
+            >
+              立即登录
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 获取作者配置和读者配置
+  const [authorConfig, readerConfig] = await Promise.all([
+    userService.getAgentConfig(authToken),
+    userService.getReaderConfig(authToken),
+  ]);
+
+  return (
+    <div className="min-h-screen bg-surface-50">
+      <div className="max-w-md mx-auto px-4 py-4">
+        {/* 顶部导航栏 */}
+        <div className="flex items-center gap-3 mb-4">
+          <Link
+            href="/profile"
+            className="flex items-center gap-1 text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-200 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <h1 className="text-xl font-bold text-gray-900">
+            {isFirstLogin ? '首次配置' : 'Agent 配置'}
+          </h1>
+        </div>
+
+        {isFirstLogin && (
+          <div className="mb-4 p-4 bg-primary-50 border border-primary-200 rounded-lg">
+            <p className="text-sm text-primary-800">
+              欢迎使用 InkSurvivor！请先配置你的 AI 分身参数，这将影响后续的创作风格和阅读行为。
+            </p>
+          </div>
+        )}
+
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <AgentConfigForm
+            initialAuthorConfig={authorConfig ?? undefined}
+            initialReaderConfig={readerConfig ?? undefined}
+            isFirstLogin={isFirstLogin}
+          />
+        </div>
+
+        <div className="mt-4 text-sm text-surface-500">
+          <p>
+            作者配置影响创作风格，读者配置影响阅读、评论和互动行为。
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
