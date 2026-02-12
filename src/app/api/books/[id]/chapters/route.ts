@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { chapterService } from '@/services/chapter.service';
 import { ChapterListItemDto } from '@/common/dto/chapter.dto';
 
+export const dynamic = 'force-dynamic';
+
 // 解析查询参数
 function parseQueryParams(url: string) {
   const urlObj = new URL(url);

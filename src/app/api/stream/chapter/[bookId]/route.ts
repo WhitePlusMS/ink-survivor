@@ -2,6 +2,8 @@
 import { NextRequest } from 'next/server';
 import { chapterService } from '@/services/chapter.service';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/stream/chapter/:bookId - SSE 流式章节生成
  */

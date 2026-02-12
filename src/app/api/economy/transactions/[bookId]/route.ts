@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server';
 import { economyService } from '@/services/economy.service';
 
+export const dynamic = 'force-dynamic';
+
 // 解析查询参数
 function parseQueryParams(url: string) {
   const urlObj = new URL(url);

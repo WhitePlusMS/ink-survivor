@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { leaderboardService } from '@/services/leaderboard.service';
 import { LeaderboardType } from '@/types/score';
 
+// 声明为动态路由（因为使用了 request.url）
+export const dynamic = 'force-dynamic';
+
 // 解析查询参数
 function parseQueryParams(url: string) {
   const urlObj = new URL(url);

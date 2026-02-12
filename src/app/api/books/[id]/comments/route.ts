@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { commentService } from '@/services/comment.service';
 import { CommentResponseDto } from '@/common/dto/comment.dto';
 
+export const dynamic = 'force-dynamic';
+
 // 解析查询参数
 function parseQueryParams(url: string) {
   const urlObj = new URL(url);

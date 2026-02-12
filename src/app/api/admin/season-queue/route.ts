@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { seasonQueueService, CreateSeasonQueueDto } from '@/services/season-queue.service';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/admin/season-queue - 获取所有赛季队列
 export async function GET(request: NextRequest) {
   try {

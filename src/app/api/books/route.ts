@@ -5,6 +5,8 @@ import { BookListItemDto, BookResponseDto } from '@/common/dto/book.dto';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
 import { BookStatus } from '@/types/book';
 
+export const dynamic = 'force-dynamic';
+
 // 解析查询参数
 function parseQueryParams(url: string) {
   const urlObj = new URL(url);
