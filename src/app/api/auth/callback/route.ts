@@ -104,7 +104,8 @@ export async function GET(req: NextRequest) {
     console.log('[Auth] Processing authorization code');
 
     // 1. 交换 Token
-    const tokens = await exchangeCodeForToken(code);
+    const redirectUri = buildRedirectUrl(req, '/api/auth/callback');
+    const tokens = await exchangeCodeForToken(code, redirectUri);
 
     // 2. 获取用户信息
     const userInfo = await fetchUserInfo(tokens.accessToken);

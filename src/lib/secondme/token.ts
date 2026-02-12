@@ -22,7 +22,10 @@ export interface TokenResponse {
  * 注意: 必须使用 application/x-www-form-urlencoded 格式
  * 响应格式: { code: 0, data: { accessToken, refreshToken, tokenType, expiresIn, scope } }
  */
-export async function exchangeCodeForToken(code: string): Promise<TokenResponse> {
+export async function exchangeCodeForToken(
+  code: string,
+  redirectUri?: string
+): Promise<TokenResponse> {
   const response = await fetch(SECONDME_OAUTH_TOKEN, {
     method: 'POST',
     headers: {
@@ -31,7 +34,7 @@ export async function exchangeCodeForToken(code: string): Promise<TokenResponse>
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      redirect_uri: process.env.SECONDME_REDIRECT_URI || '',
+      redirect_uri: redirectUri || process.env.SECONDME_REDIRECT_URI || '',
       client_id: process.env.SECONDME_CLIENT_ID || '',
       client_secret: process.env.SECONDME_CLIENT_SECRET || '',
     }),

@@ -37,73 +37,71 @@ interface FinishedSeasonBrief {
 }
 
 export default async function HomePage() {
-  // 获取当前赛季
-  const season = await seasonService.getCurrentSeason();
-
-  // 获取当前赛季的真实参与书籍数量（每本书 = 1 个 AI 作者）
-  const realParticipantCount = season
-    ? await seasonService.getRealParticipantCount(season.id)
-    : 0;
-
   let books: Book[] = [];
   let seasonsWithBooks: SeasonWithBooks[] = [];
   let latestFinishedSeason: FinishedSeasonBrief | null = null;
   let previousSeason: FinishedSeasonBrief | null = null; // 上一赛季（用于赛季说明折叠面板）
+  let season: Awaited<ReturnType<typeof seasonService.getCurrentSeason>> = null;
+  let realParticipantCount = 0;
 
-  if (season) {
-    // 有进行中的赛季：获取当前赛季的书籍
-    const { books: rawBooks } = await bookService.getBooks({
-      status: 'ACTIVE',
-      limit: 20,
-      seasonId: season.id,
-    });
+  try {
+    season = await seasonService.getCurrentSeason();
 
-    // 调试日志：检查数据
-    console.log('[HomePage] 当前赛季ID:', season.id, '赛季号:', season.seasonNumber);
-    console.log('[HomePage] 找到书籍数量:', rawBooks.length);
-    rawBooks.forEach((b, i) => {
-      console.log(`[HomePage] 书籍 ${i + 1}: ${b.title} - heat: ${b.heat}, seasonId: ${b.seasonId?.slice(0, 8)}...`);
-    });
+    if (season) {
+      realParticipantCount = await seasonService.getRealParticipantCount(season.id);
+      const { books: rawBooks } = await bookService.getBooks({
+        status: 'ACTIVE',
+        limit: 20,
+        seasonId: season.id,
+      });
 
-    books = (rawBooks || []).map((b) => ({
-      id: b.id,
-      title: b.title,
-      coverImage: b.coverImage ?? undefined,
-      shortDesc: b.shortDesc ?? undefined,
-      zoneStyle: b.zoneStyle,
-      heat: b.heat,
-      chapterCount: b._count?.chapters ?? 0,
-      author: { nickname: b.author.nickname },
-      viewCount: b.viewCount ?? 0,
-      commentCount: b.commentCount ?? 0,
-      score: b.score ? { finalScore: b.score.finalScore, avgRating: b.score.avgRating } : undefined,
-    }));
+      console.log('[HomePage] 当前赛季ID:', season.id, '赛季号:', season.seasonNumber);
+      console.log('[HomePage] 找到书籍数量:', rawBooks.length);
+      rawBooks.forEach((b, i) => {
+        console.log(`[HomePage] 书籍 ${i + 1}: ${b.title} - heat: ${b.heat}, seasonId: ${b.seasonId?.slice(0, 8)}...`);
+      });
 
-    // 获取上一赛季信息（用于赛季说明折叠面板）
-    const previousSeasonData = await seasonService.getPreviousSeason(season.id);
-    if (previousSeasonData) {
-      previousSeason = {
-        id: previousSeasonData.id,
-        seasonNumber: previousSeasonData.seasonNumber,
-        themeKeyword: previousSeasonData.themeKeyword,
-        endTime: previousSeasonData.endTime,
-      };
+      books = (rawBooks || []).map((b) => ({
+        id: b.id,
+        title: b.title,
+        coverImage: b.coverImage ?? undefined,
+        shortDesc: b.shortDesc ?? undefined,
+        zoneStyle: b.zoneStyle,
+        heat: b.heat,
+        chapterCount: b._count?.chapters ?? 0,
+        author: { nickname: b.author.nickname },
+        viewCount: b.viewCount ?? 0,
+        commentCount: b.commentCount ?? 0,
+        score: b.score ? { finalScore: b.score.finalScore, avgRating: b.score.avgRating } : undefined,
+      }));
+
+      const previousSeasonData = await seasonService.getPreviousSeason(season.id);
+      if (previousSeasonData) {
+        previousSeason = {
+          id: previousSeasonData.id,
+          seasonNumber: previousSeasonData.seasonNumber,
+          themeKeyword: previousSeasonData.themeKeyword,
+          endTime: previousSeasonData.endTime,
+        };
+      }
+    } else {
+      seasonsWithBooks = await seasonService.getAllSeasonsWithTopBooks({ limitPerSeason: 5 });
+
+      if (seasonsWithBooks.length > 0) {
+        latestFinishedSeason = {
+          id: seasonsWithBooks[0].id,
+          seasonNumber: seasonsWithBooks[0].seasonNumber,
+          themeKeyword: seasonsWithBooks[0].themeKeyword,
+          endTime: seasonsWithBooks[0].endTime,
+        };
+      }
+
+      console.log('[HomePage] No active season, loaded', seasonsWithBooks.length, 'finished seasons with top 5 books each');
     }
-  } else {
-    // 没有进行中的赛季：获取所有已结束赛季的前5名书籍
-    seasonsWithBooks = await seasonService.getAllSeasonsWithTopBooks({ limitPerSeason: 5 });
-
-    // 获取最新结束的赛季信息（用于显示"XX赛季已结束！"）
-    if (seasonsWithBooks.length > 0) {
-      latestFinishedSeason = {
-        id: seasonsWithBooks[0].id,
-        seasonNumber: seasonsWithBooks[0].seasonNumber,
-        themeKeyword: seasonsWithBooks[0].themeKeyword,
-        endTime: seasonsWithBooks[0].endTime,
-      };
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[HomePage] 数据库不可用，使用空数据渲染首页', error);
     }
-
-    console.log('[HomePage] No active season, loaded', seasonsWithBooks.length, 'finished seasons with top 5 books each');
   }
 
   return (

@@ -28,11 +28,12 @@ export type OAuthScope = typeof OAUTH_SCOPES[number];
  */
 export function buildAuthorizationUrl(
   state: string,
-  scopes: OAuthScope[] = [...OAUTH_SCOPES]
+  scopes: OAuthScope[] = [...OAUTH_SCOPES],
+  redirectUri?: string
 ): string {
   const params = new URLSearchParams({
     client_id: process.env.SECONDME_CLIENT_ID || '',
-    redirect_uri: process.env.SECONDME_REDIRECT_URI || '',
+    redirect_uri: redirectUri || process.env.SECONDME_REDIRECT_URI || '',
     response_type: 'code',
     scope: scopes.join(','),
   });

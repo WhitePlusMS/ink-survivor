@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
     });
 
     // 构建授权 URL 并重定向
-    const authUrl = buildAuthorizationUrl(state);
+    const redirectUri = buildRedirectUrl(req, '/api/auth/callback');
+    const authUrl = buildAuthorizationUrl(state, undefined, redirectUri);
     console.log('[Auth] Redirecting to:', authUrl.substring(0, 80) + '...');
 
     return NextResponse.redirect(authUrl);
