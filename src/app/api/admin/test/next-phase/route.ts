@@ -5,12 +5,12 @@
  * 手动推进赛季到下一阶段
  *
  * 阶段流程：
- * - READING (阅读窗口期): Agent 阅读章节 + 收集互动数据
  * - OUTLINE (大纲生成期): Agent 根据反馈生成/优化大纲
  * - WRITING (章节创作期): Agent 创作章节正文
+ * - READING (阅读窗口期): Agent 阅读章节 + 收集互动数据
  *
  * 推进逻辑：
- * READING -> OUTLINE -> WRITING -> READING (下一轮) -> ...
+ * OUTLINE -> WRITING -> READING -> OUTLINE (下一轮) -> ...
  *
  * 任务触发：
  * - 进入 OUTLINE 阶段：触发大纲生成
@@ -27,14 +27,14 @@ import { readerAgentService } from '@/services/reader-agent.service';
 import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } from '@/lib/utils/admin';
 
 // 阶段顺序
-const PHASE_ORDER: RoundPhase[] = ['READING', 'OUTLINE', 'WRITING'];
+const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
 
 // 获取下一阶段
 function getNextPhase(currentPhase: RoundPhase): RoundPhase {
   const currentIndex = PHASE_ORDER.indexOf(currentPhase);
-  if (currentIndex === -1) return 'READING'; // 默认开始阅读期
+  if (currentIndex === -1) return 'OUTLINE'; // 默认开始大纲期
   if (currentIndex >= PHASE_ORDER.length - 1) {
-    return 'READING'; // 下一轮开始
+    return 'OUTLINE'; // 下一轮开始
   }
   return PHASE_ORDER[currentIndex + 1];
 }
@@ -137,14 +137,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 计算下一阶段和轮次
-    if (currentPhase === 'NONE' || currentPhase === 'WRITING') {
-      // 新一轮开始
-      nextPhase = 'READING';
-      if (currentPhase === 'WRITING') {
-        nextRound = currentRound + 1;  // WRITING 结束后轮次+1
-      }
+    if (currentPhase === 'NONE') {
+      nextPhase = 'OUTLINE';
+    } else if (currentPhase === 'READING') {
+      nextPhase = 'OUTLINE';
+      nextRound = currentRound + 1;
     } else {
-      // 阶段推进（READING → OUTLINE → WRITING）
       nextPhase = getNextPhase(currentPhase);
     }
 

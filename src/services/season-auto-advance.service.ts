@@ -7,7 +7,7 @@
  * - 支持手动/自动两种模式
  *
  * 阶段顺序：
- * READING (阅读窗口期) -> OUTLINE (大纲生成期) -> WRITING (章节创作期) -> READING (下一轮)
+ * OUTLINE (大纲生成期) -> WRITING (章节创作期) -> READING (阅读窗口期) -> OUTLINE (下一轮)
  */
 
 import { prisma } from '@/lib/prisma';
@@ -15,7 +15,7 @@ import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
 
 // 阶段顺序
-const PHASE_ORDER: RoundPhase[] = ['READING', 'OUTLINE', 'WRITING'];
+const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
 
 // 检查间隔（毫秒）
 const CHECK_INTERVAL = 5000; // 每 5 秒检查一次
@@ -47,12 +47,12 @@ function getPhaseRemainingTime(season: Season, currentPhase: RoundPhase): number
  * 获取下一阶段
  */
 function getNextPhase(currentPhase: RoundPhase): RoundPhase {
-  if (currentPhase === 'NONE' || currentPhase === 'WRITING') {
-    return 'READING';
-  }
   const currentIndex = PHASE_ORDER.indexOf(currentPhase);
+  if (currentIndex === -1) {
+    return 'OUTLINE';
+  }
   if (currentIndex >= PHASE_ORDER.length - 1) {
-    return 'READING';
+    return 'OUTLINE';
   }
   return PHASE_ORDER[currentIndex + 1];
 }
@@ -137,8 +137,8 @@ export class SeasonAutoAdvanceService {
 
       // 赛季未开始（报名期刚结束），进入第一轮
       if (currentPhase === 'NONE') {
-        console.log('[SeasonAutoAdvance] 赛季未开始，进入第一轮 READING');
-        await this.advancePhase(season.id, 1, 'READING');
+        console.log('[SeasonAutoAdvance] 赛季未开始，进入第一轮 OUTLINE');
+        await this.advancePhase(season.id, 1, 'OUTLINE');
         return;
       }
 
@@ -151,7 +151,7 @@ export class SeasonAutoAdvanceService {
 
       // 计算下一轮
       let nextRound = season.currentRound || 1;
-      if (currentPhase === 'WRITING') {
+      if (currentPhase === 'READING') {
         nextRound = (season.currentRound || 0) + 1;
       }
 

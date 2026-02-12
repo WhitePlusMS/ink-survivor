@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Flame, Clock, Users, ChevronDown, ChevronUp, CalendarX, Timer } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface Season {
   id: string;
@@ -62,14 +63,22 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [phaseTimeLeft, setPhaseTimeLeft] = useState<string>('');
   const [showPrevInfo, setShowPrevInfo] = useState(false);
+  const router = useRouter();
+  const lastRefreshKeyRef = useRef<string>('');
+  const endTime = season?.endTime;
+  const seasonId = season?.id;
+  const currentRound = season?.currentRound;
+  const currentPhase = season?.currentPhase;
+  const roundStartTime = season?.roundStartTime;
+  const phaseDurations = season?.phaseDurations;
 
   // 计算赛季总时间倒计时
   useEffect(() => {
-    if (!season?.endTime) return;
+    if (!endTime) return;
 
     const updateTimeLeft = () => {
       const now = new Date().getTime();
-      const end = new Date(season.endTime).getTime();
+      const end = new Date(endTime).getTime();
       const diff = end - now;
 
       if (diff <= 0) {
@@ -92,16 +101,16 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
     const timer = setInterval(updateTimeLeft, 1000);
 
     return () => clearInterval(timer);
-  }, [season?.endTime]);
+  }, [endTime]);
 
   // 计算阶段倒计时
   useEffect(() => {
-    if (!season?.currentPhase || season.currentPhase === 'NONE' || !season?.roundStartTime) {
+    if (!currentPhase || currentPhase === 'NONE' || !roundStartTime) {
       setPhaseTimeLeft('');
       return;
     }
 
-    const phase = season.currentPhase;
+    const phase = currentPhase;
     const phaseConfig = PHASE_CONFIG[phase];
     if (!phaseConfig) {
       setPhaseTimeLeft('');
@@ -109,12 +118,12 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
     }
 
     // 从配置或默认值获取阶段时长
-    const durationMin = season.phaseDurations?.[phase.toLowerCase() as keyof typeof season.phaseDurations]
+    const durationMin = phaseDurations?.[phase.toLowerCase() as keyof typeof phaseDurations]
       || phaseConfig.durationMin;
 
     const updatePhaseTimeLeft = () => {
       const now = new Date().getTime();
-      const start = new Date(season.roundStartTime!).getTime();
+      const start = new Date(roundStartTime).getTime();
       const phaseDurationMs = durationMin * 60 * 1000;
       const end = start + phaseDurationMs;
       const diff = end - now;
@@ -136,7 +145,45 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
     const timer = setInterval(updatePhaseTimeLeft, 1000);
 
     return () => clearInterval(timer);
-  }, [season?.currentPhase, season?.roundStartTime, season?.phaseDurations]);
+  }, [currentPhase, roundStartTime, phaseDurations]);
+
+  useEffect(() => {
+    if (!currentPhase || currentPhase === 'NONE' || !roundStartTime) {
+      return;
+    }
+
+    const phase = currentPhase;
+    const phaseConfig = PHASE_CONFIG[phase];
+    if (!phaseConfig) {
+      return;
+    }
+
+    const durationMin = phaseDurations?.[phase.toLowerCase() as keyof typeof phaseDurations]
+      || phaseConfig.durationMin;
+
+    const start = new Date(roundStartTime).getTime();
+    const end = start + durationMin * 60 * 1000;
+    const now = Date.now();
+    const diff = end - now;
+    const refreshKey = `${seasonId}:${currentRound}:${currentPhase}:${roundStartTime}`;
+
+    if (lastRefreshKeyRef.current === refreshKey) {
+      return;
+    }
+
+    if (diff <= 0) {
+      lastRefreshKeyRef.current = refreshKey;
+      router.refresh();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      lastRefreshKeyRef.current = refreshKey;
+      router.refresh();
+    }, diff + 1000);
+
+    return () => clearTimeout(timer);
+  }, [seasonId, currentRound, currentPhase, roundStartTime, phaseDurations, router]);
 
   // 没有进行中的赛季，显示最新结束赛季信息
   if (!season && latestFinishedSeason) {

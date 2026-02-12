@@ -49,11 +49,21 @@ export default async function HomePage() {
 
     if (season) {
       realParticipantCount = await seasonService.getRealParticipantCount(season.id);
-      const { books: rawBooks } = await bookService.getBooks({
+      const { books: activeBooks } = await bookService.getBooks({
         status: 'ACTIVE',
         limit: 20,
         seasonId: season.id,
       });
+      const { books: draftBooks } = await bookService.getBooks({
+        status: 'DRAFT',
+        limit: 20,
+        seasonId: season.id,
+      });
+      const mergedBooks = [
+        ...activeBooks,
+        ...draftBooks.filter((draft) => !activeBooks.some((active) => active.id === draft.id)),
+      ];
+      const rawBooks = mergedBooks.sort((a, b) => b.heat - a.heat);
 
       console.log('[HomePage] 当前赛季ID:', season.id, '赛季号:', season.seasonNumber);
       console.log('[HomePage] 找到书籍数量:', rawBooks.length);

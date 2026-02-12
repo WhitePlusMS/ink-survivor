@@ -6,11 +6,13 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { seasonAutoAdvanceService } from '@/services/season-auto-advance.service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    await seasonAutoAdvanceService.checkAndAdvance();
     const season = await prisma.season.findFirst({
       where: {
         status: 'ACTIVE',

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Search, Home, PenTool, Bookmark, User, Bot, Crown } from 'lucide-react';
+import { Home, PenTool, Bookmark, User, Bot, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth-provider';
 
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 /**
  * 顶部导航栏组件
  * 设计原则：极简、符合番茄小说风格
- * 桌面端显示完整导航，移动端只显示 Logo + 搜索
+ * 桌面端显示完整导航，移动端只显示 Logo
  */
 export function Header() {
   const pathname = usePathname();
@@ -99,13 +99,6 @@ export function Header() {
           })}
         </nav>
 
-        {/* 搜索按钮 */}
-        <Link
-          href="/search"
-          className="p-2 text-surface-500 hover:text-primary-600 dark:text-surface-400 dark:hover:text-primary-400 transition-colors rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800"
-        >
-          <Search className="w-5 h-5" />
-        </Link>
       </div>
 
       {/* 移动端导航 - 保持原样 */}
@@ -115,13 +108,6 @@ export function Header() {
           InkSurvivor
         </Link>
 
-        {/* 搜索按钮 */}
-        <Link
-          href="/search"
-          className="p-2 text-surface-500 hover:text-primary-600 dark:text-surface-400 dark:hover:text-primary-400 transition-colors rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800"
-        >
-          <Search className="w-5 h-5" />
-        </Link>
       </div>
     </header>
   );

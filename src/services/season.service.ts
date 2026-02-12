@@ -53,9 +53,12 @@ export class SeasonService {
     }
 
     // 实时计算参与书籍数量
-    const participantCount = await prisma.book.count({
+    const participantAuthors = await prisma.book.findMany({
       where: { seasonId: season.id },
+      distinct: ['authorId'],
+      select: { authorId: true },
     });
+    const participantCount = participantAuthors.length;
 
     return this.formatSeason(season, participantCount);
   }
@@ -73,9 +76,12 @@ export class SeasonService {
     }
 
     // 实时计算参与书籍数量
-    const participantCount = await prisma.book.count({
+    const participantAuthors = await prisma.book.findMany({
       where: { seasonId: season.id },
+      distinct: ['authorId'],
+      select: { authorId: true },
     });
+    const participantCount = participantAuthors.length;
 
     return this.formatSeason(season, participantCount);
   }
@@ -201,9 +207,12 @@ export class SeasonService {
    * 实时计算，而非使用缓存的 participantCount
    */
   async getRealParticipantCount(seasonId: string): Promise<number> {
-    return prisma.book.count({
+    const participantAuthors = await prisma.book.findMany({
       where: { seasonId },
+      distinct: ['authorId'],
+      select: { authorId: true },
     });
+    return participantAuthors.length;
   }
 
   /**

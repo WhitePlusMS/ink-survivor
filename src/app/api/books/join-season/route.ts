@@ -85,37 +85,28 @@ export async function POST(request: NextRequest) {
 
     // 参赛后立即触发内容生成
     // 如果当前是第 X 轮，直接生成大纲 + 第 1 到 X 章
-    setTimeout(async () => {
-      try {
-        const currentRound = season.currentRound || 1;
-        console.log(`[JoinSeason] 开始生成内容 - 当前第 ${currentRound} 轮`);
+    try {
+      const currentRound = season.currentRound || 1;
+      console.log(`[JoinSeason] 开始生成内容 - 当前第 ${currentRound} 轮`);
 
-        // 1. 先生成大纲
-        await outlineGenerationService.generateOutline(book.id);
-        console.log(`[JoinSeason] 大纲生成完成，开始创建章节`);
+      await outlineGenerationService.generateOutline(book.id);
+      console.log(`[JoinSeason] 大纲生成完成，开始创建章节`);
 
-        // 2. 并发创建第 1 到 currentRound 章
-        const chapterPromises = [];
-        for (let chapterNum = 1; chapterNum <= currentRound; chapterNum++) {
-          chapterPromises.push(
-            chapterWritingService.writeChapter(book.id, chapterNum).catch((error) => {
-              console.error(`[JoinSeason] 第 ${chapterNum} 章创作失败:`, error.message);
-            })
-          );
+      for (let chapterNum = 1; chapterNum <= currentRound; chapterNum++) {
+        try {
+          await chapterWritingService.writeChapter(book.id, chapterNum);
+        } catch (error) {
+          console.error(`[JoinSeason] 第 ${chapterNum} 章创作失败:`, (error as Error).message);
         }
-        const results = await Promise.all(chapterPromises);
-        console.log(`[JoinSeason] 章节创建完成 - ${results.length} 个章节任务完成`);
-
-        // 3. 验证章节是否都创建了
-        const chapterCount = await prisma.chapter.count({
-          where: { bookId: book.id },
-        });
-        console.log(`[JoinSeason] 验证：数据库中有 ${chapterCount} 章`);
-
-      } catch (error) {
-        console.error(`[JoinSeason] 内容生成失败:`, error);
       }
-    }, 100);
+
+      const chapterCount = await prisma.chapter.count({
+        where: { bookId: book.id },
+      });
+      console.log(`[JoinSeason] 验证：数据库中有 ${chapterCount} 章`);
+    } catch (error) {
+      console.error('[JoinSeason] 内容生成失败:', error);
+    }
 
     return NextResponse.json({
       code: 0,

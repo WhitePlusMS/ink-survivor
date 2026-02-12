@@ -45,7 +45,7 @@ export class ReaderAgentService {
         include: {
           book: {
             include: {
-              author: { select: { nickname: true } },
+              author: { select: { id: true, nickname: true } },
               score: true,
             },
           },
@@ -93,6 +93,7 @@ export class ReaderAgentService {
           chapterContent: chapter.content,
           bookTitle: chapter.book.title,
           authorName: chapter.book.author.nickname,
+          authorId: chapter.book.author.id,
         }).catch((error) => {
           console.error(`[ReaderAgent] Agent ${agent.nickname} 评论失败:`, error);
           return null;
@@ -212,8 +213,13 @@ export class ReaderAgentService {
     chapterContent: string;
     bookTitle: string;
     authorName: string;
+    authorId: string;
   }): Promise<void> {
     const { agentUserId, agentNickname, readerConfig, chapterId, bookId, chapterNumber, chapterTitle, chapterContent, bookTitle, authorName } = params;
+    if (agentUserId === params.authorId) {
+      console.log(`[ReaderAgent] Agent ${agentNickname} 是作者本人，跳过评分`);
+      return;
+    }
 
     // 0. 检查 AI Agent 是否已评论过（跳过重复评论）
     const isAiAgent = await this.isAiAgent(agentUserId);

@@ -14,7 +14,7 @@ import {
   NoteResponse,
   ReaderFeedback,
 } from './types';
-import { refreshAccessToken, saveUserToken } from './token';
+import { getValidUserToken, refreshAccessToken, saveUserToken } from './token';
 import { SECONDME_CONFIG } from './config';
 import { prisma } from '@/lib/prisma';
 
@@ -305,6 +305,8 @@ export class SecondMeClient {
   }
 }
 
+let cachedToken: { userId: string; accessToken: string; expiresAt: number } | null = null;
+
 /**
  * 获取当前登录用户的 Access Token
  * 从数据库中获取当前用户的 Token
@@ -313,25 +315,38 @@ export async function getCurrentUserToken(): Promise<string | null> {
   try {
     const { cookies } = await import('next/headers');
     const authToken = cookies().get('auth_token')?.value;
+    let userId = authToken;
 
-    if (!authToken) {
-      console.log('[Token] 未找到 auth_token cookie');
-      return null;
+    if (!userId) {
+      const latestToken = await prisma.userToken.findFirst({
+        where: { isValid: true },
+        orderBy: { updatedAt: 'desc' },
+        select: { userId: true },
+      });
+
+      if (!latestToken) {
+        console.log('[Token] 未找到 auth_token cookie');
+        return null;
+      }
+
+      userId = latestToken.userId;
     }
 
-    const { PrismaClient } = await import('@prisma/client');
-    const p = new PrismaClient();
-
-    const userToken = await p.userToken.findUnique({
-      where: { userId: authToken },
-    });
-
-    if (userToken?.accessToken) {
-      console.log('[Token] 找到用户 Token');
-      return userToken.accessToken;
+    if (
+      cachedToken
+      && cachedToken.userId === userId
+      && cachedToken.expiresAt - Date.now() > 30_000
+    ) {
+      return cachedToken.accessToken;
     }
 
-    return null;
+    const token = await getValidUserToken(userId);
+    cachedToken = {
+      userId,
+      accessToken: token.accessToken,
+      expiresAt: token.expiresAt.getTime(),
+    };
+    return token.accessToken;
   } catch (error) {
     console.error('[Token] 获取 Token 失败:', error);
     return null;
@@ -354,9 +369,11 @@ export async function testModeSendChat(
   token?: string
 ): Promise<string> {
   // 如果没有传入 Token，从数据库获取当前用户的 Token
-  const dbToken = await getCurrentUserToken();
-  if (!token && dbToken) {
-    token = dbToken;
+  if (!token) {
+    const dbToken = await getCurrentUserToken();
+    if (dbToken) {
+      token = dbToken;
+    }
   }
 
   if (!token) {

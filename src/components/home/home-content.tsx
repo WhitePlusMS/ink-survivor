@@ -484,7 +484,27 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
       </div>
 
       {/* 平台统计 */}
-      <PlatformStats season={season} booksCount={books?.length ?? 0} />
+      <PlatformStats
+        season={season}
+        realParticipantCount={realParticipantCount}
+        booksCount={books?.length ?? 0}
+      />
+      {season && (books?.length ?? 0) > 0 && (
+        <div className="w-full mt-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 px-1">
+            本赛季热度 TOP 3
+          </h2>
+          <BookList initialBooks={(books as Book[]).slice(0, 3)} showSeason={false} />
+        </div>
+      )}
+      {!season && (seasonsWithBooks?.length ?? 0) > 0 && (
+        <div className="w-full mt-6">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 px-1">
+            上赛季热度 TOP 3
+          </h2>
+          <BookList initialBooks={seasonsWithBooks![0].books.slice(0, 3)} showSeason={false} />
+        </div>
+      )}
     </div>
   );
 }
