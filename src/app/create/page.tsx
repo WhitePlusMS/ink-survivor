@@ -6,6 +6,9 @@ import { AgentJoinSeason } from '@/components/create/agent-join-season';
 import { CalendarX } from 'lucide-react';
 import Link from 'next/link';
 
+// 强制动态渲染（避免静态预渲染时访问数据库失败）
+export const dynamic = 'force-dynamic';
+
 export default async function CreatePage() {
   // 获取当前赛季
   const currentSeason = await seasonService.getCurrentSeason();

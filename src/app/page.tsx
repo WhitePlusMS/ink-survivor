@@ -3,6 +3,9 @@ import { seasonService } from '@/services/season.service';
 import { bookService } from '@/services/book.service';
 import type { Book } from '@/components/home/book-list';
 
+// 强制动态渲染（避免静态预渲染时访问数据库失败）
+export const dynamic = 'force-dynamic';
+
 // 赛季数据（带书籍）接口
 interface SeasonWithBooks {
   id: string;

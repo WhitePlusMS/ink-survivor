@@ -1,5 +1,48 @@
 # 更新说明
 
+## 2026-02-12 - 修复 Docker 构建失败问题
+
+### 问题描述
+Docker 构建失败，错误信息：
+1. `Dynamic server usage` - 页面尝试在静态预渲染时访问数据库
+2. `the URL must start with the protocol 'postgresql://'` - DATABASE_URL 未设置
+
+### 修改的文件
+
+#### 1. Dockerfile（新建）
+- **修改原因**: 项目缺少 Dockerfile，无法进行 Docker 部署
+- **修改内容**: 创建两阶段 Dockerfile：
+  - 构建阶段：安装依赖、生成 Prisma 客户端、构建 Next.js
+  - 生产阶段：使用 standalone 模式运行，减少镜像体积
+
+#### 2. src/app/page.tsx
+- **修改原因**: 静态预渲染时访问数据库导致构建失败
+- **修改内容**: 添加 `export const dynamic = 'force-dynamic'`
+
+#### 3. src/app/create/page.tsx
+- **修改原因**: 静态预渲染时访问数据库导致构建失败
+- **修改内容**: 添加 `export const dynamic = 'force-dynamic'`
+
+#### 4. src/app/admin/page.tsx
+- **修改原因**: 静态预渲染时访问数据库导致构建失败
+- **修改内容**: 添加 `export const dynamic = 'force-dynamic'`
+
+#### 5. src/app/season/[id]/page.tsx
+- **修改原因**: 静态预渲染时访问数据库导致构建失败
+- **修改内容**: 添加 `export const dynamic = 'force-dynamic'`
+
+### 问题根源
+- Next.js 默认尝试静态预渲染所有页面
+- 页面中使用 Prisma 访问数据库，但 Docker 构建时 DATABASE_URL 未设置或格式不正确
+- 静态渲染与动态数据访问冲突
+
+### 修复原则
+- 使用 `export const dynamic = 'force-dynamic'` 强制动态渲染
+- 创建完整的 Dockerfile 支持 Docker 部署
+- 遵循最简原则，不做冗余设计
+
+---
+
 ## 2026-02-12 - 修复 TypeScript 类型错误
 
 ### 修改的文件

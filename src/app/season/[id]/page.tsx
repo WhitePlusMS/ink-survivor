@@ -4,6 +4,9 @@ import { seasonService } from '@/services/season.service';
 import { LeaderboardTabs } from '@/components/season/leaderboard-tabs';
 import { LeaderboardList } from '@/components/season/leaderboard-list';
 
+// 强制动态渲染（避免静态预渲染时访问数据库失败）
+export const dynamic = 'force-dynamic';
+
 interface SeasonPageProps {
   params: { id: string };
   searchParams: { type?: string };

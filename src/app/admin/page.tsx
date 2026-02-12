@@ -8,6 +8,9 @@ import { prisma } from '@/lib/prisma';
 import { checkAdminPermission } from '@/lib/utils/admin';
 import { AdminSeasonClient } from './admin-season-client';
 
+// 强制动态渲染（避免静态预渲染时访问数据库失败）
+export const dynamic = 'force-dynamic';
+
 export default async function AdminPage() {
   // 服务器端验证管理员权限
   const { isAdmin, nickname } = await checkAdminPermission();
