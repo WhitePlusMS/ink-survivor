@@ -7,8 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import {
-  Crown, Settings, ArrowRight, BookOpen, Play, ChevronDown, ChevronUp,
-  Plus, Trash2, Sparkles, Calendar, Clock, CheckCircle, XCircle, Edit3, Save, Copy, Send
+  Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save
 } from 'lucide-react';
 
 // 可选分区列表
@@ -19,13 +18,6 @@ const ZONE_OPTIONS = [
   { value: 'history', label: '历史' },
   { value: 'game', label: '游戏' },
 ];
-
-// 阶段配置
-const PHASE_CONFIG = {
-  READING: { name: '阅读窗口期', defaultDuration: 10 },
-  OUTLINE: { name: '大纲生成期', defaultDuration: 5 },
-  WRITING: { name: '章节创作期', defaultDuration: 5 },
-};
 
 interface PhaseStatus {
   currentRound: number;
@@ -103,7 +95,6 @@ export function AdminSeasonClient({
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionType, setActionType] = useState<'init' | 'start' | 'nextPhase' | 'endSeason' | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
   const [activeTab, setActiveTab] = useState<'queue' | 'immediate'>('queue');
 
   // 赛季队列状态
@@ -345,7 +336,7 @@ export function AdminSeasonClient({
       });
       const result = await response.json();
       if (result.code === 0) {
-        const published = result.data as any[];
+        const published = result.data as unknown[];
         alert(`成功发布 ${published.length} 个赛季！`);
         fetchSeasonQueue();
         router.refresh();
@@ -807,8 +798,9 @@ export function AdminSeasonClient({
                             <pre className="whitespace-pre-wrap font-sans">
                               {(() => {
                                 try {
-                                  const parsed = JSON.parse(item.llmSuggestion!);
-                                  return (parsed as any)?.creativeExplanation || item.llmSuggestion;
+                                  const parsed = JSON.parse(item.llmSuggestion!) as Record<string, unknown>;
+                                  const explanation = (parsed as Record<string, unknown>)?.creativeExplanation;
+                                  return typeof explanation === 'string' ? explanation : item.llmSuggestion;
                                 } catch {
                                   return item.llmSuggestion;
                                 }

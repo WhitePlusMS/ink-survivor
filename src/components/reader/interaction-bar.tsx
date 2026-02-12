@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Bookmark, Heart, Gift, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +16,7 @@ interface InteractionBarProps {
 /**
  * 防抖 hook
  */
-function useDebounce<T extends (...args: any[]) => any>(
+function useDebounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
   callback: T,
   delay: number
 ): T {
@@ -54,7 +53,6 @@ export function InteractionBar({
   initialLiked = false,
   commentCount = 0,
 }: InteractionBarProps) {
-  const router = useRouter();
   const [favorited, setFavorited] = useState(initialFavorited);
   const [liked, setLiked] = useState(initialLiked);
   const [isLoading, setIsLoading] = useState(false);

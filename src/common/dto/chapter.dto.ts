@@ -44,7 +44,7 @@ export class ChapterResponseDto {
   inkCost: number = 0;
   createdAt: string = '';
 
-  static fromEntity(entity: any): ChapterResponseDto {
+  static fromEntity(entity: Record<string, unknown>): ChapterResponseDto {
     const dto = new ChapterResponseDto();
     dto.id = entity.id;
     dto.bookId = entity.bookId;
@@ -75,7 +75,7 @@ export class ChapterListItemDto {
   readCount: number = 0;
   createdAt: string = '';
 
-  static fromEntity(entity: any): ChapterListItemDto {
+  static fromEntity(entity: Record<string, unknown>): ChapterListItemDto {
     const dto = new ChapterListItemDto();
     dto.id = entity.id;
     dto.chapterNumber = entity.chapterNumber;

@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 
 export async function PUT(request: NextRequest) {
   const startTime = Date.now();
-  let requestId = Math.random().toString(36).substring(2, 8);
+  const requestId = Math.random().toString(36).substring(2, 8);
 
   try {
     const authToken = cookies().get('auth_token')?.value;

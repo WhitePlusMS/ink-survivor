@@ -47,7 +47,7 @@ export function OutlineDisplay({ outline, defaultCollapsed = true }: OutlineDisp
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   // 解析大纲数据
   const parseOutline = (): ParsedOutline => {
-    let result: ParsedOutline = {};
+    const result: ParsedOutline = {};
 
     // 解析 summary/originalIntent
     result.summary = outline.originalIntent || outline.summary;

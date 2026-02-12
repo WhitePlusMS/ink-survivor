@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Search, Home, PenTool, Bookmark, User, Bot, Crown, Settings } from 'lucide-react';
+import { Search, Home, PenTool, Bookmark, User, Bot, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth-provider';
 

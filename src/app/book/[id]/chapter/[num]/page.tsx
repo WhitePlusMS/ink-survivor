@@ -12,6 +12,10 @@ interface ChapterPageProps {
   params: { id: string; num: string };
 }
 
+interface BookWithCount {
+  _count?: { comments: number };
+}
+
 export default async function ChapterPage({ params }: ChapterPageProps) {
   const chapterNum = parseInt(params.num);
 
@@ -123,7 +127,7 @@ export default async function ChapterPage({ params }: ChapterPageProps) {
         <InteractionBar
           bookId={params.id}
           chapterNum={chapter.chapterNumber}
-          commentCount={(book as any)._count?.comments || 0}
+          commentCount={(book as BookWithCount)._count?.comments || 0}
         />
       </div>
     </div>

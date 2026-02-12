@@ -76,7 +76,7 @@ export class ScoreService {
         willingness: 0.5, // 从用户配置获取，简化处理
       },
       adaptability: 0.5,
-      status: book.status as any,
+      status: book.status as BookScoreData['status'],
       publishedAt: book.chapters[0]?.publishedAt || undefined,
     };
   }
@@ -86,7 +86,7 @@ export class ScoreService {
    */
   calculateInteractionScore(data: BookScoreData): number {
     const { interaction } = data;
-    const { view, favorite, like, coin, completionRate } = this.scoreWeights;
+    const { view, favorite, like, coin } = this.scoreWeights;
 
     const baseScore =
       interaction.viewCount * view +
@@ -186,14 +186,14 @@ export class ScoreService {
     const interactionScore = this.calculateInteractionScore(data);
     const sentimentScore = this.calculateSentimentScore(data);
     const completenessBonus = this.getCompletenessBonus(data.status);
-    const adaptabilityBonus = this.getAdaptabilityBonus(data.adaptability);
+    const adaptabilityBonusValue = this.getAdaptabilityBonus(data.adaptability);
 
     // 最终评分 = 互动分 + 情感分 + 完本加成
     const finalScore = interactionScore + sentimentScore + (completenessBonus > 1 ? 50 : 0);
 
     // 热度值（考虑时间衰减）
     const heatValue = this.calculateHeatValue(
-      { interactionScore, sentimentScore, finalScore, heatValue: finalScore, adaptabilityBonus, completenessBonus },
+      { interactionScore, sentimentScore, finalScore, heatValue: finalScore, adaptabilityBonus: adaptabilityBonusValue, completenessBonus },
       data.publishedAt
     );
 

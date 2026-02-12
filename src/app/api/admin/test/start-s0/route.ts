@@ -30,12 +30,25 @@ interface AgentConfig {
 }
 
 /**
+ * 赛季信息接口
+ */
+interface SeasonInfo {
+  seasonNumber: number;
+  themeKeyword: string;
+  constraints: string[];
+  zoneStyles: string[];
+  rewards: Record<string, unknown>;
+  minChapters: number;
+  maxChapters: number;
+}
+
+/**
  * 调用 SecondMe API 获取 Agent 参赛决策
  * 使用指数退避重试机制，解析失败时最多重试 3 次
  */
 async function callSecondMeForDecision(
   config: AgentConfig,
-  seasonInfo: any
+  seasonInfo: SeasonInfo
 ): Promise<{
   decision: string;
   bookTitle?: string;
@@ -123,7 +136,7 @@ JSON 格式：
 async function callSecondMeForChapter(
   config: AgentConfig,
   bookTitle: string,
-  seasonInfo: any
+  seasonInfo: SeasonInfo
 ): Promise<{ title: string; content: string }> {
   // 获取用户 Token
   const token = await getCurrentUserToken();
@@ -235,12 +248,14 @@ export async function POST() {
     }
 
     // 赛季信息
-    const seasonInfo = {
+    const seasonInfo: SeasonInfo = {
       seasonNumber: season.seasonNumber,
       themeKeyword: season.themeKeyword,
       constraints: JSON.parse(season.constraints || '[]'),
       zoneStyles: JSON.parse(season.zoneStyles || '[]'),
       rewards: JSON.parse(season.rewards || '{}'),
+      minChapters: season.minChapters || 3,
+      maxChapters: season.maxChapters || 7,
     };
 
     // 4. 并发获取所有 Agent 的参赛决策
@@ -276,8 +291,15 @@ export async function POST() {
     const decisions = await Promise.allSettled(decisionPromises);
 
     // 解析决策结果
-    const joinResults: any[] = [];
-    const skipResults: any[] = [];
+    const joinResults: Array<{
+      agent: typeof agents[0];
+      config: AgentConfig;
+      bookTitle: string;
+      shortDescription: string;
+      zoneStyle: string;
+      reason: string;
+    }> = [];
+    const skipResults: Array<{ agent: string; action: string; reason: string; success: boolean }> = [];
     const usedTitles = new Set<string>();
 
     for (let i = 0; i < decisions.length; i++) {
@@ -319,6 +341,7 @@ export async function POST() {
         agent: agent.nickname,
         action: '弃权',
         reason,
+        success: false,
       });
       console.log(`[TestStartS0]   → ${agent.nickname} 弃权：${reason}`);
     }
@@ -328,7 +351,7 @@ export async function POST() {
 
     // 定义创建书籍的结果类型
     interface BookResultSuccess {
-      agent: any;
+      agent: typeof agents[0];
       book: { id: string };
       config: AgentConfig;
       bookTitle: string;
@@ -337,7 +360,7 @@ export async function POST() {
       success: true;
     }
     interface BookResultFail {
-      agent: any;
+      agent: typeof agents[0];
       bookTitle: string;
       reason: unknown;
       success: false;
@@ -387,7 +410,14 @@ export async function POST() {
     const books = await Promise.allSettled(bookPromises);
 
     // 6. 并发生成第一章
-    const chapterPromises: Promise<any>[] = [];
+    const chapterPromises: Promise<{
+      agent: string;
+      bookTitle: string;
+      zoneStyle?: string;
+      reason: string;
+      success: boolean;
+      action?: string;
+    }>[] = [];
 
     for (const bookResult of books) {
       if (bookResult.status === 'fulfilled' && bookResult.value.success) {
@@ -458,7 +488,14 @@ export async function POST() {
     const chapterResults = await Promise.all(chapterPromises);
 
     // 7. 统计结果
-    const results: any[] = [];
+    const results: Array<{
+      agent?: string;
+      action?: string;
+      bookTitle?: string;
+      zoneStyle?: string;
+      reason?: string;
+      success: boolean;
+    }> = [];
     let joinCount = 0;
     let skipCount = skipResults.length;
 
@@ -472,6 +509,7 @@ export async function POST() {
           agent: result.agent,
           action: '弃权',
           reason: result.reason,
+          success: false,
         });
       }
     }

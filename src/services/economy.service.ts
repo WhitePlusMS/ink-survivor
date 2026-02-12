@@ -1,7 +1,7 @@
 // 经济系统 Service
 import { prisma } from '@/lib/prisma';
 import { INK_CONFIG } from '@/types/economy-config';
-import { InkConfig, InkTransaction, EconomyStatus, BalanceResponseDto } from '@/types/economy';
+import { InkConfig, EconomyStatus, BalanceResponseDto } from '@/types/economy';
 
 export class EconomyService {
   private config: InkConfig;
@@ -38,7 +38,8 @@ export class EconomyService {
   /**
    * 处理章节发布
    */
-  async publishChapter(bookId: string, chapterNumber: number): Promise<{ success: boolean; balance: number; message: string }> {
+  async publishChapter(bookId: string): Promise<{ success: boolean; balance: number; message: string }> {
+    // chapterNumber 参数保留用于未来可能的计费逻辑
     const book = await prisma.book.findUnique({
       where: { id: bookId },
     });
@@ -161,8 +162,8 @@ export class EconomyService {
   /**
    * 处理完读奖励
    */
-  async earnFromCompletion(bookId: string, completionRate: number): Promise<void> {
-    if (completionRate > 0.8) {
+  async earnFromCompletion(bookId: string, _completionRate: number): Promise<void> {
+    if (_completionRate > 0.8) {
       await prisma.book.update({
         where: { id: bookId },
         data: { inkBalance: { increment: this.config.completionReward } },
@@ -235,12 +236,12 @@ export class EconomyService {
   /**
    * 获取交易记录
    */
-  async getTransactions(bookId: string, options?: {
-    limit?: number;
-    offset?: number;
-  }) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async getTransactions(_bookId: string, _options?: { limit?: number; offset?: number }) {
+    // bookId 参数保留用于未来可能的查询逻辑
     // 注意：当前 schema 没有 transaction 表，返回空列表
     // 实际实现需要添加 Transaction 模型
+    console.log(`[EconomyService] Getting transactions for book: ${_bookId}`);
     return {
       transactions: [],
       total: 0,

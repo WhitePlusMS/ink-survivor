@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { bookService } from '@/services/book.service';
 import { BookListItemDto, BookResponseDto } from '@/common/dto/book.dto';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
+import { BookStatus } from '@/types/book';
 
 // 解析查询参数
 function parseQueryParams(url: string) {
   const urlObj = new URL(url);
   const zoneStyle = urlObj.searchParams.get('zoneStyle') || undefined;
-  const status = urlObj.searchParams.get('status') as any || undefined;
+  const status = urlObj.searchParams.get('status') || undefined;
   const keyword = urlObj.searchParams.get('keyword') || undefined;
   const limit = parseInt(urlObj.searchParams.get('limit') || '20', 10);
   const offset = parseInt(urlObj.searchParams.get('offset') || '0', 10);
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     // 如果有搜索关键词，使用搜索功能
     if (keyword) {
       const books = await bookService.searchBooks(keyword);
-      const bookItems = books.map((book: any) => BookListItemDto.fromEntity(book));
+      const bookItems = books.map((book) => BookListItemDto.fromEntity(book as unknown as Record<string, unknown>));
       return NextResponse.json({
         code: 0,
         data: bookItems,
@@ -44,18 +45,18 @@ export async function GET(request: Request) {
 
     const { books, total } = await bookService.getBooks({
       zoneStyle,
-      status,
+      status: status as BookStatus | undefined,
       limit,
       offset,
     });
 
     // 标准化返回数据中的 zoneStyle
-    const normalizedBooks = books.map((book: any) => ({
+    const normalizedBooks = books.map((book) => ({
       ...book,
       zoneStyle: normalizeZoneStyle(book.zoneStyle),
     }));
 
-    const bookItems = normalizedBooks.map((book: any) => BookListItemDto.fromEntity(book));
+    const bookItems = normalizedBooks.map((book) => BookListItemDto.fromEntity(book as unknown as Record<string, unknown>));
 
     console.log('[Books] Returned', bookItems.length, 'books, total:', total);
 

@@ -29,12 +29,25 @@ interface AgentConfig {
 }
 
 /**
+ * 赛季信息接口
+ */
+interface SeasonInfo {
+  seasonNumber: number;
+  themeKeyword: string;
+  constraints: string[];
+  zoneStyles: string[];
+  rewards: Record<string, unknown>;
+  minChapters: number;
+  maxChapters: number;
+}
+
+/**
  * 调用 SecondMe API 获取 Agent 参赛决策
  * 使用指数退避重试机制，解析失败时最多重试 3 次
  */
 async function callSecondMeForDecision(
   config: AgentConfig,
-  seasonInfo: any
+  seasonInfo: SeasonInfo
 ): Promise<{
   decision: string;
   bookTitle?: string;
@@ -245,8 +258,15 @@ export async function POST(request: NextRequest) {
     const decisions = await Promise.allSettled(decisionPromises);
 
     // 解析决策结果
-    const joinResults: any[] = [];
-    const skipResults: any[] = [];
+    const joinResults: Array<{
+      user: typeof users[0];
+      config: AgentConfig;
+      bookTitle: string;
+      shortDescription: string;
+      zoneStyle: string;
+      reason: string;
+    }> = [];
+    const skipResults: Array<{ user: string; action: string; reason: string; success: boolean }> = [];
     const usedTitles = new Set<string>();
 
     for (let i = 0; i < decisions.length; i++) {
@@ -288,6 +308,7 @@ export async function POST(request: NextRequest) {
         user: user.nickname,
         action: '弃权',
         reason,
+        success: false,
       });
       console.log(`[StartSeason]   → ${user.nickname} 弃权：${reason}`);
     }
@@ -296,7 +317,7 @@ export async function POST(request: NextRequest) {
     console.log(`[StartSeason] 并发创建 ${joinResults.length} 本书籍...`);
 
     const bookPromises = joinResults.map(async (joinResult) => {
-      const { user, config, bookTitle, shortDescription, zoneStyle } = joinResult;
+      const { user, bookTitle, shortDescription, zoneStyle } = joinResult;
       const zoneCn = normalizeZoneStyle(zoneStyle);
 
       try {
@@ -354,7 +375,13 @@ export async function POST(request: NextRequest) {
     // 统计结果
     let joinCount = 0;
     let skipCount = skipResults.length;
-    const results: any[] = [];
+    const results: Array<{
+      user: string;
+      action: string;
+      bookTitle?: string;
+      success: boolean;
+      reason?: string;
+    }> = [];
 
     for (const bookResult of books) {
       if (bookResult.status === 'fulfilled' && bookResult.value.success) {
@@ -373,9 +400,9 @@ export async function POST(request: NextRequest) {
         // 从 rejected 中获取原因
         const reason = bookResult.status === 'rejected'
           ? bookResult.reason
-          : (bookResult.value as any)?.reason || '未知错误';
+          : (bookResult.value as { reason?: unknown })?.reason || '未知错误';
         results.push({
-          user: (bookResult.status === 'fulfilled' ? (bookResult.value as any)?.user?.nickname : 'Unknown') || 'Unknown',
+          user: (bookResult.status === 'fulfilled' ? (bookResult.value as { user?: { nickname: string } })?.user?.nickname : 'Unknown') || 'Unknown',
           action: '失败',
           reason: String(reason),
           success: false,

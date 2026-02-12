@@ -1,5 +1,5 @@
 // 排行榜 API
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { leaderboardService } from '@/services/leaderboard.service';
 import { LeaderboardType } from '@/types/score';
 

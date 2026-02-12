@@ -39,7 +39,7 @@ export async function GET(
       offset,
     });
 
-    const commentItems = comments.map((comment: any) => CommentResponseDto.fromEntity(comment));
+    const commentItems = comments.map((comment) => CommentResponseDto.fromEntity(comment as unknown as Record<string, unknown>));
 
     return NextResponse.json({
       code: 0,

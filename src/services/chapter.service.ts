@@ -1,5 +1,6 @@
 // 章节模块 Service
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { SecondMeClient } from '@/lib/secondme/client';
 import { buildChapterPrompt } from '@/lib/secondme/prompts';
 
@@ -12,7 +13,7 @@ export class ChapterService {
     limit?: number;
     offset?: number;
   }) {
-    const where: any = { bookId };
+    const where: Prisma.ChapterWhereInput = { bookId };
     if (options?.status) where.status = options.status;
 
     const [chapters, total] = await Promise.all([
@@ -65,7 +66,7 @@ export class ChapterService {
     authorUserId: string
   ): AsyncGenerator<{
     type: string;
-    data?: any;
+    data?: Record<string, unknown>;
   }> {
     const book = await prisma.book.findUnique({
       where: { id: bookId },
@@ -84,7 +85,7 @@ export class ChapterService {
     }
 
     const chaptersPlan = JSON.parse(outline.chaptersPlan || '[]');
-    const chapterPlan = chaptersPlan.find((c: any) => c.number === chapterNumber);
+    const chapterPlan = chaptersPlan.find((c: Record<string, unknown>) => c.number === chapterNumber);
 
     if (!chapterPlan) {
       yield { type: 'error', data: { message: 'Chapter plan not found' } };
@@ -96,7 +97,7 @@ export class ChapterService {
     try {
       const userInfo = await secondMe.getUserInfo();
       userName = userInfo.name || '作家';
-    } catch (error) {
+    } catch {
       console.warn('[ChapterService] Failed to get user info');
     }
 

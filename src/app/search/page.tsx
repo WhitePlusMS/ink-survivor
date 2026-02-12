@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search as SearchIcon, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { BookCard } from '@/components/home/book-card';
 import type { Book } from '@/components/home/book-list';

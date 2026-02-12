@@ -54,7 +54,7 @@ function escapeUnescapedQuotes(json: string): string {
 function extractAndRepairJson(response: string): string {
   // 0. 预处理：转义未转义的引号
   const preprocessed = escapeUnescapedQuotes(response);
-  let jsonToRepair = preprocessed;
+  const jsonToRepair = preprocessed;
 
   // 0.5. 检查是否是纯文本（没有任何 JSON 特征）
   const trimmed = response.trim();
@@ -125,7 +125,7 @@ function getExponentialBackoffDelay(attempt: number): number {
  * @returns 解析后的 JSON 对象
  * @throws Error - 当重试次数用尽后解析仍失败
  */
-export async function parseLLMJsonWithRetry<T = Record<string, any>>(
+export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
   llmResponseFn: () => Promise<string>,
   options?: {
     /** 期望的根键名，如果指定则从该键提取值 */
@@ -150,7 +150,7 @@ export async function parseLLMJsonWithRetry<T = Record<string, any>>(
 
       // 解析 JSON
       const repairedJson = extractAndRepairJson(response);
-      const parsed = JSON.parse(repairedJson) as Record<string, any>;
+      const parsed = JSON.parse(repairedJson) as Record<string, unknown>;
 
       // 如果指定了根键，提取该键的值
       if (rootKey) {
@@ -190,7 +190,7 @@ export async function parseLLMJsonWithRetry<T = Record<string, any>>(
  * @returns 解析后的 JSON 对象
  * @throws Error - 当解析失败时
  */
-export function parseLLMJson<T = Record<string, any>>(
+export function parseLLMJson<T = Record<string, unknown>>(
   response: string,
   options?: {
     /** 期望的根键名，如果指定则从该键提取值 */
@@ -209,7 +209,7 @@ export function parseLLMJson<T = Record<string, any>>(
     console.log(`[LLM Parser] 修复后: ${repairedJson.substring(0, logLength)}...`);
 
     // 解析 JSON
-    const parsed = JSON.parse(repairedJson) as Record<string, any>;
+    const parsed = JSON.parse(repairedJson) as Record<string, unknown>;
 
     // 如果指定了根键，提取该键的值
     if (rootKey) {
@@ -232,7 +232,7 @@ export function parseLLMJson<T = Record<string, any>>(
 /**
  * 安全解析 LLM 响应 - 失败时返回 null 而不是抛出异常
  */
-export function parseLLMJsonSafe<T = Record<string, any>>(
+export function parseLLMJsonSafe<T = Record<string, unknown>>(
   response: string,
   options?: {
     rootKey?: string;

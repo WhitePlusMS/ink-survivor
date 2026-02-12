@@ -15,7 +15,7 @@ export async function POST(
     // TODO: 从 Session 获取当前用户 ID
     const authorUserId = 'temp-user-id';
 
-    const comment = await commentService.adoptComment(commentId, authorUserId);
+    await commentService.adoptComment(commentId, authorUserId);
 
     return NextResponse.json({
       code: 0,

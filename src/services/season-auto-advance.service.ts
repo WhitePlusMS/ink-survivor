@@ -12,6 +12,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { RoundPhase } from '@/types/season';
+import { Season } from '@prisma/client';
 
 // 阶段顺序
 const PHASE_ORDER: RoundPhase[] = ['READING', 'OUTLINE', 'WRITING'];
@@ -22,7 +23,7 @@ const CHECK_INTERVAL = 5000; // 每 5 秒检查一次
 /**
  * 获取当前阶段剩余时间（毫秒）
  */
-function getPhaseRemainingTime(season: any, currentPhase: RoundPhase): number {
+function getPhaseRemainingTime(season: Season, currentPhase: RoundPhase): number {
   if (!season.roundStartTime) return 0;
 
   // 解析阶段时长配置

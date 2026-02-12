@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
 }
 
 // 获取追赶状态
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const season = await prisma.season.findFirst({
       where: { status: 'ACTIVE' },

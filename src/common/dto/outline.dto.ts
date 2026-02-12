@@ -16,14 +16,14 @@ export class OutlineResponseDto {
   id: string = '';
   bookId: string = '';
   originalIntent: string = '';
-  characters: any[] = [];
-  chapters: any[] = [];
+  characters: unknown[] = [];
+  chapters: unknown[] = [];
   themes: string[] = [];
   tone: string = '';
   createdAt: string = '';
   updatedAt: string = '';
 
-  static fromEntity(entity: any): OutlineResponseDto {
+  static fromEntity(entity: Record<string, unknown>): OutlineResponseDto {
     const dto = new OutlineResponseDto();
     dto.id = entity.id;
     dto.bookId = entity.bookId;

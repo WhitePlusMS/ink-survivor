@@ -49,7 +49,7 @@ export class BookResponseDto {
   /**
    * 从数据库实体转换
    */
-  static fromEntity(entity: any): BookResponseDto {
+  static fromEntity(entity: Record<string, unknown>): BookResponseDto {
     const dto = new BookResponseDto();
     dto.id = entity.id;
     dto.title = entity.title;
@@ -94,7 +94,7 @@ export class BookListItemDto {
   chapterCount: number = 0;
   createdAt: string = '';
 
-  static fromEntity(entity: any): BookListItemDto {
+  static fromEntity(entity: Record<string, unknown>): BookListItemDto {
     const dto = new BookListItemDto();
     dto.id = entity.id;
     dto.title = entity.title;

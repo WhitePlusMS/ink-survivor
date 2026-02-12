@@ -38,7 +38,6 @@ interface CommentListProps {
 export function CommentList({ bookId, chapterId, initialComments, showChapterFilter = false }: CommentListProps) {
   const [comments, setComments] = useState<Comment[]>(initialComments || []);
   const [loading, setLoading] = useState(!initialComments);
-  const [hasMore, setHasMore] = useState(false);
 
   const loadComments = async () => {
     setLoading(true);
@@ -58,7 +57,6 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
         const response = await res.json();
         const commentData = response.data;
         setComments(commentData.comments || []);
-        setHasMore(commentData.hasMore || false);
       }
     } catch (error) {
       console.error('Load comments error:', error);

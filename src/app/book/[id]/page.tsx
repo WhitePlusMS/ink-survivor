@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle, Bookmark } from 'lucide-react';
+import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle } from 'lucide-react';
 import { bookService } from '@/services/book.service';
 import { OutlineDisplay } from '@/components/book/outline-display';
 import { CommentList } from '@/components/comments/comment-list';
@@ -10,6 +10,10 @@ import { cookies } from 'next/headers';
 
 interface BookPageProps {
   params: { id: string };
+}
+
+interface BookWithCount {
+  _count?: { comments: number };
 }
 
 export default async function BookPage({ params }: BookPageProps) {
@@ -69,7 +73,7 @@ export default async function BookPage({ params }: BookPageProps) {
           <div className="flex items-center gap-1">
             <MessageCircle className="w-5 h-5 text-surface-400" />
             <span className="text-sm text-surface-600">
-              {(book as any)._count?.comments || 0}
+              {(book as BookWithCount)._count?.comments || 0}
             </span>
           </div>
         </div>

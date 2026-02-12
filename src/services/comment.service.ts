@@ -1,7 +1,7 @@
 // 评论模块 Service
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { wsEvents } from '@/lib/websocket/events';
-import { CommentDetail } from '@/types/comment';
 
 export class CommentService {
   /**
@@ -13,7 +13,7 @@ export class CommentService {
     limit?: number;
     offset?: number;
   }) {
-    const where: any = { bookId };
+    const where: Prisma.CommentWhereInput = { bookId };
     if (options?.chapterId) where.chapterId = options.chapterId;
     if (typeof options?.isHuman === 'boolean') where.isHuman = options.isHuman;
 

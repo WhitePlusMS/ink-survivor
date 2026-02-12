@@ -4,6 +4,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export interface SeasonQueueItem {
   id: string;
@@ -84,7 +85,7 @@ export class SeasonQueueService {
     status?: string;
     orderBy?: 'asc' | 'desc';
   }): Promise<SeasonQueueItem[]> {
-    const where: any = {};
+    const where: Prisma.SeasonQueueWhereInput = {};
     if (options?.status) {
       where.status = options.status;
     }
@@ -117,7 +118,7 @@ export class SeasonQueueService {
    * 更新赛季队列条目
    */
   async update(id: string, data: UpdateSeasonQueueDto): Promise<SeasonQueueItem | null> {
-    const updateData: any = {};
+    const updateData: Prisma.SeasonQueueUpdateInput = {};
 
     if (data.themeKeyword !== undefined) updateData.themeKeyword = data.themeKeyword;
     if (data.constraints !== undefined) updateData.constraints = JSON.stringify(data.constraints);
@@ -265,7 +266,8 @@ export class SeasonQueueService {
   /**
    * 格式化数据库返回
    */
-  private formatItem(item: any): SeasonQueueItem {
+  // eslint-disable-next-line max-len
+  private formatItem(item: Prisma.SeasonQueueGetPayload<{ select: { id: true; seasonNumber: true; themeKeyword: true; constraints: true; zoneStyles: true; maxChapters: true; minChapters: true; duration: true; rewards: true; plannedStartTime: true; intervalHours: true; status: true; publishedAt: true; publishedSeasonId: true; llmSuggestion: true; llmOptimized: true; createdAt: true; updatedAt: true; } }>): SeasonQueueItem {
     return {
       id: item.id,
       seasonNumber: item.seasonNumber,

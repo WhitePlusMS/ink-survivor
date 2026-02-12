@@ -6,7 +6,7 @@ import { Send } from 'lucide-react';
 interface CommentFormProps {
   bookId: string;
   chapterId?: string;
-  onSubmit?: (comment: any) => void;
+  onSubmit?: (comment: Record<string, unknown>) => void;
 }
 
 /**

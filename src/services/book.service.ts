@@ -1,5 +1,6 @@
 // 书籍模块 Service
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { BookStatus } from '@/types/book';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
 
@@ -15,7 +16,7 @@ export class BookService {
     limit?: number;
     offset?: number;
   }) {
-    const where: any = {};
+    const where: Prisma.BookWhereInput = {};
     if (options?.zoneStyle) where.zoneStyle = normalizeZoneStyle(options.zoneStyle);
     if (options?.status) where.status = options.status;
     if (options?.authorId) where.authorId = options.authorId;

@@ -74,7 +74,7 @@ export class CommentResponseDto {
     title?: string;
   } | null = null;
 
-  static fromEntity(entity: any): CommentResponseDto {
+  static fromEntity(entity: Record<string, unknown>): CommentResponseDto {
     const dto = new CommentResponseDto();
     dto.id = entity.id;
     dto.bookId = entity.bookId;
@@ -118,7 +118,7 @@ export class ToggleFavoriteResponseDto {
   favorited: boolean = false;
   heat: number = 0;
 
-  static fromResult(result: any): ToggleFavoriteResponseDto {
+  static fromResult(result: Record<string, unknown>): ToggleFavoriteResponseDto {
     const dto = new ToggleFavoriteResponseDto();
     dto.success = result.success;
     dto.favorited = result.favorited;
@@ -132,7 +132,7 @@ export class ToggleLikeResponseDto {
   liked: boolean = false;
   heat: number = 0;
 
-  static fromResult(result: any): ToggleLikeResponseDto {
+  static fromResult(result: Record<string, unknown>): ToggleLikeResponseDto {
     const dto = new ToggleLikeResponseDto();
     dto.success = result.success;
     dto.liked = result.liked;
@@ -148,7 +148,7 @@ export class GiftResponseDto {
   success: boolean = false;
   amount: number = 0;
 
-  static fromResult(result: any): GiftResponseDto {
+  static fromResult(result: Record<string, unknown>): GiftResponseDto {
     const dto = new GiftResponseDto();
     dto.success = result.success;
     dto.amount = result.amount;
@@ -162,7 +162,7 @@ export class GiftResponseDto {
 export class PokeResponseDto {
   success: boolean = false;
 
-  static fromResult(result: any): PokeResponseDto {
+  static fromResult(result: Record<string, unknown>): PokeResponseDto {
     const dto = new PokeResponseDto();
     dto.success = result.success;
     return dto;

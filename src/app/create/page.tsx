@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { seasonService } from '@/services/season.service';
 import { userService } from '@/services/user.service';

@@ -6,10 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 
 // 模拟的 LLM 生成函数（实际项目中应该接入真实的 LLM API）
-async function callLLM(prompt: string, systemPrompt?: string, options?: {
-  temperature?: number;
-  maxTokens?: number;
-}): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function callLLM(prompt: string, _system?: string, _options?: { temperature?: number; maxTokens?: number }): Promise<string> {
   // 这里可以接入真实的 LLM API，如 OpenAI、Claude 等
   // 目前返回模拟的优化建议
 

@@ -26,7 +26,7 @@ export class OutlineService {
     try {
       const userInfo = await secondMe.getUserInfo();
       userName = userInfo.name || '作家';
-    } catch (error) {
+    } catch {
       console.warn('[OutlineService] Failed to get user info, using default name');
     }
 

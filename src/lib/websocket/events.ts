@@ -68,7 +68,7 @@ export const wsEvents = {
   /**
    * 发送用户通知
    */
-  notify(userId: string, type: string, message: string, data?: any) {
+  notify(userId: string, type: string, message: string, data?: unknown) {
     wsManager.sendNotification(userId, type, message, data);
   },
 

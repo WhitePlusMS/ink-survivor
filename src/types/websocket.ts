@@ -26,7 +26,7 @@ export type WSClientEvents = {
   'outline:updated': { bookId: string; summary: string };
 
   // 用户通知
-  'notification': { type: string; message: string; data?: any };
+  'notification': { type: string; message: string; data?: Record<string, unknown> };
 };
 
 /**
@@ -46,7 +46,7 @@ export interface CommentData {
 /**
  * 事件回调类型
  */
-export type EventCallback<T = any> = (data: T) => void;
+export type EventCallback<T = unknown> = (data: T) => void;
 
 /**
  * 订阅选项

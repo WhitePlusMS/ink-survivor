@@ -17,19 +17,19 @@ export async function POST(
     const authorUserId = 'temp-user-id';
 
     const body = await request.json().catch(() => ({}));
-    const { chapterNumber, systemPrompt, feedbacks } = body as GenerateChapterDto;
+    const { chapterNumber } = body as { chapterNumber?: number };
 
     console.log(`[GenerateChapter] Starting generation for book: ${bookId}`);
 
     // 直接执行生成（同步等待完成）
-    let result: any = null;
+    let result: GenerateChapterDto | null = null;
     for await (const event of chapterService.generateChapterStream(
       bookId,
       chapterNumber || await chapterService.getNextChapterNumber(bookId),
       authorUserId
     )) {
-      if (event.type === 'complete') {
-        result = event.data;
+      if (event.type === 'complete' && event.data) {
+        result = event.data as unknown as GenerateChapterDto;
       } else if (event.type === 'error') {
         return NextResponse.json(
           { code: 500, data: event.data, message: '章节生成失败' },

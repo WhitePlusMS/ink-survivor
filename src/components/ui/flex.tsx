@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import { HTMLAttributes, forwardRef } from 'react';
 
-interface FlexProps extends HTMLAttributes<HTMLDivElement> {}
+type FlexProps = HTMLAttributes<HTMLDivElement>;
 
 export const Flex = forwardRef<HTMLDivElement, FlexProps>(
   ({ className, children, ...props }, ref) => (

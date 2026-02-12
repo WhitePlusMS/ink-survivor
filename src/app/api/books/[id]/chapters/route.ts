@@ -1,5 +1,5 @@
 // 章节列表 API
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { chapterService } from '@/services/chapter.service';
 import { ChapterListItemDto } from '@/common/dto/chapter.dto';
 
@@ -30,7 +30,7 @@ export async function GET(
       offset,
     });
 
-    const chapterItems = chapters.map((chapter: any) => ChapterListItemDto.fromEntity(chapter));
+    const chapterItems = chapters.map((chapter) => ChapterListItemDto.fromEntity(chapter as unknown as Record<string, unknown>));
 
     return NextResponse.json({
       code: 0,

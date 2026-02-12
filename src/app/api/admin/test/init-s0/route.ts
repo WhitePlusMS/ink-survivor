@@ -42,8 +42,8 @@ export async function POST() {
       where: { seasonNumber: 0 },
     });
 
-    // 2. 检查是否有 Agent
-    const existingAgents = await prisma.user.findMany({
+    // 2. 检查是否有 Agent（仅用于检查，不执行删除操作）
+    await prisma.user.findMany({
       where: { secondMeId: { startsWith: 'agent-' } },
     });
 
@@ -174,7 +174,7 @@ export async function POST() {
           startTime: now,
           endTime,
           signupDeadline,
-          duration: 600,
+          duration: '600',
           maxChapters: 7,
           minChapters: 3,
           rewards: JSON.stringify({ first: 1000, second: 500, third: 200, completionPerChapter: 50 }),

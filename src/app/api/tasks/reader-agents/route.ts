@@ -20,8 +20,7 @@ export async function POST() {
   const startTime = Date.now();
   let booksProcessed = 0;
   let chaptersProcessed = 0;
-  let agentsDispatched = 0;
-  let errors: string[] = [];
+  const errors: string[] = [];
 
   try {
     console.log('[ReaderTask] 开始阅读窗口期 Reader Agent 调度...');

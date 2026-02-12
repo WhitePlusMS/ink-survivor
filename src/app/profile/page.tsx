@@ -1,12 +1,14 @@
 import { cookies } from 'next/headers';
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { userService } from '@/services/user.service';
 import { UserInfo } from '@/components/profile/user-info';
 import { StatsCard } from '@/components/profile/stats-card';
 import { SeasonCard } from '@/components/profile/season-card';
 import { LogoutButton } from '@/components/profile/logout-button';
+
+import { BookListItemDto } from '@/common/dto/book.dto';
 
 export default async function ProfilePage() {
   const authToken = cookies().get('auth_token')?.value;
@@ -124,7 +126,7 @@ export default async function ProfilePage() {
 
           {books && books.length > 0 ? (
             <div className="space-y-2">
-              {books.map((book: any) => (
+              {books.map((book: BookListItemDto) => (
                 <Link
                   key={book.id}
                   href={`/book/${book.id}`}

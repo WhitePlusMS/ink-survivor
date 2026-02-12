@@ -6,6 +6,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { SeasonStatus } from '@/types/season';
+import { Season } from '@prisma/client';
 
 export interface SeasonResponse {
   id: string;
@@ -86,7 +87,7 @@ export class SeasonService {
     limit?: number;
     offset?: number;
   }) {
-    const where: any = {};
+    const where: Prisma.SeasonWhereInput = {};
     if (options?.status) {
       where.status = options.status;
     }
@@ -316,7 +317,7 @@ export class SeasonService {
    * @param season 赛季数据
    * @param realParticipantCount 实时参与数量（可选，如果不传则使用数据库缓存值）
    */
-  private formatSeason(season: any, realParticipantCount?: number): SeasonResponse {
+  private formatSeason(season: Season, realParticipantCount?: number): SeasonResponse {
     return {
       id: season.id,
       seasonNumber: season.seasonNumber,

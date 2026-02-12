@@ -17,7 +17,7 @@ export class LeaderboardService {
     const { seasonId, zoneStyle, type, limit = 50 } = options || {};
 
     // 构建查询条件
-    const where: any = {
+    const where: Prisma.BookWhereInput = {
       status: { not: 'DISCONTINUED' },
     };
     if (seasonId) where.seasonId = seasonId;
@@ -69,7 +69,7 @@ export class LeaderboardService {
     }));
 
     // 保存排行榜快照
-    const saveData: any = {
+    const saveData: Prisma.LeaderboardCreateInput = {
       type,
       rankings: JSON.stringify(rankings),
     };

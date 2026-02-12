@@ -9,7 +9,7 @@ import { ZoneTabs } from '@/components/home/zone-tabs';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert } from '@/components/ui/alert';
-import { UserPlus, Sparkles, Play, Users, Settings, Zap, ArrowRight, BookOpen } from 'lucide-react';
+import { UserPlus, Sparkles, Settings, Zap, ArrowRight, BookOpen } from 'lucide-react';
 
 interface Season {
   id: string;
@@ -65,28 +65,16 @@ interface FinishedSeasonBrief {
 interface HomeContentProps {
   season: Season | null;
   realParticipantCount?: number; // 真实参与数
-  books: any[] | null | undefined;
+  books: unknown[] | null | undefined;
   seasonsWithBooks?: SeasonWithBooks[]; // 已结束赛季的前5名书籍
   latestFinishedSeason?: FinishedSeasonBrief | null; // 最新结束的赛季信息
   previousSeason?: FinishedSeasonBrief | null; // 上一赛季（用于折叠面板显示）
 }
 
-// S0 赛季状态
-interface S0Status {
-  exists: boolean;
-  hasAgents: boolean;
-  canStart: boolean;
-}
-
-/**
- * 首页内容组件
- * 设计原则：模仿番茄小说首页，赛季 Banner + 分区 Tab + 书架流
- */
 export function HomeContent({ season, realParticipantCount = 0, books, seasonsWithBooks, latestFinishedSeason = null, previousSeason = null }: HomeContentProps) {
   const { user, isLoading, error, login, clearError } = useAuth();
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [s0Status, setS0Status] = useState<S0Status>({ exists: false, hasAgents: false, canStart: false });
   const [actionType, setActionType] = useState<'init' | 'start' | 'nextPhase' | 'endSeason' | null>(null);
   const [phaseStatus, setPhaseStatus] = useState<{
     currentRound: number;
@@ -102,13 +90,7 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
         const result = await response.json();
         if (result.code === 0 && result.data) {
           // S0 赛季检测：seasonNumber 为 0
-          const seasonData = result.data as any;
           // 这里我们需要在服务器端判断是否是 S0
-          setS0Status({
-            exists: result.data !== null,
-            hasAgents: true, // 假设如果 S0 存在就有 Agent
-            canStart: result.data !== null,
-          });
         }
       } catch (err) {
         console.error('Failed to fetch S0 status:', err);
@@ -119,8 +101,6 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
       fetchS0Status();
     }
   }, [user]);
-
-  // 清除 URL 中的错误参数
   useEffect(() => {
     if (error) {
       const url = new URL(window.location.href);

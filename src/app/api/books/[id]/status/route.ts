@@ -1,8 +1,8 @@
 // 书籍状态更新 API
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 import { bookService } from '@/services/book.service';
-import { userService } from '@/services/user.service';
 import { BookStatus } from '@/types/book';
 
 /**
@@ -94,5 +94,3 @@ export async function PATCH(
     );
   }
 }
-
-import { prisma } from '@/lib/prisma';

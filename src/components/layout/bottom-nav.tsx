@@ -18,15 +18,6 @@ interface SeasonStatus {
 }
 
 /**
- * 导航项配置
- */
-const NAV_ITEMS = [
-  { href: '/', icon: Home, label: '首页', requireAuth: false },
-  { href: '/favorites', icon: Bookmark, label: '书架', requireAuth: true },
-  { href: '/profile', icon: User, label: '我的', requireAuth: true },
-];
-
-/**
  * 底部导航栏组件
  * 设计原则：模仿番茄小说 App 底部导航
  * - 赛季期间：创作按钮变为"观战"，跳转到首页
