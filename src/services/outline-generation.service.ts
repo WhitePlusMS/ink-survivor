@@ -80,8 +80,8 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 2. 解析作者配置
-    const agentConfig: AgentConfig = JSON.parse(book.author.agentConfig || '{}');
+    // 2. 解析作者配置 - Prisma JSONB 字段已自动解析，直接使用类型断言
+    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
 
     // 3. 获取赛季信息
     const season = await prisma.season.findUnique({
@@ -95,8 +95,9 @@ export class OutlineGenerationService {
 
     const seasonInfo = {
       themeKeyword: season.themeKeyword,
-      constraints: JSON.parse(season.constraints || '[]') as string[],
-      zoneStyles: JSON.parse(season.zoneStyles || '[]') as string[],
+      // Prisma JSONB 字段已自动解析，直接使用类型断言
+      constraints: season.constraints as unknown as string[],
+      zoneStyles: season.zoneStyles as unknown as string[],
       maxChapters: season.maxChapters || 5,
     };
 
@@ -172,7 +173,8 @@ export class OutlineGenerationService {
       return;
     }
 
-    const currentChapterCount = book.chapterCount;
+    // 使用 chapters 数组长度作为当前章节数
+    const currentChapterCount = book.chapters.length;
     const nextChapterNumber = currentChapterCount + 1;
 
     console.log(`[Outline] 书籍《${book.title}》当前 ${currentChapterCount} 章，生成第 ${nextChapterNumber} 章大纲`);
@@ -188,8 +190,8 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 解析现有大纲
-    const chaptersPlan = JSON.parse(existingOutline.chaptersPlan || '[]') as ChapterOutline[];
+    // 解析现有大纲 - Prisma JSONB 字段已自动解析，直接使用类型断言
+    const chaptersPlan = existingOutline.chaptersPlan as unknown as ChapterOutline[];
 
     // 检查该章节是否已有大纲
     const existingChapterOutline = chaptersPlan.find((c) => c.number === nextChapterNumber);
@@ -198,8 +200,8 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 3. 解析作者配置
-    const agentConfig: AgentConfig = JSON.parse(book.author.agentConfig || '{}');
+    // 3. 解析作者配置 - Prisma JSONB 字段已自动解析，直接使用类型断言
+    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
 
     // 4. 获取赛季信息
     const season = await prisma.season.findUnique({
@@ -213,7 +215,8 @@ export class OutlineGenerationService {
 
     const seasonInfo = {
       themeKeyword: season.themeKeyword,
-      constraints: JSON.parse(season.constraints || '[]') as string[],
+      // Prisma JSONB 字段已自动解析，直接使用类型断言
+      constraints: season.constraints as unknown as string[],
     };
 
     // 5. 获取上一章的读者反馈
@@ -291,14 +294,18 @@ export class OutlineGenerationService {
         seasonId,
         status: 'ACTIVE',
       },
-      orderBy: { heat: 'desc' }, // 按热度排序，优先处理热门书籍
-      select: { id: true, title: true, chapterCount: true },
+      include: {
+        score: { select: { heatValue: true } },
+        _count: { select: { chapters: true } },
+      },
+      // 按热度排序，优先处理热门书籍
+      orderBy: { score: { heatValue: 'desc' } },
     });
 
     console.log(`[Outline] 发现 ${books.length} 本活跃书籍`);
 
     // 2. 只为第一章的书籍生成大纲（后续轮次按需处理）
-    const booksNeedingOutline = books.filter((b) => b.chapterCount === 0);
+    const booksNeedingOutline = books.filter((b) => b._count.chapters === 0);
 
     if (booksNeedingOutline.length === 0) {
       console.log(`[Outline] 所有书籍已有大纲`);

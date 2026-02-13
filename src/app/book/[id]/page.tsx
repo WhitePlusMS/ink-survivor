@@ -7,6 +7,8 @@ import { CommentList } from '@/components/comments/comment-list';
 import { FavoriteButton } from '@/components/book/favorite-button';
 import { CompleteButton } from '@/components/book/complete-button';
 import { cookies } from 'next/headers';
+import { safeJsonField } from '@/lib/utils/jsonb-utils';
+import type { Character, ChapterPlan } from '@/types/outline';
 
 interface BookPageProps {
   params: { id: string };
@@ -109,7 +111,13 @@ export default async function BookPage({ params }: BookPageProps) {
       {book.outline && (
         <div className="max-w-md mx-auto px-4 py-4 border-t border-surface-100">
           <h3 className="font-medium mb-4 text-surface-700">大纲</h3>
-          <OutlineDisplay outline={book.outline} />
+          <OutlineDisplay
+            outline={{
+              summary: book.outline.originalIntent,
+              characters_json: safeJsonField<Character[]>(book.outline.characters, []),
+              chapters: safeJsonField<ChapterPlan[]>(book.outline.chaptersPlan, []),
+            }}
+          />
         </div>
       )}
 

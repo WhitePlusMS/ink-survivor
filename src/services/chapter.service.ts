@@ -84,7 +84,14 @@ export class ChapterService {
       return;
     }
 
-    const chaptersPlan = JSON.parse(outline.chaptersPlan || '[]');
+    // Prisma JSONB 字段已自动解析，直接使用类型断言
+    const chaptersPlan = outline.chaptersPlan as unknown as Array<{
+      number: number;
+      title: string;
+      summary: string;
+      key_events: string[];
+      word_count_target: number;
+    }>;
     const chapterPlan = chaptersPlan.find((c: Record<string, unknown>) => c.number === chapterNumber);
 
     if (!chapterPlan) {
@@ -198,7 +205,6 @@ export class ChapterService {
       where: { id: bookId },
       data: {
         currentChapter: chapterNumber,
-        chapterCount: { increment: 1 },
         inkBalance: { decrement: inkCost },
       },
     });

@@ -23,6 +23,7 @@ export interface UpdateBookDto {
 
 /**
  * 书籍响应 DTO
+ * heat: 使用 BookScore.heatValue
  */
 export class BookResponseDto {
   id: string = '';
@@ -42,12 +43,13 @@ export class BookResponseDto {
   currentChapter: number = 0;
   plannedChapters: number | null = null;
   inkBalance: number = 0;
-  heat: number = 0;
-  chapterCount: number = 0;
+  heat: number = 0;  // @deprecated: 使用 score.heatValue
+  chapterCount: number = 0;  // @deprecated: 使用 _count.chapters
   createdAt: string = '';
 
   /**
    * 从数据库实体转换
+   * 优先使用 score.heatValue，其次使用 entity.heat
    */
   static fromEntity(entity: Record<string, unknown>): BookResponseDto {
     const dto = new BookResponseDto();
@@ -68,7 +70,9 @@ export class BookResponseDto {
     dto.currentChapter = entity.currentChapter as number;
     dto.plannedChapters = entity.plannedChapters as number | null;
     dto.inkBalance = entity.inkBalance as number;
-    dto.heat = entity.heat as number;
+    // 优先使用 score.heatValue
+    const score = entity.score as Record<string, unknown> | undefined;
+    dto.heat = (score?.heatValue as number) ?? (entity.heat as number) ?? 0;
     dto.chapterCount = entity.chapterCount as number;
     dto.createdAt = entity.createdAt as string;
     return dto;
@@ -90,8 +94,8 @@ export class BookListItemDto {
   zoneStyle: string = '';
   shortDesc: string | null = null;
   status: string = '';
-  heat: number = 0;
-  chapterCount: number = 0;
+  heat: number = 0;  // @deprecated: 使用 score.heatValue
+  chapterCount: number = 0;  // @deprecated: 使用 _count.chapters
   createdAt: string = '';
 
   static fromEntity(entity: Record<string, unknown>): BookListItemDto {
@@ -107,7 +111,9 @@ export class BookListItemDto {
     dto.zoneStyle = entity.zoneStyle as string;
     dto.shortDesc = entity.shortDesc as string | null;
     dto.status = entity.status as string;
-    dto.heat = entity.heat as number;
+    // 优先使用 score.heatValue
+    const score = entity.score as Record<string, unknown> | undefined;
+    dto.heat = (score?.heatValue as number) ?? (entity.heat as number) ?? 0;
     dto.chapterCount = entity.chapterCount as number;
     dto.createdAt = entity.createdAt as string;
     return dto;

@@ -1,6 +1,6 @@
 import { Clock, Users, Trophy, CalendarX } from 'lucide-react';
 
-interface SeasonInfoProps {
+export interface SeasonInfoProps {
   season?: {
     id: string;
     seasonNumber: number;

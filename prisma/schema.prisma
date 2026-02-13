@@ -1,5 +1,6 @@
 // Prisma Schema - 番茄小说创作平台数据库设计
 // 根据 PRD 产品需求文档定义数据模型
+// 优化版本：JSON→JSONB、添加FK约束、清理冗余字段
 
 generator client {
   provider = "prisma-client-js"
@@ -22,21 +23,24 @@ model User {
   // 管理员权限
   isAdmin         Boolean   @default(false)  // 是否为管理员
 
-  // Agent 配置
-  agentConfig     String?   // 作者配置
-  readerConfig    String?   // 读者配置
+  // Agent 配置 - JSONB 类型支持高效查询
+  agentConfig     Json?     // 作者配置
+  readerConfig    Json?     // 读者配置
 
   // 统计数据
   totalInk        Int       @default(0)
-  booksWritten    Int       @default(0)
+  // @deprecated: 已删除，使用 UserLevel.booksWritten
+  // booksWritten    Int       @default(0)
   seasonsJoined   Int       @default(0)
-  highestRank     Int       @default(0)  // 历史最高排名，0表示无排名
+  // @deprecated: 已删除，从 SeasonParticipation.rankings 汇总
+  // highestRank     Int       @default(0)
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   // 关联
   token          UserToken?
+  userLevel      UserLevel?
   books          Book[]
   comments       Comment[]
   readings       Reading[]
@@ -65,6 +69,7 @@ model UserToken {
 model UserLevel {
   id              String    @id @default(cuid())
   userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   level           Int       @default(1)
   title           String    @default("新手作者")
@@ -75,7 +80,7 @@ model UserLevel {
   booksCompleted  Int       @default(0)
   totalCoins      Int       @default(0)
   totalFavorites  Int       @default(0)
-  unlockedFeatures String    @default("[]") // JSON 数组格式
+  unlockedFeatures Json     @default("[]") // JSON 数组格式 - 使用 Json 类型
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -89,18 +94,18 @@ model Season {
   status          String    @default("PENDING")  // PENDING, ACTIVE, FINISHED, CANCELLED
 
   themeKeyword    String
-  constraints     String    // JSON 数组
-  zoneStyles      String    // JSON 数组
+  constraints     Json       // JSON 数组 - 使用 Json 类型
+  zoneStyles      Json       // JSON 数组 - 使用 Json 类型
 
   signupDeadline  DateTime
   startTime       DateTime
   endTime         DateTime
 
-  duration        String   @default("{\"reading\": 10, \"outline\": 5, \"writing\": 5}")  // 各阶段时长(JSON)
+  duration        Json       @default("{\"reading\": 10, \"outline\": 5, \"writing\": 5}")  // 各阶段时长(Json)
   maxChapters     Int       @default(10)
   minChapters     Int       @default(3)
 
-  rewards         String    // JSON
+  rewards         Json       // JSON - 使用 Json 类型
   participantCount Int      @default(0)
 
   // 赛季轮次状态
@@ -120,8 +125,9 @@ model Season {
 model SeasonParticipation {
   id              String    @id @default(cuid())
   seasonId        String
-  season          Season    @relation(fields: [seasonId], references: [id])
+  season          Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   userId          String
+  // userId FK 约束在 prisma 层面无法直接添加（User表在后面定义），通过数据库迁移添加
 
   bookTitle       String
   shortDescription String
@@ -143,7 +149,7 @@ model Leaderboard {
   seasonId        String?
   zoneStyle       String?
   type            String    // 'heat', 'score', 'new'
-  rankings        String    // JSON
+  rankings        Json      // JSON - 使用 Json 类型
   calculatedAt    DateTime  @default(now())
 
   @@index([seasonId, zoneStyle, type])
@@ -157,13 +163,13 @@ model SeasonQueue {
   seasonNumber    Int       @unique  // 赛季编号
   themeKeyword    String
 
-  // 赛季配置
-  constraints     String    // JSON 数组
-  zoneStyles      String    // JSON 数组
+  // 赛季配置 - JSONB 类型
+  constraints     Json       // JSON 数组
+  zoneStyles      Json       // JSON 数组
   maxChapters     Int       @default(7)
   minChapters     Int       @default(3)
-  duration        String    // JSON: 各阶段时长
-  rewards         String    // JSON
+  duration        Json       // JSON: 各阶段时长
+  rewards         Json       // JSON
 
   // 发布计划
   plannedStartTime DateTime? // 计划开始时间
@@ -186,7 +192,7 @@ model SeasonQueue {
 model SystemSettings {
   id              String    @id @default(cuid())
   key             String    @unique
-  value           String    // JSON 值
+  value           Json      // JSON 值 - 使用 Json 类型
   description     String?
 
   createdAt       DateTime  @default(now())
@@ -214,8 +220,10 @@ model Book {
   plannedChapters Int?
 
   inkBalance      Int       @default(0)
-  heat            Int       @default(0)
-  chapterCount    Int       @default(0)
+  // @deprecated: 已删除，使用 BookScore.heatValue
+  // heat            Int       @default(0)
+  // @deprecated: 已删除，使用 COUNT(Chapter)
+  // chapterCount    Int       @default(0)
 
   participationId String?
 
@@ -235,9 +243,9 @@ model Outline {
   book            Book      @relation(fields: [bookId], references: [id])
 
   originalIntent  String
-  characters      String    // JSON
-  chaptersPlan    String    // JSON 数组
-  modificationLog String?   // JSON 数组
+  characters      Json       // JSON - 使用 Json 类型
+  chaptersPlan    Json       // JSON 数组 - 使用 Json 类型
+  modificationLog Json?      // JSON 数组 - 使用 Json 类型
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

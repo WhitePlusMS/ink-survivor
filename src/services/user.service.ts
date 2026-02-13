@@ -2,9 +2,12 @@
  * 用户服务
  *
  * 统一管理用户数据的 CRUD 操作
+ * 优化版本：JSONB 类型自动解析
  */
 
 import { prisma } from '@/lib/prisma';
+import { agentConfigToJson, readerConfigToJson, fromJsonValue } from '@/lib/utils/jsonb-utils';
+import type { Prisma } from '@prisma/client';
 
 // Agent 配置类型（作者视角）
 export interface AgentConfig {
@@ -43,6 +46,7 @@ export class UserService {
       where: { id: userId },
       include: {
         token: { select: { scope: true, expiresAt: true, refreshCount: true } },
+        userLevel: true,
       },
     });
   }
@@ -83,18 +87,20 @@ export class UserService {
 
   /**
    * 更新 Agent 配置
+   * JSONB 直接传入对象
    */
   async updateAgentConfig(userId: string, config: AgentConfig) {
     return prisma.user.update({
       where: { id: userId },
       data: {
-        agentConfig: JSON.stringify(config),
+        agentConfig: agentConfigToJson(config),
       },
     });
   }
 
   /**
    * 获取 Agent 配置
+   * JSONB 自动解析
    */
   async getAgentConfig(userId: string): Promise<AgentConfig | null> {
     const user = await prisma.user.findUnique({
@@ -102,31 +108,25 @@ export class UserService {
       select: { agentConfig: true },
     });
 
-    if (!user?.agentConfig) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(user.agentConfig) as AgentConfig;
-    } catch {
-      return null;
-    }
+    return fromJsonValue<AgentConfig>(user?.agentConfig);
   }
 
   /**
    * 更新 Reader Agent 配置
+   * JSONB 直接传入对象
    */
   async updateReaderConfig(userId: string, config: ReaderConfig) {
     return prisma.user.update({
       where: { id: userId },
       data: {
-        readerConfig: JSON.stringify(config),
+        readerConfig: readerConfigToJson(config),
       },
     });
   }
 
   /**
    * 获取 Reader Agent 配置
+   * JSONB 自动解析
    */
   async getReaderConfig(userId: string): Promise<ReaderConfig | null> {
     const user = await prisma.user.findUnique({
@@ -134,15 +134,7 @@ export class UserService {
       select: { readerConfig: true },
     });
 
-    if (!user?.readerConfig) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(user.readerConfig) as ReaderConfig;
-    } catch {
-      return null;
-    }
+    return fromJsonValue<ReaderConfig>(user?.readerConfig);
   }
 
   /**
@@ -234,14 +226,31 @@ export class UserService {
 
   /**
    * 增加书籍创作数量
+   * 使用 UserLevel.booksWritten
    */
   async incrementBooksWritten(userId: string) {
-    return prisma.user.update({
-      where: { id: userId },
-      data: {
-        booksWritten: { increment: 1 },
-      },
+    // 先检查 UserLevel 是否存在
+    const userLevel = await prisma.userLevel.findUnique({
+      where: { userId },
     });
+
+    if (userLevel) {
+      // 更新已有的 UserLevel
+      return prisma.userLevel.update({
+        where: { userId },
+        data: {
+          booksWritten: { increment: 1 },
+        },
+      });
+    } else {
+      // 创建新的 UserLevel
+      return prisma.userLevel.create({
+        data: {
+          userId,
+          booksWritten: 1,
+        },
+      });
+    }
   }
 
   /**

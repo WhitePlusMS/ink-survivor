@@ -52,22 +52,22 @@ export async function POST(request: NextRequest) {
       where: {
         seasonId: season.id,
         status: 'ACTIVE',
-        chapterCount: { lt: round },
       },
-      select: {
-        id: true,
-        title: true,
-        chapterCount: true,
+      include: {
         author: { select: { nickname: true } },
+        _count: { select: { chapters: true } },
       },
     });
 
-    console.log(`[CatchUp API] 当前第 ${round} 轮，发现 ${behindBooks.length} 本需要追赶的书籍`);
-    behindBooks.forEach(book => {
-      console.log(`[CatchUp API] - "${book.title}" 当前 ${book.chapterCount} 章，需补 ${round - book.chapterCount} 章`);
+    // 筛选 chapterCount < round 的书籍
+    const filteredBehindBooks = behindBooks.filter(book => book._count.chapters < round);
+
+    console.log(`[CatchUp API] 当前第 ${round} 轮，发现 ${filteredBehindBooks.length} 本需要追赶的书籍`);
+    filteredBehindBooks.forEach(book => {
+      console.log(`[CatchUp API] - "${book.title}" 当前 ${book._count.chapters} 章，需补 ${round - book._count.chapters} 章`);
     });
 
-    if (behindBooks.length === 0) {
+    if (filteredBehindBooks.length === 0) {
       return NextResponse.json({
         code: 0,
         data: {
@@ -99,17 +99,17 @@ export async function POST(request: NextRequest) {
         seasonNumber: season.seasonNumber,
         currentRound,
         targetRound: round,
-        bookCount: behindBooks.length,
-        books: behindBooks.map((b) => ({
+        bookCount: filteredBehindBooks.length,
+        books: filteredBehindBooks.map((b) => ({
           id: b.id,
           title: b.title,
           author: b.author.nickname,
-          currentChapter: b.chapterCount,
-          missingChapters: round - b.chapterCount,
+          currentChapter: b._count.chapters,
+          missingChapters: round - b._count.chapters,
         })),
-        message: `正在为 ${behindBooks.length} 本书籍补齐到第 ${round} 章`,
+        message: `正在为 ${filteredBehindBooks.length} 本书籍补齐到第 ${round} 章`,
       },
-      message: `已触发追赶模式，正在为 ${behindBooks.length} 本书籍补齐到第 ${round} 章`,
+      message: `已触发追赶模式，正在为 ${filteredBehindBooks.length} 本书籍补齐到第 ${round} 章`,
     });
   } catch (error) {
     console.error('[CatchUp API] 错误:', error);
@@ -144,18 +144,15 @@ export async function GET() {
         seasonId: season.id,
         status: 'ACTIVE',
       },
-      select: {
-        id: true,
-        title: true,
-        chapterCount: true,
+      include: {
         author: { select: { nickname: true } },
+        _count: { select: { chapters: true } },
       },
-      orderBy: { chapterCount: 'asc' },
     });
 
     // 分类：正常进度 vs 落后
-    const normalBooks = books.filter(b => b.chapterCount >= currentRound);
-    const behindBooks = books.filter(b => b.chapterCount < currentRound);
+    const normalBooks = books.filter(b => b._count.chapters >= currentRound);
+    const behindBooks = books.filter(b => b._count.chapters < currentRound);
 
     return NextResponse.json({
       code: 0,
@@ -171,8 +168,8 @@ export async function GET() {
           id: b.id,
           title: b.title,
           author: b.author.nickname,
-          currentChapter: b.chapterCount,
-          missingChapters: currentRound - b.chapterCount,
+          currentChapter: b._count.chapters,
+          missingChapters: currentRound - b._count.chapters,
         })),
       },
       message: `当前第 ${currentRound} 轮，${behindBooks.length} 本书落后需追赶`,

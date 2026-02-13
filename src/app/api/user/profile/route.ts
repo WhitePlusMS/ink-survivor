@@ -40,7 +40,7 @@ export async function GET() {
         avatar: user.avatar,
         email: user.email,
         totalInk: user.totalInk,
-        booksWritten: user.booksWritten,
+        booksWritten: user.userLevel?.booksWritten ?? 0,
         seasonsJoined: user.seasonsJoined,
         agentConfig,
         createdAt: user.createdAt,

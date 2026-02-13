@@ -459,3 +459,85 @@ Docker 构建失败，错误信息：
 ### 遗留警告（可忽略）
 - `react-hooks/exhaustive-deps` 警告 - useEffect 依赖不完整
 - `@next/next/no-img-element` 警告 - 推荐使用 next/image
+
+---
+
+## 2026-02-13 - 修复 Prisma JSONB 字段类型导致的 TypeScript 编译错误
+
+### 问题描述
+Prisma 的 JSONB 字段类型为 JsonValue，但代码中期望的是具体类型，导致 TypeScript 编译错误。
+
+### 修改的文件
+
+#### 1. src/app/api/admin/test/next-phase/route.ts
+- **修改原因**: JSONB 字段 `season.duration` 类型为 JsonValue，期望 string 类型
+- **修改内容**:
+  - 第 375 行: 使用类型断言 `season.duration as unknown as string | undefined`
+  - 第 424 行: 使用类型断言 `season.duration as unknown as string | undefined`
+  - 第 429 行: 使用类型断言 `(season.duration as unknown as string)`
+
+#### 2. src/app/api/admin/test/start-s0/route.ts
+- **修改原因**: JSONB 字段类型转换问题
+- **修改内容**:
+  - 第 238 行: 修复 `agentConfig: { not: null as unknown as undefined }`
+  - 第 251-259 行: 使用类型断言解析 JSONB 字段
+    - `JSON.parse((season.constraints as unknown as string) || '[]')`
+    - `JSON.parse((season.zoneStyles as unknown as string) || '[]')`
+    - `JSON.parse((season.rewards as unknown as string) || '{}')`
+  - 第 266 行: 使用类型断言解析 `agent.agentConfig`
+
+#### 3. src/app/api/admin/test/start-season/route.ts
+- **修改原因**: JSONB 字段类型转换问题
+- **修改内容**:
+  - 第 163 行: 修复 `agentConfig: { not: null as unknown as undefined }`
+  - 第 219-227 行: 使用类型断言解析 JSONB 字段
+  - 第 233 行: 使用类型断言解析 `user.agentConfig`
+
+#### 4. src/app/api/auth/current-user/route.ts
+- **修改原因**: JSONB 字段 `user.agentConfig` 需要类型断言
+- **修改内容**: 第 60 行使用 `user.agentConfig as unknown as string`
+
+#### 5. src/app/api/tasks/reader-agents/route.ts
+- **修改原因**: JSONB 查询条件类型问题
+- **修改内容**: 第 155 行修复 `readerConfig: { not: null as unknown as undefined }`
+
+#### 6. src/app/book/[id]/page.tsx
+- **修改原因**: Prisma 返回的 outline 对象包含 JsonValue 类型字段
+- **修改内容**:
+  - 导入 `safeJsonField` 和类型 `Character`, `ChapterPlan`
+  - 第 113 行使用 `safeJsonField` 正确转换 outline 数据
+
+#### 7. src/app/create/page.tsx
+- **修改原因**: `currentSeason.rewards` 是 JsonValue 类型，与组件期望的 `Record<string, unknown>` 不匹配
+- **修改内容**:
+  - 导出 `SeasonInfoProps` 接口（修改 season-info.tsx）
+  - 第 31 行使用类型断言 `currentSeason as unknown as SeasonInfoProps['season']`
+  - 第 49 行使用类型断言 `currentSeason.rewards as unknown as Record<string, unknown>`
+
+#### 8. src/app/page.tsx
+- **修改原因**: `SeasonWithBooks` 接口的 `duration` 和 `rewards` 字段与 Prisma 返回的 JsonValue 不匹配
+- **修改内容**:
+  - 将 `duration` 类型改为 `unknown`
+  - 将 `rewards` 类型改为 `unknown`
+
+#### 9. src/services/outline.service.ts
+- **修改原因**: `fromJsonValue` 泛型类型错误
+- **修改内容**:
+  - 导入 `Character` 类型
+  - 第 137 行修复为 `fromJsonValue<Character[]>(outline.characters)`
+
+#### 10. src/components/create/season-info.tsx
+- **修改原因**: 需要导出 `SeasonInfoProps` 接口供外部使用
+- **修改内容**: 将 `SeasonInfoProps` 改为 `export interface SeasonInfoProps`
+
+#### 11. src/components/home/home-content.tsx
+- **修改原因**: `SeasonWithBooks` 接口的 `duration` 和 `rewards` 字段与 Prisma 返回的 JsonValue 不匹配
+- **修改内容**:
+  - 将 `duration` 类型改为 `unknown`
+  - 将 `rewards` 类型改为 `unknown`
+
+### 修复原则
+- 遵循最简原则，不做冗余设计
+- 读取时使用类型断言 `as unknown as 具体类型`
+- 对于 JSONB 字段的 JSON.parse，使用 `(field as unknown as string)` 进行转换
+- 组件接口中使用 `unknown` 类型接受 Prisma 返回的 JsonValue

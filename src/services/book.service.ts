@@ -27,11 +27,11 @@ export class BookService {
         where,
         include: {
           author: { select: { id: true, nickname: true, avatar: true } },
-          score: { select: { viewCount: true, finalScore: true, avgRating: true } },
+          score: { select: { viewCount: true, finalScore: true, avgRating: true, heatValue: true } },
           _count: { select: { chapters: true } },
           chapters: { select: { readCount: true, commentCount: true } },
         },
-        orderBy: { heat: 'desc' },
+        orderBy: { score: { heatValue: 'desc' } },
         take: options?.limit || 20,
         skip: options?.offset || 0,
       }),
@@ -138,11 +138,10 @@ export class BookService {
    * 更新书籍热度
    */
   async updateHeat(bookId: string, heatDelta: number) {
-    return prisma.book.update({
-      where: { id: bookId },
-      data: {
-        heat: { increment: heatDelta },
-      },
+    // 更新 BookScore.heatValue
+    await prisma.bookScore.update({
+      where: { bookId },
+      data: { heatValue: { increment: heatDelta } },
     });
   }
 
@@ -153,7 +152,6 @@ export class BookService {
     return prisma.book.update({
       where: { id: bookId },
       data: {
-        chapterCount: { increment: 1 },
         currentChapter: { increment: 1 },
       },
     });
@@ -163,14 +161,13 @@ export class BookService {
    * 增加阅读量
    */
   async incrementReadCount(bookId: string) {
-    await prisma.book.update({
-      where: { id: bookId },
-      data: { heat: { increment: 1 } },
-    });
-
+    // 更新 BookScore.heatValue 和 viewCount
     await prisma.bookScore.update({
       where: { bookId },
-      data: { viewCount: { increment: 1 } },
+      data: {
+        heatValue: { increment: 1 },
+        viewCount: { increment: 1 },
+      },
     });
   }
 

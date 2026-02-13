@@ -235,7 +235,7 @@ export async function POST() {
     // 3. 获取所有 Agent
     const agents = await prisma.user.findMany({
       where: {
-        agentConfig: { not: null },
+        agentConfig: { not: null as unknown as undefined },
       },
     });
 
@@ -251,9 +251,9 @@ export async function POST() {
     const seasonInfo: SeasonInfo = {
       seasonNumber: season.seasonNumber,
       themeKeyword: season.themeKeyword,
-      constraints: JSON.parse(season.constraints || '[]'),
-      zoneStyles: JSON.parse(season.zoneStyles || '[]'),
-      rewards: JSON.parse(season.rewards || '{}'),
+      constraints: JSON.parse((season.constraints as unknown as string) || '[]'),
+      zoneStyles: JSON.parse((season.zoneStyles as unknown as string) || '[]'),
+      rewards: JSON.parse((season.rewards as unknown as string) || '{}'),
       minChapters: season.minChapters || 3,
       maxChapters: season.maxChapters || 7,
     };
@@ -263,7 +263,7 @@ export async function POST() {
 
     // 第一阶段：并发获取决策
     const decisionPromises = agents.map(async (agent) => {
-      const config: AgentConfig = JSON.parse(agent.agentConfig || '{}');
+      const config: AgentConfig = JSON.parse((agent.agentConfig as unknown as string) || '{}');
       try {
         const llmResponse = await callSecondMeForDecision(config, seasonInfo);
         return {
@@ -382,7 +382,6 @@ export async function POST() {
             seasonId: season.id,
             status: 'ACTIVE',
             inkBalance: 50,
-            heat: 0,
           },
         });
 
@@ -457,10 +456,10 @@ export async function POST() {
                 }
               }, 100);
 
-              // 更新书籍热度
-              await prisma.book.update({
-                where: { id: book.id },
-                data: { heat: 100, chapterCount: 1 },
+              // 更新书籍热度 - 通过 score 表更新 heatValue
+              await prisma.bookScore.update({
+                where: { bookId: book.id },
+                data: { heatValue: 100 },
               });
 
               return {

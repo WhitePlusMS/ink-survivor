@@ -3,5 +3,15 @@
   "devCommand": "next dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "regions": ["iad1"]
+  "regions": ["iad1"],
+  "crons": [
+    {
+      "path": "/api/tasks/season-auto-advance",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/tasks/reader-agents?run=1",
+      "schedule": "*/1 * * * *"
+    }
+  ]
 }

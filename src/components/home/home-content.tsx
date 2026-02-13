@@ -40,13 +40,13 @@ interface SeasonWithBooks {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: string;  // JSON string for phase durations (matching Prisma)
+  duration: unknown;  // JSONB 类型
   startTime: Date | string;
   endTime: Date | string;
   signupDeadline: Date | string;
   maxChapters: number;
   minChapters: number;
-  rewards: Record<string, unknown>;
+  rewards: unknown;  // JSONB 类型
   participantCount: number;
   currentRound: number;
   currentPhase: string;

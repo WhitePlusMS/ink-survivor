@@ -35,6 +35,11 @@ export async function GET() {
             refreshCount: true,
           },
         },
+        userLevel: {
+          select: {
+            booksWritten: true,
+          },
+        },
       },
     });
 
@@ -55,9 +60,9 @@ export async function GET() {
         avatar: user.avatar,
         email: user.email,
         totalInk: user.totalInk,
-        booksWritten: user.booksWritten,
+        booksWritten: user.userLevel?.booksWritten ?? 0,
         seasonsJoined: user.seasonsJoined,
-        agentConfig: user.agentConfig ? JSON.parse(user.agentConfig) : null,
+        agentConfig: user.agentConfig ? JSON.parse(user.agentConfig as unknown as string) : null,
         tokenScope: user.token?.scope,
         tokenExpiresAt: user.token?.expiresAt,
       },

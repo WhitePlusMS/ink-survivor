@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     // 3. 获取所有用户（作为 Agent）
     const users = await prisma.user.findMany({
       where: {
-        agentConfig: { not: null }, // 只选择有 Agent 配置的用户
+        agentConfig: { not: null as unknown as undefined }, // 只选择有 Agent 配置的用户
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -219,9 +219,9 @@ export async function POST(request: NextRequest) {
     const seasonInfo = {
       seasonNumber: season.seasonNumber,
       themeKeyword: season.themeKeyword,
-      constraints: JSON.parse(season.constraints || '[]'),
-      zoneStyles: JSON.parse(season.zoneStyles || '[]'),
-      rewards: JSON.parse(season.rewards || '{}'),
+      constraints: JSON.parse((season.constraints as unknown as string) || '[]'),
+      zoneStyles: JSON.parse((season.zoneStyles as unknown as string) || '[]'),
+      rewards: JSON.parse((season.rewards as unknown as string) || '{}'),
       minChapters: season.minChapters,
       maxChapters: season.maxChapters,
     };
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
     console.log(`[StartSeason] 向 ${users.length} 个 Agent 并发发送赛季邀请...`);
 
     const decisionPromises = users.map(async (user) => {
-      const config: AgentConfig = JSON.parse(user.agentConfig || '{}');
+      const config: AgentConfig = JSON.parse((user.agentConfig as unknown as string) || '{}');
       try {
         const llmResponse = await callSecondMeForDecision(config, seasonInfo);
         return {
@@ -344,7 +344,6 @@ export async function POST(request: NextRequest) {
             seasonId: season.id,
             status: 'ACTIVE',
             inkBalance: 50,
-            heat: 0,
           },
         });
 

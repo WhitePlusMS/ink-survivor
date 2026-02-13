@@ -1,10 +1,12 @@
 /**
  * 赛季队列服务
  * 管理预配置赛季的 CRUD 操作和自动发布
+ * 优化版本：JSONB 类型自动解析
  */
 
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { toJsonValue } from '@/lib/utils/jsonb-utils';
 
 export interface SeasonQueueItem {
   id: string;
@@ -57,18 +59,20 @@ export interface UpdateSeasonQueueDto extends Partial<CreateSeasonQueueDto> {
 export class SeasonQueueService {
   /**
    * 创建赛季队列条目
+   * JSONB 直接传入对象
    */
   async create(data: CreateSeasonQueueDto): Promise<SeasonQueueItem> {
     const item = await prisma.seasonQueue.create({
       data: {
         seasonNumber: data.seasonNumber,
         themeKeyword: data.themeKeyword,
-        constraints: JSON.stringify(data.constraints),
-        zoneStyles: JSON.stringify(data.zoneStyles),
+        // JSONB 直接传入
+        constraints: toJsonValue(data.constraints),
+        zoneStyles: toJsonValue(data.zoneStyles),
         maxChapters: data.maxChapters,
         minChapters: data.minChapters ?? 3,
-        duration: JSON.stringify(data.duration),
-        rewards: JSON.stringify(data.rewards),
+        duration: toJsonValue(data.duration),
+        rewards: toJsonValue(data.rewards),
         plannedStartTime: data.plannedStartTime,
         intervalHours: data.intervalHours ?? 2,
         status: data.plannedStartTime ? 'SCHEDULED' : 'DRAFT',
@@ -116,17 +120,18 @@ export class SeasonQueueService {
 
   /**
    * 更新赛季队列条目
+   * JSONB 直接传入对象
    */
   async update(id: string, data: UpdateSeasonQueueDto): Promise<SeasonQueueItem | null> {
     const updateData: Prisma.SeasonQueueUpdateInput = {};
 
     if (data.themeKeyword !== undefined) updateData.themeKeyword = data.themeKeyword;
-    if (data.constraints !== undefined) updateData.constraints = JSON.stringify(data.constraints);
-    if (data.zoneStyles !== undefined) updateData.zoneStyles = JSON.stringify(data.zoneStyles);
+    if (data.constraints !== undefined) updateData.constraints = toJsonValue(data.constraints);
+    if (data.zoneStyles !== undefined) updateData.zoneStyles = toJsonValue(data.zoneStyles);
     if (data.maxChapters !== undefined) updateData.maxChapters = data.maxChapters;
     if (data.minChapters !== undefined) updateData.minChapters = data.minChapters;
-    if (data.duration !== undefined) updateData.duration = JSON.stringify(data.duration);
-    if (data.rewards !== undefined) updateData.rewards = JSON.stringify(data.rewards);
+    if (data.duration !== undefined) updateData.duration = toJsonValue(data.duration);
+    if (data.rewards !== undefined) updateData.rewards = toJsonValue(data.rewards);
     if (data.plannedStartTime !== undefined) updateData.plannedStartTime = data.plannedStartTime;
     if (data.intervalHours !== undefined) updateData.intervalHours = data.intervalHours;
     if (data.status !== undefined) updateData.status = data.status;
@@ -187,17 +192,17 @@ export class SeasonQueueService {
         const startTime = new Date(baseStartTime.getTime() + (queueItem.intervalHours * i) * 60 * 60 * 1000);
         const endTime = new Date(startTime.getTime() + this.calculateTotalDuration(queueItem.duration) * 60 * 1000);
 
-        // 创建实际赛季
+        // 创建实际赛季 - JSONB 直接传入
         const season = await prisma.season.create({
           data: {
             seasonNumber: queueItem.seasonNumber,
             themeKeyword: queueItem.themeKeyword,
-            constraints: queueItem.constraints,
-            zoneStyles: queueItem.zoneStyles,
+            constraints: toJsonValue(queueItem.constraints),
+            zoneStyles: toJsonValue(queueItem.zoneStyles),
             maxChapters: queueItem.maxChapters,
             minChapters: queueItem.minChapters,
-            duration: queueItem.duration,
-            rewards: queueItem.rewards,
+            duration: toJsonValue(queueItem.duration),
+            rewards: toJsonValue(queueItem.rewards),
             startTime,
             endTime,
             signupDeadline: new Date(startTime.getTime() + 10 * 60 * 1000), // 报名截止 = 开始后10分钟
@@ -227,6 +232,7 @@ export class SeasonQueueService {
 
   /**
    * 复制最近赛季作为模板
+   * JSONB 自动解析
    */
   async duplicateFromSeason(seasonId: string, newSeasonNumber: number): Promise<SeasonQueueItem | null> {
     const season = await prisma.season.findUnique({ where: { id: seasonId } });
@@ -238,33 +244,32 @@ export class SeasonQueueService {
       throw new Error(`Season ${newSeasonNumber} already exists in queue`);
     }
 
+    // JSONB 自动解析
     return this.create({
       seasonNumber: newSeasonNumber,
       themeKeyword: season.themeKeyword,
-      constraints: JSON.parse(season.constraints),
-      zoneStyles: JSON.parse(season.zoneStyles),
+      constraints: (season.constraints as string[]) || [],
+      zoneStyles: (season.zoneStyles as string[]) || [],
       maxChapters: season.maxChapters,
       minChapters: season.minChapters,
-      duration: JSON.parse(season.duration),
-      rewards: JSON.parse(season.rewards),
+      duration: (season.duration as { reading: number; outline: number; writing: number }) || { reading: 10, outline: 5, writing: 5 },
+      rewards: (season.rewards as Record<string, number>) || {},
       intervalHours: 2,
     });
   }
 
   /**
    * 计算总时长（分钟）
+   * JSONB 自动解析
    */
-  private calculateTotalDuration(durationStr: string): number {
-    try {
-      const duration = JSON.parse(durationStr);
-      return duration.reading + duration.outline + duration.writing;
-    } catch {
-      return 20; // 默认值
-    }
+  private calculateTotalDuration(duration: { reading: number; outline: number; writing: number } | Prisma.JsonValue): number {
+    const dur = duration as { reading?: number; outline?: number; writing?: number };
+    return (dur.reading || 0) + (dur.outline || 0) + (dur.writing || 0) || 20;
   }
 
   /**
    * 格式化数据库返回
+   * JSONB 自动解析
    */
   // eslint-disable-next-line max-len
   private formatItem(item: Prisma.SeasonQueueGetPayload<{ select: { id: true; seasonNumber: true; themeKeyword: true; constraints: true; zoneStyles: true; maxChapters: true; minChapters: true; duration: true; rewards: true; plannedStartTime: true; intervalHours: true; status: true; publishedAt: true; publishedSeasonId: true; llmSuggestion: true; llmOptimized: true; createdAt: true; updatedAt: true; } }>): SeasonQueueItem {
@@ -272,12 +277,13 @@ export class SeasonQueueService {
       id: item.id,
       seasonNumber: item.seasonNumber,
       themeKeyword: item.themeKeyword,
-      constraints: JSON.parse(item.constraints || '[]'),
-      zoneStyles: JSON.parse(item.zoneStyles || '[]'),
+      // JSONB 自动解析
+      constraints: (item.constraints as string[]) || [],
+      zoneStyles: (item.zoneStyles as string[]) || [],
       maxChapters: item.maxChapters,
       minChapters: item.minChapters,
-      duration: JSON.parse(item.duration || '{"reading": 10, "outline": 5, "writing": 5}'),
-      rewards: JSON.parse(item.rewards || '{}'),
+      duration: (item.duration as { reading: number; outline: number; writing: number }) || { reading: 10, outline: 5, writing: 5 },
+      rewards: (item.rewards as Record<string, number>) || {},
       plannedStartTime: item.plannedStartTime,
       intervalHours: item.intervalHours,
       status: item.status,

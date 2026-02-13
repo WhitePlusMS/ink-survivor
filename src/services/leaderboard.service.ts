@@ -30,10 +30,11 @@ export class LeaderboardService {
       include: {
         author: { select: { nickname: true } },
         score: true,
+        _count: { select: { chapters: true } },
       },
       orderBy: type === 'new'
         ? { createdAt: 'desc' }
-        : { heat: 'desc' },
+        : { score: { heatValue: 'desc' } },
       take: limit * 2, // 获取更多用于筛选
     });
 
@@ -49,10 +50,10 @@ export class LeaderboardService {
       // 重新获取排序
       sortedBooks = await prisma.book.findMany({
         where,
-        include: { author: { select: { nickname: true } }, score: true },
+        include: { author: { select: { nickname: true } }, score: true, _count: { select: { chapters: true } } },
         orderBy: type === 'score'
           ? { score: { finalScore: 'desc' } }
-          : { heat: 'desc' },
+          : { score: { heatValue: 'desc' } },
         take: limit,
       });
     }
@@ -62,11 +63,11 @@ export class LeaderboardService {
       bookId: book.id,
       rank: index + 1,
       score: book.score?.finalScore || 0,
-      heat: book.heat,
+      heat: book.score?.heatValue || 0,
       title: book.title,
       author: book.author.nickname,
       zoneStyle: book.zoneStyle,
-      chapterCount: book.chapterCount,
+      chapterCount: book._count?.chapters ?? 0,
     }));
 
     // 保存排行榜快照
@@ -114,7 +115,8 @@ export class LeaderboardService {
 
     let rankings: LeaderboardEntry[] = [];
     if (snapshot) {
-      rankings = JSON.parse(snapshot.rankings);
+      // Prisma JSONB 字段已自动解析，直接使用类型断言
+      rankings = snapshot.rankings as unknown as LeaderboardEntry[];
     } else {
       // 生成新的排行榜
       const generateOptions = options?.zoneStyle
@@ -183,7 +185,8 @@ export class LeaderboardService {
     let rankType: string | null = null;
 
     for (const lb of leaderboards) {
-      const rankings = JSON.parse(lb.rankings) as LeaderboardEntry[];
+      // Prisma JSONB 字段已自动解析，直接使用类型断言
+      const rankings = lb.rankings as unknown as LeaderboardEntry[];
       const entry = rankings.find((r: LeaderboardEntry) => r.bookId === bookId);
       if (entry) {
         if (bestRank === null || entry.rank < bestRank) {
@@ -197,7 +200,7 @@ export class LeaderboardService {
       bookId,
       bestRank,
       rankType,
-      currentHeat: book.heat,
+      currentHeat: book.score?.heatValue || 0,
       currentScore: book.score?.finalScore || 0,
       status,
     };

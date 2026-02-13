@@ -20,26 +20,28 @@ const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
 // 检查间隔（毫秒）
 const CHECK_INTERVAL = 5000; // 每 5 秒检查一次
 
-/**
- * 获取当前阶段剩余时间（毫秒）
- */
+function getPhaseDurationMs(season: Season, phase: RoundPhase): number {
+  let phaseDurationMs = 10 * 60 * 1000;
+  try {
+    // JSONB 类型已被 Prisma 自动解析
+    const durations = season.duration as { reading?: number; outline?: number; writing?: number } | null;
+    if (durations) {
+      const phaseKey = phase.toLowerCase() as 'reading' | 'outline' | 'writing';
+      phaseDurationMs = (durations[phaseKey] || 10) * 60 * 1000;
+    }
+  } catch {
+    phaseDurationMs = 10 * 60 * 1000;
+  }
+  return phaseDurationMs;
+}
+
 function getPhaseRemainingTime(season: Season, currentPhase: RoundPhase): number {
   if (!season.roundStartTime) return 0;
-
-  // 解析阶段时长配置
-  let phaseDurationMs = 10 * 60 * 1000; // 默认 10 分钟
-  try {
-    const durations = JSON.parse(season.duration || '{"reading":10,"outline":5,"writing":5}');
-    phaseDurationMs = (durations[currentPhase.toLowerCase()] || 10) * 60 * 1000;
-  } catch {
-    // 使用默认值
-  }
-
+  const phaseDurationMs = getPhaseDurationMs(season, currentPhase);
   const phaseStartTime = new Date(season.roundStartTime).getTime();
   const now = Date.now();
   const elapsed = now - phaseStartTime;
   const remaining = phaseDurationMs - elapsed;
-
   return Math.max(0, remaining);
 }
 
@@ -126,50 +128,68 @@ export class SeasonAutoAdvanceService {
       }
 
       // 检查是否需要结束赛季
-      const now = new Date();
-      if (now >= new Date(season.endTime)) {
+      const now = Date.now();
+      if (now >= new Date(season.endTime).getTime()) {
         console.log('[SeasonAutoAdvance] 赛季已结束时间，自动结束赛季');
         await this.endSeason(season.id);
         return;
       }
 
-      const currentPhase = (season.roundPhase as RoundPhase) || 'NONE';
+      let currentPhase = (season.roundPhase as RoundPhase) || 'NONE';
+      let currentRound = season.currentRound || 1;
+      let phaseStartTime = season.roundStartTime
+        ? new Date(season.roundStartTime)
+        : new Date(season.startTime || now);
 
-      // 赛季未开始（报名期刚结束），进入第一轮
+      const transitions: Array<{ round: number; phase: RoundPhase; startTime: Date }> = [];
+
       if (currentPhase === 'NONE') {
         console.log('[SeasonAutoAdvance] 赛季未开始，进入第一轮 OUTLINE');
-        await this.advancePhase(season.id, 1, 'OUTLINE');
-        return;
+        currentPhase = 'OUTLINE';
+        currentRound = 1;
+        transitions.push({ round: currentRound, phase: currentPhase, startTime: phaseStartTime });
       }
 
-      // 计算剩余时间
-      const remainingMs = getPhaseRemainingTime(season, currentPhase);
-      // 如果剩余时间 > 5秒，还在当前阶段内，不推进
-      if (remainingMs > 5000) {
-        return;
-      }
-
-      // 计算下一轮
-      let nextRound = season.currentRound || 1;
-      if (currentPhase === 'READING') {
-        nextRound = (season.currentRound || 0) + 1;
-      }
-
-      // 最大轮次 = 最大章节数（每轮创作一章）
       const maxRounds = season.maxChapters || 7;
+      const maxTransitions = maxRounds * PHASE_ORDER.length + 2;
+      let safety = 0;
 
-      // 检查是否超过最大轮次
-      if (nextRound > maxRounds) {
-        console.log(`[SeasonAutoAdvance] 已达最大轮次（第 ${maxRounds} 轮），自动结束赛季`);
-        await this.endSeason(season.id);
-        return;
+      while (safety < maxTransitions) {
+        const durationMs = getPhaseDurationMs(season, currentPhase);
+        const phaseEndTime = phaseStartTime.getTime() + durationMs;
+        if (phaseEndTime - now > 5000) {
+          break;
+        }
+
+        let nextRound = currentRound;
+        if (currentPhase === 'READING') {
+          nextRound = currentRound + 1;
+        }
+
+        if (nextRound > maxRounds) {
+          console.log(`[SeasonAutoAdvance] 已达最大轮次（第 ${maxRounds} 轮），自动结束赛季`);
+          await this.endSeason(season.id);
+          return;
+        }
+
+        const nextPhase = getNextPhase(currentPhase);
+        phaseStartTime = new Date(phaseEndTime);
+        currentPhase = nextPhase;
+        currentRound = nextRound;
+        transitions.push({ round: currentRound, phase: currentPhase, startTime: phaseStartTime });
+        safety += 1;
       }
 
-      // 推进到下一阶段
-      const nextPhase = getNextPhase(currentPhase);
-      console.log(`[SeasonAutoAdvance] 阶段结束，推进到第 ${nextRound} 轮 - ${getPhaseDisplayName(nextPhase)}`);
-      await this.advancePhase(season.id, nextRound, nextPhase);
+      if (transitions.length === 0) {
+        const remainingMs = getPhaseRemainingTime(season, currentPhase);
+        if (remainingMs > 5000) {
+          return;
+        }
+      }
 
+      for (const transition of transitions) {
+        await this.advancePhase(season.id, transition.round, transition.phase, transition.startTime);
+      }
     } catch (error) {
       console.error('[SeasonAutoAdvance] 检查失败:', error);
     }
@@ -178,7 +198,12 @@ export class SeasonAutoAdvanceService {
   /**
    * 推进阶段（内部调用）
    */
-  private async advancePhase(seasonId: string, round: number, phase: RoundPhase): Promise<void> {
+  private async advancePhase(
+    seasonId: string,
+    round: number,
+    phase: RoundPhase,
+    roundStartTime?: Date
+  ): Promise<void> {
     try {
       const season = await prisma.season.findUnique({ where: { id: seasonId } });
       if (!season) return;
@@ -189,7 +214,7 @@ export class SeasonAutoAdvanceService {
         data: {
           currentRound: round,
           roundPhase: phase,
-          roundStartTime: new Date(),
+          roundStartTime: roundStartTime || new Date(),
         },
       });
 
@@ -231,14 +256,18 @@ export class SeasonAutoAdvanceService {
       console.log(`[SeasonAutoAdvance] 触发章节创作任务 - 第 ${round} 轮`);
 
       // 检测落后书籍并追赶
-      const behindBooks = await prisma.book.findMany({
+      const allBooks = await prisma.book.findMany({
         where: {
           seasonId,
           status: 'ACTIVE',
-          chapterCount: { lt: round },
         },
-        select: { id: true, title: true, chapterCount: true },
+        include: {
+          _count: { select: { chapters: true } },
+        },
       });
+
+      // 筛选 chapterCount < round 的书籍
+      const behindBooks = allBooks.filter(book => book._count.chapters < round);
 
       if (behindBooks.length > 0) {
         console.log(`[SeasonAutoAdvance] 发现 ${behindBooks.length} 本落后书籍，执行追赶`);

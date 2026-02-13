@@ -63,14 +63,14 @@ export class ChapterWritingService {
       return;
     }
 
-    // 2. 解析大纲中的本章信息
-    const chaptersPlan = JSON.parse(latestOutline.chaptersPlan || '[]') as Array<{
+    // 2. 解析大纲中的本章信息 - JSONB 自动解析
+    const chaptersPlan = latestOutline.chaptersPlan as unknown as Array<{
       number: number;
       title: string;
       summary: string;
       key_events: string[];
       word_count_target: number;
-    }>;
+    }> || [];
     const chapterOutline = chaptersPlan.find(c => c.number === chapterNumber);
 
     if (!chapterOutline) {
@@ -78,14 +78,21 @@ export class ChapterWritingService {
       return;
     }
 
-    // 3. 解析作者配置
-    const agentConfig: AgentConfig = JSON.parse(book.author.agentConfig || '{}');
+    // 3. 解析作者配置 - JSONB 自动解析
+    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig || {
+      persona: '作家',
+      writingStyle: 'standard',
+      adaptability: 5,
+      preferredGenres: [],
+      maxChapters: 10,
+      wordCountTarget: 3000,
+    };
 
     // 4. 获取赛季信息（用于 System Prompt 中的约束）
     const season = await prisma.season.findUnique({
       where: { id: book.seasonId ?? undefined },
     });
-    const seasonConstraints = season ? JSON.parse(season.constraints || '[]') : [];
+    const seasonConstraints = season ? (season.constraints as unknown as string[]) || [] : [];
     const seasonTheme = season?.themeKeyword || '';
 
     // 5. 获取前几章的摘要（用于保持连贯性）
@@ -168,16 +175,16 @@ export class ChapterWritingService {
     await prisma.book.update({
       where: { id: bookId },
       data: {
-        chapterCount: chapterNumber,
+        currentChapter: chapterNumber,
         status: 'ACTIVE',
-        heat: { increment: 100 }, // 发布加成
       },
     });
 
-    // 12. 更新评分
+    // 12. 更新评分（通过 BookScore 更新热度）
     await prisma.bookScore.update({
       where: { bookId },
       data: {
+        heatValue: { increment: 100 }, // 发布加成
         finalScore: { increment: 100 + Math.floor(Math.random() * 50) },
         viewCount: { increment: Math.floor(Math.random() * 50) },
       },
@@ -205,14 +212,18 @@ export class ChapterWritingService {
     console.log(`[Chapter] 开始为赛季 ${seasonId} 第 ${chapterNumber} 章创作`);
 
     // 1. 获取该赛季所有活跃书籍
-    const books = await prisma.book.findMany({
+    const allBooks = await prisma.book.findMany({
       where: {
         seasonId,
         status: 'ACTIVE',
-        chapterCount: { lt: chapterNumber },
       },
-      select: { id: true },
+      include: {
+        _count: { select: { chapters: true } },
+      },
     });
+
+    // 筛选当前章节数小于目标章节数的书籍
+    const books = allBooks.filter(book => book._count.chapters < chapterNumber);
 
     console.log(`[Chapter] 发现 ${books.length} 本需要创作第 ${chapterNumber} 章的书籍`);
 
@@ -261,19 +272,19 @@ export class ChapterWritingService {
     console.log(`[CatchUp] 开始追赶模式 - 赛季: ${seasonId}, 目标轮次: ${targetRound}`);
 
     // 1. 获取落后书籍（章节数 < 目标轮次）
-    const books = await prisma.book.findMany({
+    const allBooks = await prisma.book.findMany({
       where: {
         seasonId,
         status: 'ACTIVE',
-        chapterCount: { lt: targetRound },
       },
-      select: {
-        id: true,
-        title: true,
-        chapterCount: true,
+      include: {
+        _count: { select: { chapters: true } },
         author: { select: { agentConfig: true } },
       },
     });
+
+    // 筛选当前章节数小于目标轮次的书籍
+    const books = allBooks.filter(book => book._count.chapters < targetRound);
 
     if (books.length === 0) {
       console.log(`[CatchUp] 没有需要追赶的书籍`);
@@ -284,8 +295,8 @@ export class ChapterWritingService {
 
     // 2. 对每本落后书籍执行追赶
     const promises = books.map(async (book) => {
-      const missingCount = targetRound - book.chapterCount;
-      console.log(`[CatchUp] 书籍《${book.title}》当前 ${book.chapterCount} 章，需补 ${missingCount} 章`);
+      const missingCount = targetRound - book._count.chapters;
+      console.log(`[CatchUp] 书籍《${book.title}》当前 ${book._count.chapters} 章，需补 ${missingCount} 章`);
 
       try {
         // 2.1 先生成大纲（如果没有）
@@ -301,7 +312,7 @@ export class ChapterWritingService {
         // 2.2 并发补齐缺失章节
         // writeChapter 内部已有 API 级 + JSON 解析级重试，无需额外重试
         const chapterPromises = [];
-        for (let chapterNum = book.chapterCount + 1; chapterNum <= targetRound; chapterNum++) {
+        for (let chapterNum = book._count.chapters + 1; chapterNum <= targetRound; chapterNum++) {
           chapterPromises.push(
             this.writeChapter(book.id, chapterNum).catch((error) => {
               console.error(`[CatchUp] 书籍《${book.title}》第 ${chapterNum} 章失败:`, error.message);

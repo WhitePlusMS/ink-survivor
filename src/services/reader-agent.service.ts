@@ -118,10 +118,8 @@ export class ReaderAgentService {
     nickname: string;
     readerConfig: ReaderConfig;
   }>> {
+    // 查询所有用户，然后在代码中过滤 readerConfig 不为 null 的
     const users = await prisma.user.findMany({
-      where: {
-        readerConfig: { not: null },
-      },
       select: {
         id: true,
         nickname: true,
@@ -138,18 +136,15 @@ export class ReaderAgentService {
 
     for (const user of users) {
       if (user.readerConfig) {
-        try {
-          const config = JSON.parse(user.readerConfig) as ReaderConfig;
-          // 只返回启用了评论功能的用户
-          if (config?.commentingBehavior?.enabled === true) {
-            validAgents.push({
-              userId: user.id,
-              nickname: user.nickname,
-              readerConfig: config,
-            });
-          }
-        } catch {
-          // 解析失败，跳过
+        // JSONB 自动解析，直接使用类型断言
+        const config = user.readerConfig as unknown as ReaderConfig;
+        // 只返回启用了评论功能的用户
+        if (config?.commentingBehavior?.enabled === true) {
+          validAgents.push({
+            userId: user.id,
+            nickname: user.nickname,
+            readerConfig: config,
+          });
         }
       }
     }
@@ -177,8 +172,10 @@ export class ReaderAgentService {
       // 获取该赛季所有书籍按热度排序
       const books = await prisma.book.findMany({
         where: { seasonId: season.id },
-        orderBy: { heat: 'desc' },
-        select: { id: true },
+        include: {
+          score: { select: { heatValue: true } },
+        },
+        orderBy: { score: { heatValue: 'desc' } },
       });
 
       // 查找书籍排名

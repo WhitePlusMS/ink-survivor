@@ -225,24 +225,24 @@ export async function POST(request: NextRequest) {
       console.log(`[NextPhase] 触发章节创作任务 - 第 ${nextRound} 轮`);
       setTimeout(async () => {
         try {
-          // 1. 检测是否有落后书籍（chapterCount < 当前轮次）
-          const behindBooks = await prisma.book.findMany({
+          // 1. 检测是否有落后书籍
+          const allBooks1 = await prisma.book.findMany({
             where: {
               seasonId: season.id,
               status: 'ACTIVE',
-              chapterCount: { lt: nextRound },
             },
-            select: {
-              id: true,
-              title: true,
-              chapterCount: true,
+            include: {
+              _count: { select: { chapters: true } },
             },
           });
+
+          // 筛选 chapterCount < nextRound 的书籍
+          const behindBooks = allBooks1.filter(book => book._count.chapters < nextRound);
 
           if (behindBooks.length > 0) {
             console.log(`[NextPhase] 发现 ${behindBooks.length} 本落后书籍，先执行追赶`);
             behindBooks.forEach(b => {
-              console.log(`[NextPhase] - "${b.title}" 当前 ${b.chapterCount} 章，需补 ${nextRound - b.chapterCount} 章`);
+              console.log(`[NextPhase] - "${b.title}" 当前 ${b._count.chapters} 章，需补 ${nextRound - b._count.chapters} 章`);
             });
 
             // 执行追赶：为所有落后书籍补齐到当前轮次
@@ -256,36 +256,39 @@ export async function POST(request: NextRequest) {
 
           // 2. 验证：检查是否所有书籍都达到了当前轮次
           console.log(`[NextPhase] 验证章节完成情况...`);
-          const finalCheck = await prisma.book.findMany({
+          const allBooks2 = await prisma.book.findMany({
             where: {
               seasonId: season.id,
               status: 'ACTIVE',
-              chapterCount: { lt: nextRound },
             },
-            select: {
-              id: true,
-              title: true,
-              chapterCount: true,
+            include: {
+              _count: { select: { chapters: true } },
             },
           });
+
+          // 筛选 chapterCount < nextRound 的书籍
+          const finalCheck = allBooks2.filter(book => book._count.chapters < nextRound);
 
           if (finalCheck.length > 0) {
             console.log(`[NextPhase] 发现 ${finalCheck.length} 本书籍章节数未达标，进行重试`);
             finalCheck.forEach(b => {
-              console.log(`[NextPhase] - "${b.title}" 当前 ${b.chapterCount} 章，需补到 ${nextRound} 章`);
+              console.log(`[NextPhase] - "${b.title}" 当前 ${b._count.chapters} 章，需补到 ${nextRound} 章`);
             });
             // 重试：重新执行追赶
             await chapterWritingService.catchUpBooks(season.id, nextRound);
             console.log(`[NextPhase] 重试完成`);
 
             // 再次验证
-            const reCheck = await prisma.book.count({
+            const allBooks3 = await prisma.book.findMany({
               where: {
                 seasonId: season.id,
                 status: 'ACTIVE',
-                chapterCount: { lt: nextRound },
+              },
+              include: {
+                _count: { select: { chapters: true } },
               },
             });
+            const reCheck = allBooks3.filter(book => book._count.chapters < nextRound).length;
             if (reCheck > 0) {
               console.warn(`[NextPhase] 警告：仍有 ${reCheck} 本书籍未完成，可能需要人工检查`);
             }
@@ -354,11 +357,9 @@ export async function POST(request: NextRequest) {
     // 7. 获取参与书籍
     const books = await prisma.book.findMany({
       where: { seasonId: season.id },
-      select: {
-        id: true,
-        title: true,
+      include: {
         author: { select: { nickname: true } },
-        chapterCount: true,
+        _count: { select: { chapters: true } },
       },
     });
 
@@ -372,7 +373,7 @@ export async function POST(request: NextRequest) {
         currentRound: nextRound,
         currentPhase: nextPhase,
         phaseDisplayName: getPhaseDisplayName(nextPhase),
-        phaseDescription: getPhaseDescription(nextPhase, season.duration),
+        phaseDescription: getPhaseDescription(nextPhase, season.duration as unknown as string | undefined),
         action: 'PHASE_ADVANCED',
         bookCount: books.length,
         task: taskResult,
@@ -380,7 +381,7 @@ export async function POST(request: NextRequest) {
           id: b.id,
           title: b.title,
           author: b.author.nickname,
-          currentChapter: b.chapterCount,
+          currentChapter: b._count.chapters,
         })),
       },
       message: `已推进到第 ${nextRound} 轮 - ${getPhaseDisplayName(nextPhase)}${taskResult ? '，' + taskResult.message : ''}`,
@@ -421,12 +422,12 @@ export async function GET() {
         currentRound: season.currentRound ?? 1,  // 轮次从 1 开始
         currentPhase,
         phaseDisplayName: getPhaseDisplayName(currentPhase),
-        phaseDescription: getPhaseDescription(currentPhase, season.duration),
+        phaseDescription: getPhaseDescription(currentPhase, season.duration as unknown as string | undefined),
         startTime: season.startTime,
         endTime: season.endTime,
         signupDeadline: season.signupDeadline,
         maxChapters: season.maxChapters,
-        phaseDurations: JSON.parse(season.duration || '{}'),
+        phaseDurations: JSON.parse((season.duration as unknown as string) || '{}'),
       },
       message: '获取成功',
     });

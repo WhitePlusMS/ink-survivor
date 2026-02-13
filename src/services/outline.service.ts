@@ -1,9 +1,12 @@
 // 大纲模块 Service
+// 优化版本：使用 JSONB 类型，Prisma 自动解析
 import { prisma } from '@/lib/prisma';
 import { SecondMeClient } from '@/lib/secondme/client';
 import { buildOutlinePrompt } from '@/lib/secondme/prompts';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
-import { OutlineData, ChapterPlan, GenerateOutlineParams } from '@/types/outline';
+import { OutlineData, ChapterPlan, GenerateOutlineParams, Character } from '@/types/outline';
+import { toJsonValue, fromJsonValue } from '@/lib/utils/jsonb-utils';
+import type { Prisma } from '@prisma/client';
 
 export class OutlineService {
   /**
@@ -30,10 +33,10 @@ export class OutlineService {
       console.warn('[OutlineService] Failed to get user info, using default name');
     }
 
-    // 构建 Prompt
+    // 构建 Prompt - JSONB 自动解析，无需 JSON.parse
     const prompt = buildOutlinePrompt({
       seasonTheme: book.season?.themeKeyword || '自由创作',
-      constraints: book.season ? JSON.parse(book.season.constraints || '[]') : [],
+      constraints: (book.season?.constraints as string[]) || [],
       zoneStyle: book.zoneStyle,
       forcedChapter: params?.forcedChapter,
       forcedEvent: params?.forcedEvent,
@@ -78,6 +81,7 @@ export class OutlineService {
 
   /**
    * 保存大纲到数据库
+   * JSONB 类型直接传入对象，Prisma 自动处理
    */
   async saveOutline(bookId: string, outline: OutlineData) {
     // 更新或创建 Outline
@@ -86,13 +90,14 @@ export class OutlineService {
       create: {
         bookId,
         originalIntent: outline.summary,
-        characters: JSON.stringify(outline.characters),
-        chaptersPlan: JSON.stringify(outline.chapters),
+        // JSONB 直接传入数组
+        characters: toJsonValue(outline.characters),
+        chaptersPlan: toJsonValue(outline.chapters),
       },
       update: {
         originalIntent: outline.summary,
-        characters: JSON.stringify(outline.characters),
-        chaptersPlan: JSON.stringify(outline.chapters),
+        characters: toJsonValue(outline.characters),
+        chaptersPlan: toJsonValue(outline.chapters),
       },
     });
 
@@ -119,6 +124,7 @@ export class OutlineService {
 
   /**
    * 获取解析后的大纲数据
+   * JSONB 自动解析，无需 JSON.parse
    */
   async getParsedOutline(bookId: string): Promise<OutlineData | null> {
     const outline = await this.getOutline(bookId);
@@ -127,8 +133,9 @@ export class OutlineService {
     return {
       title: '',
       summary: outline.originalIntent,
-      characters: JSON.parse(outline.characters || '[]'),
-      chapters: JSON.parse(outline.chaptersPlan || '[]'),
+      // JSONB 自动解析
+      characters: fromJsonValue<Character[]>(outline.characters) || [],
+      chapters: fromJsonValue<ChapterPlan[]>(outline.chaptersPlan) || [],
       themes: [],
       tone: '',
     };
@@ -136,6 +143,7 @@ export class OutlineService {
 
   /**
    * 更新大纲章节
+   * JSONB 自动处理
    */
   async updateChapterPlan(
     bookId: string,
@@ -145,14 +153,19 @@ export class OutlineService {
     const outline = await prisma.outline.findUnique({ where: { bookId } });
     if (!outline) throw new Error('Outline not found');
 
-    const chapters = JSON.parse(outline.chaptersPlan) as ChapterPlan[];
+    // JSONB 自动解析
+    const chapters = fromJsonValue<ChapterPlan[]>(outline.chaptersPlan) || [];
     const index = chapters.findIndex((c) => c.number === chapterNumber);
     if (index === -1) throw new Error('Chapter not found');
 
     chapters[index] = { ...chapters[index], ...plan };
 
-    // 记录修改日志
-    const mods = JSON.parse(outline.modificationLog || '[]');
+    // 记录修改日志 - JSONB 自动处理
+    const mods = fromJsonValue<Array<{
+      chapterNumber: number;
+      updatedAt: string;
+      changes: Partial<ChapterPlan>;
+    }>>(outline.modificationLog) || [];
     mods.push({
       chapterNumber,
       updatedAt: new Date().toISOString(),
@@ -162,14 +175,15 @@ export class OutlineService {
     return prisma.outline.update({
       where: { bookId },
       data: {
-        chaptersPlan: JSON.stringify(chapters),
-        modificationLog: JSON.stringify(mods),
+        chaptersPlan: toJsonValue(chapters),
+        modificationLog: toJsonValue(mods),
       },
     });
   }
 
   /**
    * 添加修改日志
+   * JSONB 自动处理
    */
   async addModificationLog(
     bookId: string,
@@ -179,7 +193,12 @@ export class OutlineService {
     const outline = await prisma.outline.findUnique({ where: { bookId } });
     if (!outline) return;
 
-    const mods = JSON.parse(outline.modificationLog || '[]');
+    // JSONB 自动解析和处理
+    const mods = fromJsonValue<Array<{
+      chapterNumber: number;
+      updatedAt: string;
+      changes: Partial<ChapterPlan>;
+    }>>(outline.modificationLog) || [];
     mods.push({
       chapterNumber,
       updatedAt: new Date().toISOString(),
@@ -189,7 +208,7 @@ export class OutlineService {
     await prisma.outline.update({
       where: { bookId },
       data: {
-        modificationLog: JSON.stringify(mods),
+        modificationLog: toJsonValue(mods),
       },
     });
   }

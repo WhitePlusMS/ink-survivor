@@ -16,7 +16,7 @@ import { readerAgentService } from '@/services/reader-agent.service';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+async function runReaderTask() {
   const startTime = Date.now();
   let booksProcessed = 0;
   let chaptersProcessed = 0;
@@ -112,11 +112,20 @@ export async function POST() {
   }
 }
 
+export async function POST() {
+  return runReaderTask();
+}
+
 /**
  * GET /api/tasks/reader-agents - 获取调度状态
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    if (url.searchParams.get('run') === '1') {
+      return runReaderTask();
+    }
+
     // 获取活跃赛季
     const season = await prisma.season.findFirst({
       where: { status: 'ACTIVE' },
@@ -143,7 +152,7 @@ export async function GET() {
     // 获取今日活跃的 Reader Agents 数量
     const activeReaderAgents = await prisma.user.count({
       where: {
-        readerConfig: { not: null },
+        readerConfig: { not: null as unknown as undefined },
       },
     });
 

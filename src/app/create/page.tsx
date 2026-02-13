@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { seasonService } from '@/services/season.service';
 import { userService } from '@/services/user.service';
-import { SeasonInfo } from '@/components/create/season-info';
+import { SeasonInfo, SeasonInfoProps } from '@/components/create/season-info';
 import { AgentJoinSeason } from '@/components/create/agent-join-season';
 import { CalendarX } from 'lucide-react';
 import Link from 'next/link';
@@ -28,7 +28,7 @@ export default async function CreatePage() {
         {/* 赛季信息 */}
         {currentSeason && (
           <div className="mb-4">
-            <SeasonInfo season={currentSeason} />
+            <SeasonInfo season={currentSeason as unknown as SeasonInfoProps['season']} />
           </div>
         )}
 
@@ -46,7 +46,7 @@ export default async function CreatePage() {
                   zoneStyles: currentSeason.zoneStyles,
                   maxChapters: currentSeason.maxChapters,
                   minChapters: currentSeason.minChapters,
-                  rewards: currentSeason.rewards,
+                  rewards: currentSeason.rewards as unknown as Record<string, unknown>,
                   participantCount: currentSeason.participantCount,
                   currentRound: currentSeason.currentRound,
                 }}
