@@ -63,12 +63,12 @@ export default async function HomePage() {
         ...activeBooks,
         ...draftBooks.filter((draft) => !activeBooks.some((active) => active.id === draft.id)),
       ];
-      const rawBooks = mergedBooks.sort((a, b) => b.heat - a.heat);
+      const rawBooks = mergedBooks.sort((a, b) => (b.score?.heatValue ?? 0) - (a.score?.heatValue ?? 0));
 
       console.log('[HomePage] 当前赛季ID:', season.id, '赛季号:', season.seasonNumber);
       console.log('[HomePage] 找到书籍数量:', rawBooks.length);
       rawBooks.forEach((b, i) => {
-        console.log(`[HomePage] 书籍 ${i + 1}: ${b.title} - heat: ${b.heat}, seasonId: ${b.seasonId?.slice(0, 8)}...`);
+        console.log(`[HomePage] 书籍 ${i + 1}: ${b.title} - heatValue: ${b.score?.heatValue ?? 0}, seasonId: ${b.seasonId?.slice(0, 8)}...`);
       });
 
       books = (rawBooks || []).map((b) => ({
@@ -77,7 +77,7 @@ export default async function HomePage() {
         coverImage: b.coverImage ?? undefined,
         shortDesc: b.shortDesc ?? undefined,
         zoneStyle: b.zoneStyle,
-        heat: b.heat,
+        heat: b.score?.heatValue ?? 0,
         chapterCount: b._count?.chapters ?? 0,
         author: { nickname: b.author.nickname },
         viewCount: b.viewCount ?? 0,

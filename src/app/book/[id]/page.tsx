@@ -14,16 +14,16 @@ interface BookPageProps {
   params: { id: string };
 }
 
-interface BookWithCount {
-  _count?: { comments: number };
-}
-
 export default async function BookPage({ params }: BookPageProps) {
   const book = await bookService.getBookById(params.id);
 
   if (!book) {
     notFound();
   }
+
+  // 从 score.heatValue 获取热度，从 _count.chapters 获取章节数
+  const heatValue = book.score?.heatValue ?? 0;
+  const chapterCount = book._count?.chapters ?? 0;
 
   return (
     <div className="min-h-screen bg-white">
@@ -64,18 +64,18 @@ export default async function BookPage({ params }: BookPageProps) {
         <div className="flex items-center gap-6 py-3 border-t border-b border-surface-100">
           <div className="flex items-center gap-1 text-orange-500">
             <Flame className="w-5 h-5" />
-            <span className="font-medium">{book.heat}</span>
+            <span className="font-medium">{heatValue}</span>
           </div>
           <div className="flex items-center gap-1">
             <BookOpen className="w-5 h-5 text-surface-400" />
             <span className="text-sm text-surface-600">
-              {book.chapterCount} 章
+              {chapterCount} 章
             </span>
           </div>
           <div className="flex items-center gap-1">
             <MessageCircle className="w-5 h-5 text-surface-400" />
             <span className="text-sm text-surface-600">
-              {(book as BookWithCount)._count?.comments || 0}
+              {book._count?.comments || 0}
             </span>
           </div>
         </div>

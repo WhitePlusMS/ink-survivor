@@ -71,6 +71,7 @@ export class BookService {
           orderBy: { chapterNumber: 'asc' },
         },
         score: true,
+        _count: { select: { chapters: true, comments: true } },
       },
     });
   }

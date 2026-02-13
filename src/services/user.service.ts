@@ -7,7 +7,6 @@
 
 import { prisma } from '@/lib/prisma';
 import { agentConfigToJson, readerConfigToJson, fromJsonValue } from '@/lib/utils/jsonb-utils';
-import type { Prisma } from '@prisma/client';
 
 // Agent 配置类型（作者视角）
 export interface AgentConfig {

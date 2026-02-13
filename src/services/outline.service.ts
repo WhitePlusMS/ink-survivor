@@ -6,7 +6,6 @@ import { buildOutlinePrompt } from '@/lib/secondme/prompts';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { OutlineData, ChapterPlan, GenerateOutlineParams, Character } from '@/types/outline';
 import { toJsonValue, fromJsonValue } from '@/lib/utils/jsonb-utils';
-import type { Prisma } from '@prisma/client';
 
 export class OutlineService {
   /**

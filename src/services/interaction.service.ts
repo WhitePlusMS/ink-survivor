@@ -257,7 +257,7 @@ export class InteractionService {
   }) {
     const reading = await prisma.reading.upsert({
       where: {
-        // @ts-ignore - 复合唯一键
+        // @ts-expect-error - 复合唯一键
         userId_chapterId: { userId: data.userId, chapterId: data.chapterId },
       },
       create: {

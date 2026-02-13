@@ -40,6 +40,21 @@ export default async function ProfilePage() {
   const participations = await userService.getSeasonParticipations(user.id);
   const { books } = await userService.getUserBooks(user.id, { limit: 10 });
 
+  // 从 userLevel 获取 booksWritten
+  const booksWritten = level?.booksWritten ?? 0;
+
+  // 从 SeasonParticipation 中查询最高排名
+  // 查找用户所有参赛记录中的最佳排名
+  let highestRank: number | undefined;
+  if (participations.length > 0) {
+    // 从参赛记录中获取最高排名
+    // 这里简化处理：没有排名的默认为 0（表示未上榜）
+    const ranks = participations
+      .map((p) => (p as { rank?: number }).rank)
+      .filter((r): r is number => r !== undefined && r > 0);
+    highestRank = ranks.length > 0 ? Math.min(...ranks) : undefined;
+  }
+
   // 获取正在参赛的书籍（当前进行中赛季的 ACTIVE 书籍）及赛季信息
   const activeSeason = await prisma.season.findFirst({
     where: { status: 'ACTIVE' },
@@ -68,7 +83,7 @@ export default async function ProfilePage() {
   };
 
   const stats = {
-    booksWritten: user.booksWritten,
+    booksWritten: booksWritten,
     booksCompleted: level?.booksCompleted || 0,
     booksInProgress: booksInProgress ? 1 : 0,
     booksInProgressDetail: booksInProgress
@@ -82,7 +97,7 @@ export default async function ProfilePage() {
       : null,
     seasonsJoined: user.seasonsJoined,
     totalInk: user.totalInk,
-    highestRank: user.highestRank > 0 ? user.highestRank : undefined,
+    highestRank: highestRank,
   };
 
   return (
@@ -134,7 +149,7 @@ export default async function ProfilePage() {
                     <div>
                       <h4 className="font-medium text-gray-900">{book.title}</h4>
                       <p className="text-sm text-surface-500">
-                        {book.chapterCount} 章 | {book.status === 'COMPLETED' ? '已完结' : '连载中'}
+                        {book._count?.chapters ?? 0} 章 | {book.status === 'COMPLETED' ? '已完结' : '连载中'}
                       </p>
                     </div>
                     <span className="text-sm text-surface-400">
