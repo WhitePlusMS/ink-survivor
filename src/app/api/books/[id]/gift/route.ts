@@ -1,6 +1,8 @@
 // 打赏 API
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { interactionService } from '@/services/interaction.service';
+import { prisma } from '@/lib/prisma';
 import { GiftResponseDto } from '@/common/dto/comment.dto';
 
 /**
@@ -12,9 +14,29 @@ export async function POST(
 ) {
   try {
     const { id: bookId } = await params;
+    const authToken = cookies().get('auth_token')?.value;
 
-    // TODO: 从 Session 获取当前用户 ID
-    const userId = 'temp-user-id';
+    // 未登录无法打赏
+    if (!authToken) {
+      return NextResponse.json(
+        { code: 401, data: null, message: '请先登录' },
+        { status: 401 }
+      );
+    }
+
+    // authToken 就是用户 ID，直接验证用户是否存在
+    const user = await prisma.user.findUnique({
+      where: { id: authToken },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { code: 401, data: null, message: '用户不存在' },
+        { status: 401 }
+      );
+    }
+
+    const userId = authToken;
 
     const body = await request.json();
     const { amount } = body;
@@ -28,7 +50,13 @@ export async function POST(
 
     const result = await interactionService.gift(bookId, userId, amount);
 
-    const responseData = GiftResponseDto.fromResult(result);
+    // 获取书籍最新的热度值
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { heatValue: true },
+    });
+
+    const responseData = GiftResponseDto.fromResult(result, book?.heatValue || 0);
 
     return NextResponse.json({
       code: 0,

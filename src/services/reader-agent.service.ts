@@ -15,6 +15,7 @@ import { ReaderConfig } from '@/services/user.service';
 import { scoreService } from '@/services/score.service';
 import { wsEvents } from '@/lib/websocket/events';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
+import { interactionService } from './interaction.service';
 
 // 评论反馈数据结构
 interface ReaderFeedback {
@@ -244,6 +245,7 @@ export class ReaderAgentService {
     // 1. 构建个性化 System Prompt
     const systemPrompt = buildReaderSystemPrompt({
       readerName: agentNickname,
+      personality: readerConfig.personality,
       preferences: {
         genres: readerConfig.readingPreferences.preferredGenres,
         style: undefined, // 可扩展
@@ -321,6 +323,69 @@ ${actionControl}`;
       wsEvents.heatUpdate(bookId, scoreResult.heatValue);
     } catch (error) {
       console.error(`[ReaderAgent] 热度计算失败:`, error);
+    }
+
+    // 11. 根据评价质量发放 Ink 奖励给 Reader Agent，并自动打赏给作者
+    await this.awardInkForComment({
+      agentUserId,
+      agentNickname,
+      readerConfig,
+      bookId,
+      authorId: params.authorId,
+      rating: feedback.overall_rating,
+    });
+  }
+
+  /**
+   * 根据评价质量发放 Ink 奖励给 Reader Agent，并自动打赏给作者
+   *
+   * 奖励规则：
+   * - 评分 8-10 分：+5 Ink 奖励，好评
+   * - 评分 5-7 分：+2 Ink 奖励，普通
+   * - 评分 1-4 分：+1 Ink 奖励，参与奖
+   *
+   * 打赏规则：
+   * - 评分 >= 8 且 giftEnabled 开启时，自动打赏 2 Ink 给作者
+   */
+  private async awardInkForComment(params: {
+    agentUserId: string;
+    agentNickname: string;
+    readerConfig: ReaderConfig;
+    bookId: string;
+    authorId: string;
+    rating: number;
+  }): Promise<void> {
+    const { agentUserId, agentNickname, readerConfig, bookId, authorId, rating } = params;
+
+    // 计算奖励 Ink
+    let rewardInk = 1;
+    let rewardType = '参与奖';
+    if (rating >= 8) {
+      rewardInk = 5;
+      rewardType = '好评奖';
+    } else if (rating >= 5) {
+      rewardInk = 2;
+      rewardType = '普通奖';
+    }
+
+    // 奖励给 Reader Agent
+    await prisma.user.update({
+      where: { id: agentUserId },
+      data: { totalInk: { increment: rewardInk } },
+    });
+    console.log(`[ReaderAgent] Agent ${agentNickname} 获得 ${rewardInk} Ink（${rewardType}）`);
+
+    // 检查是否开启打赏功能且评分足够高
+    const giftEnabled = readerConfig.interactionBehavior?.giftEnabled ?? false;
+    if (giftEnabled && rating >= 8) {
+      try {
+        // 自动打赏 2 Ink 给作者
+        await interactionService.gift(bookId, agentUserId, 2);
+        console.log(`[ReaderAgent] Agent ${agentNickname} 自动打赏 2 Ink 给作者（评分 ${rating}/10）`);
+      } catch (error) {
+        // 打赏失败（可能是余额不足），不影响主流程
+        console.error(`[ReaderAgent] Agent ${agentNickname} 自动打赏失败:`, error);
+      }
     }
   }
 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { BookOpen, Eye, MessageCircle, Gift, Star } from 'lucide-react';
+import { BookOpen, Eye, MessageCircle, Gift, Star, Pen } from 'lucide-react';
 
 // 作者配置类型
 interface AuthorConfig {
@@ -19,6 +19,7 @@ interface AuthorConfig {
 
 // 读者配置类型
 interface ReaderConfig {
+  personality: string;  // 性格描述
   readingPreferences: {
     preferredGenres: string[];
     minRatingThreshold: number;
@@ -45,6 +46,7 @@ const DEFAULT_AUTHOR_CONFIG: AuthorConfig = {
 };
 
 const DEFAULT_READER_CONFIG: ReaderConfig = {
+  personality: '',
   readingPreferences: {
     preferredGenres: [],
     minRatingThreshold: 3.0,
@@ -59,6 +61,26 @@ const DEFAULT_READER_CONFIG: ReaderConfig = {
     giftEnabled: true,
   },
 };
+
+// 作者性格预设选项
+const AUTHOR_PERSONALITIES = [
+  { value: '幽默风趣，善于刻画普通人的生活细节，情节轻松有趣', label: '幽默风趣' },
+  { value: '文笔细腻，擅长描写情感纠葛，剧情温馨感人', label: '温柔细腻' },
+  { value: '构思巧妙，情节跌宕起伏，擅长制造悬念', label: '悬疑推理' },
+  { value: '大气磅礴，叙事宏大，擅长史诗级世界观', label: '史诗大气' },
+  { value: '现实主义，贴近生活，揭露社会现实', label: '现实写实' },
+  { value: '脑洞大开，想象力丰富，创意十足', label: '创意无限' },
+];
+
+// 读者性格预设选项
+const READER_PERSONALITIES = [
+  { value: '毒舌但有理，评价犀利直接，一针见血', label: '毒舌犀利' },
+  { value: '温柔敦厚，鼓励为主，点评温和有耐心', label: '温柔鼓励' },
+  { value: '客观中肯，理性分析，优缺点都讲', label: '客观理性' },
+  { value: '严厉(strict)严格，标准高，追求完美', label: '严厉严格' },
+  { value: '幽默风趣，评论活泼有趣，调侃为主', label: '幽默风趣' },
+  { value: '专业资深，老书虫，点评深入透彻', label: '专业资深' },
+];
 
 const WRITING_STYLES = [
   { value: '严肃', label: '严肃', description: '庄重、正式的叙事风格' },
@@ -198,27 +220,53 @@ export function AgentConfigForm({
       {activeTab === 'author' && (
         <div className="space-y-6">
           {/* 性格描述 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              性格描述
-            </label>
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="w-4 h-4 text-primary-600" />
+              <h3 className="font-medium">性格描述</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              选择或输入你的创作性格，点击选项可直接填入
+            </p>
+            {/* 预设选项 */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {AUTHOR_PERSONALITIES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() =>
+                    setAuthorConfig({ ...authorConfig, persona: item.value })
+                  }
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-sm transition-all',
+                    authorConfig.persona === item.value
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-white text-surface-600 hover:bg-surface-200 border border-surface-200'
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            {/* 自定义输入 */}
             <textarea
               value={authorConfig.persona}
               onChange={(e) =>
                 setAuthorConfig({ ...authorConfig, persona: e.target.value })
               }
-              rows={4}
-              className="w-full px-4 py-3 border border-surface-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              placeholder="描述你的创作性格，例如：一个幽默风趣的都市小说作家，善于刻画普通人的生活细节..."
+              rows={2}
+              className="w-full px-3 py-2 border border-surface-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
+              placeholder="或自定义输入你的性格描述..."
             />
             <p className="text-xs text-surface-400 mt-1">200字以内</p>
           </div>
 
           {/* 写作风格 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              写作风格
-            </label>
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Pen className="w-4 h-4 text-primary-600" />
+              <h3 className="font-medium">写作风格</h3>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {WRITING_STYLES.map((style) => (
                 <button
@@ -234,7 +282,7 @@ export function AgentConfigForm({
                     'p-3 border rounded-lg text-left transition-all',
                     authorConfig.writingStyle === style.value
                       ? 'border-primary-500 bg-primary-50'
-                      : 'border-surface-200 hover:border-surface-300'
+                      : 'border-surface-200 hover:border-surface-300 bg-white'
                   )}
                 >
                   <div className="font-medium">{style.label}</div>
@@ -247,8 +295,12 @@ export function AgentConfigForm({
           </div>
 
           {/* 听劝指数 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Star className="w-4 h-4 text-orange-500" />
+              <h3 className="font-medium">听劝指数</h3>
+            </div>
+            <label className="block text-sm text-gray-600 mb-2">
               听劝指数：{authorConfig.adaptability.toFixed(1)}
             </label>
             <input
@@ -275,8 +327,12 @@ export function AgentConfigForm({
           </div>
 
           {/* 偏好题材 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="w-4 h-4 text-primary-600" />
+              <h3 className="font-medium">偏好题材</h3>
+            </div>
+            <label className="block text-sm text-gray-600 mb-2">
               偏好题材（可多选）
             </label>
             <div className="flex flex-wrap gap-2">
@@ -294,7 +350,7 @@ export function AgentConfigForm({
                     'px-3 py-1 rounded-full text-sm transition-all',
                     authorConfig.preferredGenres.includes(genre)
                       ? 'bg-primary-600 text-white'
-                      : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+                      : 'bg-white text-surface-600 hover:bg-surface-200 border border-surface-200'
                   )}
                 >
                   {genre}
@@ -304,10 +360,11 @@ export function AgentConfigForm({
           </div>
 
           {/* 单书章节数 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              单书章节数
-            </label>
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="w-4 h-4 text-primary-600" />
+              <h3 className="font-medium">单书章节数</h3>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {CHAPTER_COUNTS.map((option) => (
                 <button
@@ -323,7 +380,7 @@ export function AgentConfigForm({
                     'py-3 border rounded-lg text-sm transition-all',
                     authorConfig.maxChapters === option.value
                       ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-surface-200 hover:border-surface-300'
+                      : 'border-surface-200 hover:border-surface-300 bg-white'
                   )}
                 >
                   {option.label}
@@ -333,10 +390,11 @@ export function AgentConfigForm({
           </div>
 
           {/* 每章目标字数 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              每章目标字数
-            </label>
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Pen className="w-4 h-4 text-primary-600" />
+              <h3 className="font-medium">每章目标字数</h3>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {WORD_COUNTS.map((option) => (
                 <button
@@ -352,7 +410,7 @@ export function AgentConfigForm({
                     'py-2 border rounded-lg text-sm transition-all',
                     authorConfig.wordCountTarget === option.value
                       ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-surface-200 hover:border-surface-300'
+                      : 'border-surface-200 hover:border-surface-300 bg-white'
                   )}
                 >
                   {option.label}
@@ -366,6 +424,53 @@ export function AgentConfigForm({
       {/* ==================== 读者配置表单 ==================== */}
       {activeTab === 'reader' && (
         <div className="space-y-6">
+          {/* 性格描述 */}
+          <div className="bg-surface-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="w-4 h-4 text-primary-600" />
+              <h3 className="font-medium">性格描述</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              选择或输入你的性格特点，点击选项可直接填入
+            </p>
+            {/* 预设选项 */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {READER_PERSONALITIES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() =>
+                    setReaderConfig({
+                      ...readerConfig,
+                      personality: item.value,
+                    })
+                  }
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-sm transition-all',
+                    readerConfig.personality === item.value
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-white text-surface-600 hover:bg-surface-200 border border-surface-200'
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            {/* 自定义输入 */}
+            <textarea
+              value={readerConfig.personality}
+              onChange={(e) =>
+                setReaderConfig({
+                  ...readerConfig,
+                  personality: e.target.value,
+                })
+              }
+              placeholder="或自定义输入你的性格描述..."
+              className="w-full px-3 py-2 border border-surface-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
+              rows={2}
+            />
+          </div>
+
           {/* 阅读偏好 */}
           <div className="bg-surface-50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">

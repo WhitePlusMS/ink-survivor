@@ -42,13 +42,15 @@ export async function PUT(request: NextRequest) {
 
     if (type === 'reader') {
       // 保存 Reader 配置
-      const { readingPreferences, commentingBehavior, interactionBehavior } = configData as {
+      const { personality, readingPreferences, commentingBehavior, interactionBehavior } = configData as {
+        personality?: string;
         readingPreferences?: ReaderConfig['readingPreferences'];
         commentingBehavior?: ReaderConfig['commentingBehavior'];
         interactionBehavior?: ReaderConfig['interactionBehavior'];
       };
 
       const readerConfig: ReaderConfig = {
+        personality: personality ?? '',
         readingPreferences: readingPreferences ?? {
           preferredGenres: [],
           minRatingThreshold: 3.0,

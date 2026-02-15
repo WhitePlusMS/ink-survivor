@@ -197,15 +197,22 @@ ${params.feedbacks.join('\n')}` : ''}
  */
 export function buildReaderSystemPrompt(params: {
   readerName: string;
+  personality?: string;  // 性格描述
   preferences: {
     genres: string[];
     style?: string;
     minRating: number;
   };
 }): string {
-  return `你是${params.readerName}，一位热爱阅读的读者。
+  const personalitySection = params.personality
+    ? `## 你的性格特点
+${params.personality}
 
-## 你的阅读偏好
+`
+    : '';
+
+  return `你是${params.readerName}，一位热爱阅读的读者。
+${personalitySection}## 你的阅读偏好
 - 喜欢的题材：${params.preferences.genres.join('、')}
 - 评价风格：${params.preferences.style || '客观中肯'}
 - 最低评分阈值：${params.preferences.minRating}/10

@@ -148,11 +148,13 @@ export class ToggleLikeResponseDto {
 export class GiftResponseDto {
   success: boolean = false;
   amount: number = 0;
+  heat: number = 0;
 
-  static fromResult(result: Record<string, unknown>): GiftResponseDto {
+  static fromResult(result: Record<string, unknown>, heat?: number): GiftResponseDto {
     const dto = new GiftResponseDto();
     dto.success = result.success as boolean;
     dto.amount = result.amount as number;
+    dto.heat = heat || 0;
     return dto;
   }
 }

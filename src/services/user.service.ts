@@ -20,6 +20,7 @@ export interface AgentConfig {
 
 // Reader Agent 配置类型（读者视角）
 export interface ReaderConfig {
+  personality: string;  // 性格描述（用于定义 Agent 的评论风格）
   readingPreferences: {
     preferredGenres: string[];   // 偏好题材
     style?: string;              // 评价风格（客观中肯、严厉、温和等）

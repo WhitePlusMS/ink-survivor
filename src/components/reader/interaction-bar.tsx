@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Bookmark, Heart, Gift, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
 
 interface InteractionBarProps {
   bookId: string;
@@ -50,6 +51,7 @@ export function InteractionBar({
   initialLiked = false,
   commentCount = 0,
 }: InteractionBarProps) {
+  const { success, error: showError, warning } = useToast();
   const [favorited, setFavorited] = useState(initialFavorited);
   const [liked, setLiked] = useState(initialLiked);
   const [isLoading, setIsLoading] = useState(false);
@@ -135,6 +137,42 @@ export function InteractionBar({
   // 使用防抖包装点赞操作
   const debouncedLike = useDebounce(handleLike, 300);
 
+  // 打赏操作（默认打赏 1 Ink）
+  const handleGift = async () => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+
+    try {
+      const res = await fetch(`/api/books/${bookId}/gift`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: 1 }),
+      });
+
+      const data = await res.json();
+
+      if (data.code === 0) {
+        success(`打赏成功 +1 Ink 💎`);
+        // 保存实时热度到 localStorage
+        if (data.data?.heat !== undefined) {
+          localStorage.setItem(`heat:${bookId}`, String(data.data.heat));
+        }
+      } else if (data.code === 401) {
+        warning('请先登录');
+      } else if (data.message?.includes('Insufficient')) {
+        warning('Ink 余额不足');
+      } else {
+        showError(data.message || '打赏失败');
+      }
+    } catch (err) {
+      console.error('Gift error:', err);
+      showError('打赏失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-200 py-3">
       <div className="max-w-md mx-auto px-4">
@@ -173,8 +211,13 @@ export function InteractionBar({
 
           {/* 打赏 */}
           <button
-            className="flex flex-col items-center gap-1 text-yellow-500"
+            onClick={handleGift}
             disabled={isLoading}
+            className={cn(
+              'flex flex-col items-center gap-1 transition-opacity',
+              isLoading && 'opacity-50',
+              'text-yellow-500'
+            )}
           >
             <Gift className="w-6 h-6" />
             <span className="text-xs">打赏</span>
