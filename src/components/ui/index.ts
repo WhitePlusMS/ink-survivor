@@ -27,3 +27,4 @@ export { DropdownMenu, DropdownItem } from './dropdown-menu';
 export { Spinner, SpinnerOverlay } from './spinner';
 export { Toast, ToastProvider, useToast } from './toast';
 export { Alert } from './alert';
+export { default as Modal } from './modal';

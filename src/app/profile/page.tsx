@@ -7,6 +7,8 @@ import { UserInfo } from '@/components/profile/user-info';
 import { StatsCard } from '@/components/profile/stats-card';
 import { SeasonCard } from '@/components/profile/season-card';
 import { LogoutButton } from '@/components/profile/logout-button';
+import { Button } from '@/components/ui/button';
+import { Plus, BookOpen, Trophy } from 'lucide-react';
 
 export default async function ProfilePage() {
   const authToken = cookies().get('auth_token')?.value;
@@ -14,15 +16,20 @@ export default async function ProfilePage() {
   // 未登录则显示登录提示
   if (!authToken) {
     return (
-      <div className="min-h-screen bg-surface-50">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-            <p className="text-surface-500 mb-4">请先登录</p>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-md mx-auto px-4 py-8">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-card p-8 text-center">
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary-100 to-primary-300 flex items-center justify-center">
+              <BookOpen className="h-10 w-10 text-primary-500" />
+            </div>
+            <p className="text-gray-600 mb-6">登录后可查看个人中心</p>
             <Link
               href="/api/auth/login"
-              className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
+              className="inline-block"
             >
-              立即登录
+              <Button>
+                立即登录
+              </Button>
             </Link>
           </div>
         </div>
@@ -44,18 +51,15 @@ export default async function ProfilePage() {
   const booksWritten = level?.booksWritten ?? 0;
 
   // 从 SeasonParticipation 中查询最高排名
-  // 查找用户所有参赛记录中的最佳排名
   let highestRank: number | undefined;
   if (participations.length > 0) {
-    // 从参赛记录中获取最高排名
-    // 这里简化处理：没有排名的默认为 0（表示未上榜）
     const ranks = participations
       .map((p) => (p as { rank?: number }).rank)
       .filter((r): r is number => r !== undefined && r > 0);
     highestRank = ranks.length > 0 ? Math.min(...ranks) : undefined;
   }
 
-  // 获取正在参赛的书籍（当前进行中赛季的 ACTIVE 书籍）及赛季信息
+  // 获取正在参赛的书籍
   const activeSeason = await prisma.season.findFirst({
     where: { status: 'ACTIVE' },
     select: { id: true, seasonNumber: true, themeKeyword: true },
@@ -101,22 +105,20 @@ export default async function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-50">
-      <div className="max-w-md mx-auto px-4 py-4">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <div className="max-w-md mx-auto px-4 py-6">
         {/* 用户信息 */}
         <UserInfo user={userData} level={level || undefined} />
 
         {/* 创作统计 */}
         <StatsCard stats={stats} />
 
-        {/* 赛季战绩 - 仅在有参赛记录时显示 */}
+        {/* 赛季战绩 */}
         {participations.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-gray-700">赛季战绩</h3>
-              <span className="text-sm text-surface-500">
-                {participations.length} 次参赛
-              </span>
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Trophy className="h-5 w-5 text-gray-700" />
+              <h3 className="text-lg font-semibold text-gray-900">赛季战绩</h3>
             </div>
 
             {participations.map((p) => (
@@ -126,54 +128,56 @@ export default async function ProfilePage() {
         )}
 
         {/* 我的书籍 */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-medium text-gray-700">我的书籍</h3>
-            <Link
-              href="/create"
-              className="text-primary-600 text-sm hover:text-primary-700"
-            >
-              新建书籍
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">我的书籍</h3>
+            <Link href="/create">
+              <Button size="sm" variant="outline" className="gap-1">
+                <Plus className="h-4 w-4" />
+                新建
+              </Button>
             </Link>
           </div>
 
           {books && books.length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {books.map((book) => (
                 <Link
                   key={book.id}
                   href={`/book/${book.id}`}
-                  className="block bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow"
+                  className="block overflow-hidden rounded-xl bg-white shadow-card transition-all hover:shadow-card-hover"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">{book.title}</h4>
-                      <p className="text-sm text-surface-500">
-                        {book._count?.chapters ?? 0} 章 | {book.status === 'COMPLETED' ? '已完结' : '连载中'}
-                      </p>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 truncate">{book.title}</h4>
+                        <p className="text-sm text-gray-500">
+                          {book._count?.chapters ?? 0} 章 · {book.status === 'COMPLETED' ? '已完结' : '连载中'}
+                        </p>
+                      </div>
+                      <span className="ml-3 flex-shrink-0 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                        {book.zoneStyle}
+                      </span>
                     </div>
-                    <span className="text-sm text-surface-400">
-                      {book.zoneStyle}
-                    </span>
                   </div>
                 </Link>
               ))}
             </div>
           ) : (
-            <div className="bg-white rounded-lg shadow-sm p-8 text-center text-surface-500">
-              <p>暂无书籍</p>
-              <Link
-                href="/create"
-                className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
-              >
-                立即创建
+            <div className="overflow-hidden rounded-xl bg-white shadow-card p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center">
+                <BookOpen className="h-8 w-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 mb-4">暂无书籍</p>
+              <Link href="/create" className="inline-block">
+                <Button size="sm">立即创建</Button>
               </Link>
             </div>
           )}
         </div>
 
         {/* 退出登录 */}
-        <div className="mt-8 pt-4 border-t border-surface-200">
+        <div className="pt-4 border-t border-gray-200">
           <LogoutButton />
         </div>
       </div>

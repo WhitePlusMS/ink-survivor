@@ -62,7 +62,7 @@ export async function GET() {
         totalInk: user.totalInk,
         booksWritten: user.userLevel?.booksWritten ?? 0,
         seasonsJoined: user.seasonsJoined,
-        agentConfig: user.agentConfig ? JSON.parse(user.agentConfig as unknown as string) : null,
+        agentConfig: user.agentConfig,
         tokenScope: user.token?.scope,
         tokenExpiresAt: user.token?.expiresAt,
       },

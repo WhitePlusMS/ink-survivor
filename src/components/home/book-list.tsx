@@ -32,11 +32,10 @@ export interface Book {
 
 /**
  * 书籍列表组件
- * 设计原则：使用初始数据，在前端根据 zoneStyle 进行过滤，并从 localStorage 读取实时热度
+ * 设计规范：瀑布流网格布局
  */
 export function BookList({ initialBooks, showSeason = true }: BookListProps) {
   const searchParams = useSearchParams();
-  // ZoneTabs 使用 zone 参数，值: '', 'urban', 'fantasy', 'scifi'
   const zoneParam = searchParams.get('zone') || '';
 
   // 本地状态存储从 localStorage 读取的实时热度
@@ -57,30 +56,24 @@ export function BookList({ initialBooks, showSeason = true }: BookListProps) {
     setLocalHeats(heats);
   }, [initialBooks]);
 
-  // 根据 zoneParam 过滤书籍（标准化 zoneStyle 后匹配）
+  // 根据 zoneParam 过滤书籍
   const filteredBooks = useMemo(() => {
-    console.log('[BookList] Filtering books, initial:', initialBooks?.length, 'zone:', zoneParam);
-
     if (!initialBooks || initialBooks.length === 0) {
       return [];
     }
 
     if (!zoneParam) {
-      // "全部" - 显示所有书籍
       return initialBooks;
     }
 
-    // 标准化 zoneParam 为中文进行比较
     const normalizedZone = normalizeZoneStyle(zoneParam);
-    console.log('[BookList] Normalized zone:', normalizedZone);
-
     return initialBooks.filter((book) => {
       const bookZone = normalizeZoneStyle(book.zoneStyle);
       return bookZone === normalizedZone;
     });
   }, [initialBooks, zoneParam]);
 
-  // 监听 localStorage 变化（来自其他页面/标签页的热度更新）
+  // 监听 localStorage 变化
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key?.startsWith('heat:')) {
@@ -98,32 +91,39 @@ export function BookList({ initialBooks, showSeason = true }: BookListProps) {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
+  // 按热度排序
+  const sortedBooks = useMemo(() => {
+    return [...filteredBooks].sort((a, b) => b.heat - a.heat);
+  }, [filteredBooks]);
+
   return (
     <div>
-      {filteredBooks.map((book, index) => {
-        // 优先使用本地存储的热度（实时更新），但不超过服务器值的 1.5 倍
-        // 这样既能实时更新，又不会用旧值覆盖正确值
-        const localHeat = localHeats[book.id];
-        const displayHeat = (localHeat !== undefined && localHeat > book.heat)
-          ? localHeat
-          : book.heat;
+      {/* 网格布局 - 瀑布流 */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {sortedBooks.map((book, index) => {
+          const localHeat = localHeats[book.id];
+          const displayHeat = (localHeat !== undefined && localHeat > book.heat)
+            ? localHeat
+            : book.heat;
 
-        return (
-          <BookCard
-            key={book.id}
-            book={{
-              ...book,
-              heat: displayHeat,
-            }}
-            rank={index + 1}
-            showSeason={showSeason}
-          />
-        );
-      })}
+          return (
+            <BookCard
+              key={book.id}
+              book={{
+                ...book,
+                heat: displayHeat,
+              }}
+              rank={index + 1}
+              showSeason={showSeason}
+            />
+          );
+        })}
+      </div>
 
-      {filteredBooks.length === 0 && (
-        <div className="text-center py-10 text-surface-500 dark:text-surface-400">
-          暂无该分区的书籍
+      {sortedBooks.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-surface-500">
+          <div className="mb-4 text-4xl">📚</div>
+          <p>暂无该分区的书籍</p>
         </div>
       )}
     </div>

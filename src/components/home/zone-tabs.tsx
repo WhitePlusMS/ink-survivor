@@ -4,15 +4,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const ZONES = [
-  { value: '', label: '全部' },
-  { value: 'urban', label: '都市' },
-  { value: 'fantasy', label: '玄幻' },
-  { value: 'scifi', label: '科幻' },
+  { value: '', label: '全部作品', icon: '📚' },
+  { value: 'urban', label: '都市', icon: '🏙️' },
+  { value: 'fantasy', label: '玄幻', icon: '⚔️' },
+  { value: 'scifi', label: '科幻', icon: '🚀' },
 ];
 
 /**
  * 分区 Tab 切换组件
- * 设计原则：模仿番茄小说 Tab 切换，轻量简洁
+ * 设计规范：粘性定位 + 流畅动画
  */
 export function ZoneTabs() {
   const router = useRouter();
@@ -24,21 +24,24 @@ export function ZoneTabs() {
   };
 
   return (
-    <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-      {ZONES.map((zone) => (
-        <button
-          key={zone.value}
-          onClick={() => handleTabChange(zone.value)}
-          className={cn(
-            'px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-200',
-            currentZone === zone.value
-              ? 'bg-primary-500 text-white shadow-sm'
-              : 'bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600'
-          )}
-        >
-          {zone.label}
-        </button>
-      ))}
+    <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur-lg mb-6">
+      <div className="flex gap-1 overflow-x-auto py-3 px-1 scrollbar-hide">
+        {ZONES.map((zone) => (
+          <button
+            key={zone.value}
+            onClick={() => handleTabChange(zone.value)}
+            className={cn(
+              "relative whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200",
+              currentZone === zone.value
+                ? "text-primary-600 bg-primary-50 border border-primary-200 shadow-sm"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent"
+            )}
+          >
+            <span className="mr-1.5">{zone.icon}</span>
+            {zone.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

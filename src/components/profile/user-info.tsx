@@ -1,4 +1,4 @@
-import { Medal, Settings, Sparkles } from 'lucide-react';
+import { Medal, Settings, Sparkles, User, Mail } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -22,74 +22,103 @@ interface UserInfoProps {
 
 /**
  * 用户信息组件
- * 设计原则：模仿番茄小说个人中心，显示用户信息、Agent 等级、Agent 风格
+ * 设计规范：头像 + 等级徽章 + Agent 配置入口
  */
 export function UserInfo({ user, level }: UserInfoProps) {
   // 获取等级徽章颜色
   const getLevelBadgeColor = (lvl: number) => {
-    if (lvl >= 4) return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300';
-    if (lvl >= 3) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
-    if (lvl >= 2) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
-    return 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300';
+    if (lvl >= 4) return 'bg-purple-100 text-purple-700';
+    if (lvl >= 3) return 'bg-amber-100 text-amber-700';
+    if (lvl >= 2) return 'bg-blue-100 text-blue-700';
+    return 'bg-surface-100 text-surface-700';
   };
 
   return (
-    <div className="bg-white dark:bg-surface-800 rounded-lg shadow-sm p-4 mb-4 border border-surface-100 dark:border-surface-700">
-      <div className="flex items-start gap-4">
+    <div className="overflow-hidden rounded-2xl bg-white shadow-card mb-6">
+      {/* 头部渐变背景 */}
+      <div className="relative h-24 bg-gradient-to-br from-primary-500 to-orange-600">
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-white blur-3xl" />
+        </div>
+      </div>
+
+      <div className="relative px-6 pb-6">
         {/* 头像 */}
-        <div className="w-16 h-16 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-md">
-          {user.avatar ? (
-            <img
-              src={user.avatar}
-              alt={user.nickname}
-              className="w-full h-full rounded-full object-cover"
-            />
-          ) : (
-            user.nickname[0]?.toUpperCase()
+        <div className="relative -mt-16 mb-4 inline-block">
+          <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-white shadow-lg bg-gradient-to-br from-primary-400 to-primary-600">
+            {user.avatar ? (
+              <img
+                src={user.avatar}
+                alt={user.nickname}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-white text-2xl font-bold">
+                {user.nickname[0]?.toUpperCase()}
+              </div>
+            )}
+          </div>
+          {level && (
+            <div className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary-500 text-white shadow-md">
+              <Medal className="h-3.5 w-3.5" />
+            </div>
           )}
         </div>
 
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-lg text-gray-900 dark:text-gray-100">{user.nickname}</h2>
+        {/* 用户信息 */}
+        <div className="mb-4">
+          <div className="mb-1 flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-gray-900">{user.nickname}</h2>
             {level && (
               <span className={cn(
-                'flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium',
+                'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
                 getLevelBadgeColor(level.level)
               )}>
-                <Medal className="w-4 h-4" />
-                Lv.{level.level} {level.title}
+                LV{level.level}
               </span>
             )}
           </div>
-
           {user.email && (
-            <div className="flex items-center gap-1 text-sm text-surface-500 dark:text-surface-400 mt-1">
-              <span>{user.email}</span>
-            </div>
-          )}
-
-          {/* Agent 配置大卡片 */}
-          {user.agentConfig && (
-            <Link
-              href="/profile/edit"
-              className="flex items-center gap-3 mt-3 p-3 bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/10 rounded-lg border border-primary-200 dark:border-primary-800 hover:from-primary-100 hover:to-primary-150 dark:hover:from-primary-900/30 dark:hover:to-primary-700/20 transition-all group"
-            >
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary-500 text-white">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Agent 配置</span>
-                  <Settings className="w-4 h-4 text-surface-400 group-hover:text-primary-500 transition-colors" />
-                </div>
-                <div className="text-sm text-surface-600 dark:text-surface-300">
-                  风格: <span className="font-medium text-primary-600 dark:text-primary-400">{user.agentConfig.writingStyle}</span>
-                </div>
-              </div>
-            </Link>
+            <p className="flex items-center gap-2 text-sm text-gray-600">
+              <Mail className="h-4 w-4" />
+              {user.email}
+            </p>
           )}
         </div>
+
+        {/* Agent 配置卡片 */}
+        {user.agentConfig && (
+          <Link
+            href="/profile/edit"
+            className="block rounded-xl bg-gray-50 p-4 transition-all hover:bg-gray-100"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-900">Agent 配置</h3>
+              <button className="flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                <Settings className="h-3 w-3" />
+                编辑
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <span className="text-gray-600">
+                写作风格：<strong className="text-gray-900">{user.agentConfig.writingStyle}</strong>
+              </span>
+            </div>
+            {/* 听劝指数进度条 */}
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                <span>听劝指数</span>
+                <span className="font-medium text-primary-600">{user.agentConfig.adaptability.toFixed(1)}</span>
+              </div>
+              <div className="flex h-2 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="bg-gradient-to-r from-green-400 to-green-500 transition-all"
+                  style={{ width: `${user.agentConfig.adaptability * 100}%` }}
+                />
+              </div>
+            </div>
+          </Link>
+        )}
       </div>
     </div>
   );

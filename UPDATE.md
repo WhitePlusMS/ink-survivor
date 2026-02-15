@@ -541,3 +541,255 @@ Prisma 的 JSONB 字段类型为 JsonValue，但代码中期望的是具体类�
 - 读取时使用类型断言 `as unknown as 具体类型`
 - 对于 JSONB 字段的 JSON.parse，使用 `(field as unknown as string)` 进行转换
 - 组件接口中使用 `unknown` 类型接受 Prisma 返回的 JsonValue
+
+---
+
+## 2026-02-14 - 修复 /api/auth/current-user JSON 解析错误
+
+### 问题描述
+访问 `/api/auth/current-user` 接口时返回 500 错误：
+```
+SyntaxError: "[object Object]" is not valid JSON
+```
+
+### 原因分析
+`user.agentConfig` 是 Prisma 的 `Json` 类型，从数据库返回时已经被解析为 JavaScript 对象。代码中尝试对已解析的对象再次执行 `JSON.parse()`，导致错误。
+
+### 修改的文件
+
+#### 1. src/app/api/auth/current-user/route.ts
+- **修改原因**: 对已解析的 JSON 对象再次调用 `JSON.parse()` 导致错误
+- **修改内容**: 移除 `JSON.parse()` 调用，直接使用 `user.agentConfig`
+- **修改前**: `agentConfig: user.agentConfig ? JSON.parse(user.agentConfig as unknown as string) : null,`
+- **修改后**: `agentConfig: user.agentConfig,`
+
+### 修复原则
+- Prisma 的 `Json` 类型返回时已是对象，无需再次解析
+- 遵循最简原则，直接移除多余的 `JSON.parse` 调用
+- 使用 `safeJsonField` 函数处理需要默认值的情况
+
+---
+
+## 2026-02-14 - 修复赛季启动时 JSON 解析错误
+
+### 问题描述
+启动赛季时，Agent 决策阶段出现同样的 JSON 解析错误：
+```
+SyntaxError: "[object Object]" is not valid JSON
+```
+
+### 原因分析
+与上一个问题相同，`agentConfig` 是 Prisma 的 `Json` 类型，从数据库返回时已经是 JavaScript 对象。在 `start-season` 和 `start-s0` API 中，代码使用 `JSON.parse((user.agentConfig as unknown as string) || '{}')` 尝试解析已解析的对象，导致错误。
+
+### 修改的文件
+
+#### 1. src/app/api/admin/test/start-season/route.ts
+- **修改原因**: 对已解析的 JSON 对象再次调用 `JSON.parse()` 导致错误
+- **修改内容**:
+  - 导入 `safeJsonField` 函数
+  - 将 `JSON.parse((user.agentConfig as unknown as string) || '{}')` 改为 `safeJsonField<AgentConfig>(user.agentConfig, {...})`
+- **修改位置**: 第232-240行
+
+#### 2. src/app/api/admin/test/start-s0/route.ts
+- **修改原因**: 同上
+- **修改内容**:
+  - 导入 `safeJsonField` 函数
+  - 将 `JSON.parse((agent.agentConfig as unknown as string) || '{}')` 改为 `safeJsonField<AgentConfig>(agent.agentConfig, {...})`
+- **修改位置**: 第265-273行
+
+### 修复原则
+- 使用 `safeJsonField` 函数安全处理 Prisma Json 类型
+- 提供默认值避免 null 情况
+- 遵循最简原则，移除多余的 JSON.parse 调用
+
+---
+
+## 2026-02-15 - 第一阶段：设计系统搭建
+
+### 任务概述
+根据 `docs/DESIGN_IMPROVEMENT_GUIDE.md` 设计规范，执行第一阶段：设计系统搭建。
+
+### 修改的文件
+
+#### 1. tailwind.config.ts
+- **修改原因**: 配置 Tailwind CSS 自定义主题，添加设计规范中的颜色、阴影和动画系统
+- **修改内容**:
+  - 更新主色调 `primary` 为橙色渐变体系（50-950）
+  - 新增阅读背景色 `reading`（bg、paper、dark）
+  - 新增语义色 `success`、`warning`、`error`、`info`（带渐变色阶）
+  - 新增特殊色 `heat`（热度橙）、`ink`（货币紫）、`ai`（AI评论青）、`human`（人类评论紫）
+  - 新增字体家族 `mono`（JetBrains Mono）
+  - 新增字号系统 `xs` 到 `4xl`
+  - 新增阴影系统 `card`、`card-hover`、`float`、`glow`
+  - 新增动画系统 `fade-in`、`slide-up`、`slide-down`、`slide-in`、`scale-in`、`pulse-glow`
+  - 新增对应的 keyframes 动画定义
+
+#### 2. src/components/ui/button.tsx
+- **修改原因**: 更新按钮组件 variant 以符合设计规范
+- **修改内容**:
+  - 将 `default` variant 重命名为 `primary`（品牌橙色渐变）
+  - 更新 `outline` variant 为 2px 边框的描边按钮
+  - 添加 `loading` 属性支持加载状态
+  - 添加 `Loader2` 图标导入
+  - 优化按钮样式（阴影、hover效果、focus ring）
+  - 调整默认 variant 为 `primary`
+
+#### 3. src/components/ui/modal.tsx（新建）
+- **修改原因**: 创建符合设计规范的 Modal 弹窗组件
+- **修改内容**:
+  - 实现模态框组件，支持多种尺寸（sm、md、lg、xl、full）
+  - 支持 ESC 键关闭
+  - 支持点击遮罩层关闭
+  - 使用 CSS transition 实现动画效果（替代 framer-motion）
+  - 防止背景滚动
+  - 头部支持自定义标题和关闭按钮
+
+#### 4. src/components/ui/index.ts
+- **修改原因**: 导出新增的 Modal 组件
+- **修改内容**: 添加 `export { default as Modal } from './modal';`
+
+#### 5. docs/ICON_GUIDE.md（新建）
+- **修改原因**: 建立图标使用规范
+- **修改内容**:
+  - 常用图标速查表（用户、书籍、竞赛、交互、状态、评论等场景）
+  - 语义色图标使用规范（heat、ink、ai、human 等）
+  - 图标使用示例（按钮、列表、作者标识、排名展示）
+  - 图标尺寸规范
+  - 常见问题解答
+
+### 设计系统内容
+
+#### 颜色系统
+- **主色调**: 橙色渐变（primary-50 到 primary-950）
+- **阅读色**: 米黄护眼色、纸张白、深色模式背景
+- **语义色**: success、warning、error、info（带渐变色阶）
+- **特殊色**: heat（热度橙）、ink（货币紫）、ai（AI评论青）、human（人类评论紫）
+
+#### 阴影系统
+- `card`: 轻微阴影用于卡片
+- `card-hover`: 悬停时增强阴影
+- `float`: 浮起效果用于弹窗
+- `glow`: 发光效果用于品牌元素
+
+#### 动画系统
+- `fade-in`: 淡入
+- `slide-up`: 上滑
+- `slide-down`: 下滑
+- `slide-in`: 侧滑
+- `scale-in`: 缩放淡入
+- `pulse-glow`: 脉冲发光
+
+### 组件库状态
+- **Button**: ✅ 已更新（primary、outline、secondary、ghost、destructive、link）
+- **Toast**: ✅ 已存在（无需修改）
+- **Modal**: ✅ 新建完成
+
+### 后续工作
+根据设计规范，第二阶段将进行页面重构：
+1. 优先级 1：首页 + 赛季 Banner
+2. 优先级 2：书籍详情页 + 阅读器
+3. 优先级 3：个人中心 + Agent 配置
+
+---
+
+## 2026-02-15 - 第二阶段：页面重构
+
+### 任务概述
+根据 `docs/DESIGN_IMPROVEMENT_GUIDE.md` 设计规范，执行第二阶段：页面重构
+
+### 修改的文件
+
+#### 1. src/components/home/season-banner.tsx
+- **修改原因**: 优化赛季 Banner 视觉效果，符合设计规范
+- **修改内容**:
+  - 主 Banner 使用渐变背景 `from-primary-500 via-primary-600 to-orange-700`
+  - 添加背景装饰（模糊光晕效果）
+  - 优化倒计时显示，使用独立的时间块组件
+  - 添加发光阴影效果 `shadow-glow`
+  - 统一使用 rounded-2xl 圆角
+
+#### 2. src/components/home/book-card.tsx
+- **修改原因**: 优化书籍卡片视觉效果，符合设计规范
+- **修改内容**:
+  - 使用 3:4 封面比例
+  - 添加悬浮效果（上浮 + 阴影增强）
+  - 前3名显示排名徽章（奖杯/奖牌图标）
+  - 悬浮时显示"立即阅读"快速操作按钮
+  - 使用语义色图标（heat 橙色）
+  - 统一使用 rounded-xl 圆角
+
+#### 3. src/components/home/zone-tabs.tsx
+- **修改原因**: 优化分区 Tab 切换体验
+- **修改内容**:
+  - 添加粘性定位 `sticky top-0`
+  - 添加毛玻璃背景 `bg-white/80 backdrop-blur-lg`
+  - 优化 Tab 按钮样式，添加图标
+  - 使用 rounded-full 圆角
+  - 选中状态添加边框和阴影
+
+#### 4. src/components/home/book-list.tsx
+- **修改原因**: 实现瀑布流网格布局
+- **修改内容**:
+  - 使用 CSS Grid 实现 `grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`
+  - 按热度排序书籍
+  - 优化空状态展示
+
+#### 5. src/app/book/[id]/page.tsx
+- **修改原因**: 优化书籍详情页视觉效果
+- **修改内容**:
+  - 整体使用灰白背景 `bg-gray-50`
+  - 书籍信息卡片使用圆角 + 阴影
+  - 封面使用 3:4 比例
+  - 统计数据使用 3 列卡片布局
+  - 操作按钮使用品牌色 + 阴影
+  - 章节列表使用卡片式布局
+  - 添加分区标签颜色映射
+
+#### 6. src/components/profile/user-info.tsx
+- **修改原因**: 优化个人中心用户信息展示
+- **修改内容**:
+  - 头部渐变背景装饰
+  - 头像使用负边距上移效果
+  - 等级徽章独立展示
+  - Agent 配置使用卡片式布局
+  - 添加听劝指数进度条
+
+#### 7. src/components/profile/stats-card.tsx
+- **修改原因**: 优化创作统计数据展示
+- **修改内容**:
+  - 使用 2x2 网格布局
+  - 每项数据使用独立渐变背景卡片
+  - 使用设计规范中的语义色（蓝、黄、紫、橙）
+
+#### 8. src/app/profile/page.tsx
+- **修改原因**: 优化个人中心整体布局
+- **修改内容**:
+  - 使用渐变背景 `bg-gradient-to-b from-gray-50 to-white`
+  - 书籍列表使用卡片式布局
+  - 优化空状态展示
+  - 添加新建书籍入口
+
+### 设计要点总结
+
+#### 颜色系统应用
+- 主色调：`primary-500` 橙色渐变
+- 背景：`gray-50` 浅灰
+- 卡片：`white` + `shadow-card`
+- 语义色：`heat` 橙、`ink` 紫、`ai` 青
+
+#### 阴影系统应用
+- 卡片：`shadow-card` (0 2px 8px)
+- 悬浮：`shadow-card-hover` (0 4px 16px)
+- 发光：`shadow-glow` (用于 Banner)
+
+#### 布局系统
+- 圆角：`rounded-xl` / `rounded-2xl`
+- 间距：`gap-4` / `p-6`
+- 网格：`grid-cols-2` / `grid-cols-4`
+
+### 后续工作
+根据设计规范，第三阶段将进行：
+1. 动效调优
+2. 响应式适配
+3. 性能优化
+4. 用户体验测试

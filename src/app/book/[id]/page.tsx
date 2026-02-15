@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle, CheckCircle, Trophy, User, Bot, Star } from 'lucide-react';
 import { bookService } from '@/services/book.service';
 import { OutlineDisplay } from '@/components/book/outline-display';
 import { CommentList } from '@/components/comments/comment-list';
@@ -14,6 +15,15 @@ interface BookPageProps {
   params: { id: string };
 }
 
+// 分区标签颜色映射
+const ZONE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  urban: { bg: 'bg-blue-100', text: 'text-blue-700', label: '都市' },
+  fantasy: { bg: 'bg-purple-100', text: 'text-purple-700', label: '玄幻' },
+  scifi: { bg: 'bg-cyan-100', text: 'text-cyan-700', label: '科幻' },
+  history: { bg: 'bg-amber-100', text: 'text-amber-700', label: '历史' },
+  game: { bg: 'bg-green-100', text: 'text-green-700', label: '游戏' },
+};
+
 export default async function BookPage({ params }: BookPageProps) {
   const book = await bookService.getBookById(params.id);
 
@@ -24,138 +34,207 @@ export default async function BookPage({ params }: BookPageProps) {
   // 从 score.heatValue 获取热度，从 _count.chapters 获取章节数
   const heatValue = book.score?.heatValue ?? 0;
   const chapterCount = book._count?.chapters ?? 0;
+  const zoneStyle = ZONE_STYLES[book.zoneStyle] || { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="sticky top-0 bg-white/80 backdrop-blur-sm border-b border-surface-200 z-10">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header - 固定顶部 */}
+      <header className="sticky top-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-40">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
-          <Link href="/" className="text-surface-600">
-            <ArrowLeft className="w-6 h-6" />
+          <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="w-5 h-5" />
+            <span className="text-sm font-medium">返回</span>
           </Link>
-          <h1 className="flex-1 truncate font-semibold">{book.title}</h1>
-          <button className="text-surface-600">
+          <h1 className="flex-1 truncate text-sm font-medium">{book.title}</h1>
+          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full">
             <Share2 className="w-5 h-5" />
           </button>
         </div>
       </header>
 
-      {/* 书籍信息 */}
-      <div className="max-w-md mx-auto px-4 py-4">
-        <div className="flex gap-4 mb-4">
-          {/* 封面占位 */}
-          <div className="w-24 h-32 bg-gradient-to-b from-surface-200 to-surface-300 rounded-md flex-shrink-0" />
+      {/* 书籍信息卡片 */}
+      <div className="max-w-md mx-auto px-4 py-6">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+          <div className="p-6">
+            <div className="flex gap-6">
+              {/* 封面 */}
+              <div className="relative h-44 w-32 flex-shrink-0 overflow-hidden rounded-lg shadow-md bg-gradient-to-br from-primary-100 to-primary-300">
+                {book.coverImage ? (
+                  <Image
+                    src={book.coverImage}
+                    alt={book.title}
+                    fill
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <BookOpen className="h-12 w-12 text-primary-400" />
+                  </div>
+                )}
+              </div>
 
-          <div>
-            <h2 className="text-lg font-bold">{book.title}</h2>
-            <p className="text-sm text-surface-500">@{book.author.nickname}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="px-2 py-0.5 bg-surface-100 rounded text-xs">
-                {book.zoneStyle}
-              </span>
-              <span className="text-sm text-surface-500">
-                {book.status === 'COMPLETED' ? '已完结' : '连载中'}
-              </span>
+              {/* 信息区 */}
+              <div className="flex-1">
+                {/* 标题 */}
+                <h2 className="mb-2 text-2xl font-bold text-gray-900">
+                  {book.title}
+                </h2>
+
+                {/* 作者 */}
+                <div className="mb-3 flex items-center gap-2">
+                  <User className="h-5 w-5 text-gray-400" />
+                  <span className="font-medium text-gray-900">@{book.author.nickname}</span>
+                </div>
+
+                {/* 标签 */}
+                <div className="mb-4 flex items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${zoneStyle.bg} ${zoneStyle.text}`}>
+                    {zoneStyle.label}
+                  </span>
+                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${book.status === 'COMPLETED' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+                    {book.status === 'COMPLETED' ? '已完结' : '连载中'}
+                  </span>
+                </div>
+
+                {/* 评分 */}
+                {book.score?.avgRating && (
+                  <div className="flex items-center gap-2">
+                    <Star className="h-6 w-6 fill-yellow-400 text-yellow-400" />
+                    <span className="text-3xl font-bold text-gray-900">{book.score.avgRating.toFixed(1)}</span>
+                    <span className="text-sm text-gray-500">/10</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 简介 */}
+            {book.shortDesc && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-sm leading-relaxed text-gray-600">
+                  {book.shortDesc}
+                </p>
+              </div>
+            )}
+
+            {/* 统计数据 */}
+            <div className="mt-4 grid grid-cols-3 gap-4 border-t border-gray-100 pt-4">
+              <div className="text-center">
+                <div className="mb-2 flex justify-center">
+                  <BookOpen className="h-5 w-5 text-primary-500" />
+                </div>
+                <div className="text-xl font-bold text-gray-900">{chapterCount}</div>
+                <div className="text-xs text-gray-500">章节</div>
+              </div>
+              <div className="text-center">
+                <div className="mb-2 flex justify-center">
+                  <Flame className="h-5 w-5 text-heat" />
+                </div>
+                <div className="text-xl font-bold text-gray-900">{heatValue.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">热度</div>
+              </div>
+              <div className="text-center">
+                <div className="mb-2 flex justify-center">
+                  <MessageCircle className="h-5 w-5 text-blue-500" />
+                </div>
+                <div className="text-xl font-bold text-gray-900">{book._count?.comments || 0}</div>
+                <div className="text-xs text-gray-500">评论</div>
+              </div>
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <Link
+                href={`/book/${params.id}/chapter/1`}
+                className="flex items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 font-medium text-white shadow-md transition-all hover:bg-primary-600 hover:shadow-lg"
+              >
+                <BookOpen className="h-5 w-5" />
+                开始阅读
+              </Link>
+              <FavoriteButton bookId={params.id} />
+            </div>
+
+            {/* 完本按钮（仅作者可见） */}
+            <div className="mt-3">
+              <CompleteButton
+                bookId={params.id}
+                currentStatus={book.status}
+                isAuthor={book.authorId === cookies().get('auth_token')?.value}
+              />
             </div>
           </div>
         </div>
-
-        {/* 统计数据 */}
-        <div className="flex items-center gap-6 py-3 border-t border-b border-surface-100">
-          <div className="flex items-center gap-1 text-orange-500">
-            <Flame className="w-5 h-5" />
-            <span className="font-medium">{heatValue}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <BookOpen className="w-5 h-5 text-surface-400" />
-            <span className="text-sm text-surface-600">
-              {chapterCount} 章
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <MessageCircle className="w-5 h-5 text-surface-400" />
-            <span className="text-sm text-surface-600">
-              {book._count?.comments || 0}
-            </span>
-          </div>
-        </div>
-
-        {/* 简介 */}
-        {book.shortDesc && (
-          <div className="py-4">
-            <h3 className="font-medium mb-2 text-surface-700">简介</h3>
-            <p className="text-surface-600 text-sm">{book.shortDesc}</p>
-          </div>
-        )}
-
-        {/* 操作按钮 */}
-        <div className="flex gap-3 py-4">
-          <Link
-            href={`/book/${params.id}/chapter/1`}
-            className="flex-1 py-3 bg-primary-600 text-white text-center rounded-lg font-medium hover:bg-primary-700 transition-colors"
-          >
-            开始阅读
-          </Link>
-          <FavoriteButton bookId={params.id} />
-        </div>
-
-        {/* 完本按钮（仅作者可见） */}
-        <CompleteButton
-          bookId={params.id}
-          currentStatus={book.status}
-          isAuthor={book.authorId === cookies().get('auth_token')?.value}
-        />
       </div>
 
       {/* 大纲 */}
       {book.outline && (
-        <div className="max-w-md mx-auto px-4 py-4 border-t border-surface-100">
-          <h3 className="font-medium mb-4 text-surface-700">大纲</h3>
-          <OutlineDisplay
-            outline={{
-              summary: book.outline.originalIntent,
-              characters_json: safeJsonField<Character[]>(book.outline.characters, []),
-              chapters: safeJsonField<ChapterPlan[]>(book.outline.chaptersPlan, []),
-            }}
-          />
+        <div className="max-w-md mx-auto px-4 py-4">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">作品大纲</h3>
+              <OutlineDisplay
+                outline={{
+                  summary: book.outline.originalIntent,
+                  characters_json: safeJsonField<Character[]>(book.outline.characters, []),
+                  chapters: safeJsonField<ChapterPlan[]>(book.outline.chaptersPlan, []),
+                }}
+              />
+            </div>
+          </div>
         </div>
       )}
 
       {/* 章节列表 */}
-      <div className="max-w-md mx-auto px-4 py-4 border-t border-surface-100">
-        <h3 className="font-medium mb-4 text-surface-700">章节列表</h3>
-        <div className="space-y-2">
-          {book.chapters.map((chapter) => (
-            <Link
-              key={chapter.id}
-              href={`/book/${params.id}/chapter/${chapter.chapterNumber}`}
-              className="flex items-center justify-between py-3 border-b border-surface-100 hover:bg-surface-50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-surface-900">
-                  第 {chapter.chapterNumber} 章
-                </span>
-                <span className="text-surface-500 text-sm">
-                  {chapter.title}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-surface-500">
-                {chapter.status === 'PUBLISHED' && (
-                  <>
-                    <Flame className="w-4 h-4" />
-                    <span>{chapter.readCount}</span>
-                  </>
-                )}
-              </div>
-            </Link>
-          ))}
+      <div className="max-w-md mx-auto px-4 py-4">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+          <div className="p-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900">章节列表</h3>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {book.chapters.map((chapter) => (
+              <Link
+                key={chapter.id}
+                href={`/book/${params.id}/chapter/${chapter.chapterNumber}`}
+                className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-gray-500">
+                      第{chapter.chapterNumber}章
+                    </span>
+                    {chapter.status === 'PUBLISHED' && (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    )}
+                  </div>
+                  <h4 className="text-gray-900 font-medium truncate">
+                    {chapter.title}
+                  </h4>
+                </div>
+                <div className="flex items-center gap-3 text-sm text-gray-500 ml-4">
+                  {chapter.status === 'PUBLISHED' && (
+                    <>
+                      <span className="flex items-center gap-1">
+                        <Flame className="h-4 w-4 text-heat" />
+                        {chapter.readCount}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* 评论区域 */}
-      <div id="comments" className="max-w-md mx-auto px-4 py-4 border-t border-surface-100">
-        <h3 className="font-medium mb-4 text-surface-700">评论</h3>
-        <CommentList bookId={params.id} />
+      <div id="comments" className="max-w-md mx-auto px-4 py-4 pb-8">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+          <div className="p-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900">全部评论</h3>
+          </div>
+          <div className="p-4">
+            <CommentList bookId={params.id} />
+          </div>
+        </div>
       </div>
     </div>
   );

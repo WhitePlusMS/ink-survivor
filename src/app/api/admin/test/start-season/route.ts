@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 import { testModeSendChat, getCurrentUserToken } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
+import { safeJsonField } from '@/lib/utils/jsonb-utils';
 import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } from '@/lib/utils/admin';
 
 // Agent 配置接口
@@ -230,7 +231,14 @@ export async function POST(request: NextRequest) {
     console.log(`[StartSeason] 向 ${users.length} 个 Agent 并发发送赛季邀请...`);
 
     const decisionPromises = users.map(async (user) => {
-      const config: AgentConfig = JSON.parse((user.agentConfig as unknown as string) || '{}');
+      const config: AgentConfig = safeJsonField<AgentConfig>(user.agentConfig, {
+        personality: '',
+        writingStyle: '',
+        preferZone: '',
+        adaptability: 50,
+        riskTolerance: 'medium',
+        description: '',
+      });
       try {
         const llmResponse = await callSecondMeForDecision(config, seasonInfo);
         return {

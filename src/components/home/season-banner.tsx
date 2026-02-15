@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Flame, Clock, Users, ChevronDown, ChevronUp, CalendarX, Timer } from 'lucide-react';
+import { Trophy, Clock, Flame, Users, ChevronDown, ChevronUp, CalendarX, Timer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Season {
@@ -55,12 +55,33 @@ interface SeasonBannerProps {
   previousSeason?: FinishedSeasonBrief | null; // 上一赛季（用于折叠面板显示）
 }
 
+// 时间块组件
+function TimeBlock({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <div className="flex h-14 w-12 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm">
+        <span className="text-2xl font-bold tabular-nums">{String(value).padStart(2, '0')}</span>
+      </div>
+      <span className="mt-1 text-xs opacity-75">{label}</span>
+    </div>
+  );
+}
+
+function calculateTimeLeft(endTime: string | Date) {
+  const total = new Date(endTime).getTime() - new Date().getTime();
+  if (total <= 0) return { hours: 0, minutes: 0, seconds: 0 };
+  const hours = Math.floor(total / (1000 * 60 * 60));
+  const minutes = Math.floor((total / 1000 / 60) % 60);
+  const seconds = Math.floor((total / 1000) % 60);
+  return { hours, minutes, seconds };
+}
+
 /**
  * 赛季倒计时 Banner 组件
- * 设计原则：模仿番茄小说赛季 Banner，突出主题和倒计时
+ * 设计规范：渐变背景 + 动态倒计时 + 背景装饰
  */
 export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: SeasonBannerProps) {
-  const [timeLeft, setTimeLeft] = useState<string>('');
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [phaseTimeLeft, setPhaseTimeLeft] = useState<string>('');
   const [showPrevInfo, setShowPrevInfo] = useState(false);
   const router = useRouter();
@@ -77,24 +98,7 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
     if (!endTime) return;
 
     const updateTimeLeft = () => {
-      const now = new Date().getTime();
-      const end = new Date(endTime).getTime();
-      const diff = end - now;
-
-      if (diff <= 0) {
-        setTimeLeft('已结束');
-        return;
-      }
-
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setTimeLeft(
-        `${hours.toString().padStart(2, '0')}:${minutes
-          .toString()
-          .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-      );
+      setTimeLeft(calculateTimeLeft(endTime));
     };
 
     updateTimeLeft();
@@ -147,6 +151,7 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
     return () => clearInterval(timer);
   }, [currentPhase, roundStartTime, phaseDurations]);
 
+  // 自动刷新页面
   useEffect(() => {
     if (!currentPhase || currentPhase === 'NONE' || !roundStartTime) {
       return;
@@ -188,10 +193,14 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
   // 没有进行中的赛季，显示最新结束赛季信息
   if (!season && latestFinishedSeason) {
     return (
-      <div className="bg-gradient-to-r from-surface-600 to-surface-700 text-white p-4 rounded-lg mb-4">
-        <div className="flex items-center justify-center gap-2">
-          <Flame className="w-5 h-5" />
-          <span className="font-medium">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-surface-600 to-surface-700 p-6 text-white shadow-card mb-6">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 right-0 h-32 w-32 rounded-full bg-white blur-3xl" />
+          <div className="absolute bottom-0 left-0 h-24 w-24 rounded-full bg-white blur-3xl" />
+        </div>
+        <div className="relative z-10 flex items-center justify-center gap-3 py-4">
+          <Trophy className="h-8 w-8" />
+          <span className="text-lg font-semibold">
             S{latestFinishedSeason.seasonNumber} 赛季「{latestFinishedSeason.themeKeyword}」已结束！
           </span>
         </div>
@@ -202,74 +211,103 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
   // 没有进行中的赛季且无历史赛季
   if (!season) {
     return (
-      <div className="bg-gradient-to-r from-surface-400 to-surface-500 text-white p-4 rounded-lg mb-4">
-        <div className="flex items-center justify-center gap-2">
-          <CalendarX className="w-5 h-5" />
-          <span className="font-medium">暂无进行中的赛季</span>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-surface-400 to-surface-500 p-6 text-white shadow-card mb-6">
+        <div className="relative z-10 flex items-center justify-center gap-3 py-4">
+          <CalendarX className="h-8 w-8" />
+          <span className="text-lg font-semibold">暂无进行中的赛季</span>
         </div>
       </div>
     );
   }
 
+  // 判断赛季是否已结束
+  const isSeasonEnded = timeLeft.hours === 0 && timeLeft.minutes === 0 && timeLeft.seconds === 0 && !endTime;
+
   return (
-    <div className="space-y-2">
-      {/* 赛季主 Banner */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white p-4 rounded-lg shadow-md">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-5 h-5" />
-            <span className="font-bold text-lg">
-              S{season.seasonNumber} 赛季：{season.themeKeyword}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-sm bg-white/20 px-2 py-1 rounded-full">
-            <Clock className="w-4 h-4" />
-            <span className="font-mono font-medium">{timeLeft}</span>
-          </div>
+    <div className="space-y-3">
+      {/* 赛季主 Banner - 渐变背景 + 发光效果 */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 via-primary-600 to-orange-700 p-6 text-white shadow-glow">
+        {/* 背景装饰 */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-white blur-3xl" />
+          <div className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-white blur-3xl" />
         </div>
 
-        {/* 阶段状态和倒计时 */}
-        {season.currentPhase && season.currentPhase !== 'NONE' && (
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-sm opacity-90">
-              <Timer className="w-4 h-4" />
-              <span>
-                第 {season.currentRound} 轮 - {PHASE_CONFIG[season.currentPhase]?.name || season.currentPhase}
-              </span>
-            </div>
-            {phaseTimeLeft && (
-              <div className="flex items-center gap-1 text-sm bg-amber-500/80 px-2 py-0.5 rounded-full">
-                <span className="font-mono font-medium">剩余 {phaseTimeLeft}</span>
+        <div className="relative z-10">
+          {/* 顶部：赛季信息和倒计时 */}
+          <div className="flex items-start justify-between mb-4">
+            {/* 左侧：赛季信息 */}
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+                <Trophy className="h-7 w-7" />
               </div>
+              <div>
+                <p className="text-sm font-medium opacity-90">当前赛季</p>
+                <h2 className="text-2xl font-bold">S{season.seasonNumber} {season.themeKeyword}</h2>
+                <div className="mt-1 flex items-center gap-3 text-sm">
+                  <span className="flex items-center gap-1">
+                    <Flame className="h-4 w-4" />
+                    {season.participantCount} 位参赛者
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 右侧：倒计时 */}
+            <div className="text-right">
+              <p className="mb-2 text-sm font-medium opacity-90">剩余时间</p>
+              <div className="flex gap-1.5">
+                <TimeBlock value={timeLeft.hours} label="时" />
+                <TimeBlock value={timeLeft.minutes} label="分" />
+                <TimeBlock value={timeLeft.seconds} label="秒" />
+              </div>
+            </div>
+          </div>
+
+          {/* 阶段状态和倒计时 */}
+          {season.currentPhase && season.currentPhase !== 'NONE' && (
+            <div className="flex items-center justify-between mb-4 p-3 bg-white/10 rounded-lg backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <Timer className="h-4 w-4" />
+                <span className="text-sm">
+                  第 {season.currentRound} 轮 - {PHASE_CONFIG[season.currentPhase]?.name || season.currentPhase}
+                </span>
+              </div>
+              {phaseTimeLeft && (
+                <div className="flex items-center gap-1 text-sm bg-amber-500/80 px-3 py-1 rounded-full">
+                  <span className="font-mono font-medium">剩余 {phaseTimeLeft}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 底部：参赛数和折叠按钮 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm opacity-90">
+              <Users className="h-4 w-4" />
+              <span>已参赛书籍：{season.participantCount} 本</span>
+            </div>
+            {/* 有上一赛季时显示折叠按钮 */}
+            {previousSeason && (
+              <button
+                onClick={() => setShowPrevInfo(!showPrevInfo)}
+                className="flex items-center gap-1 text-sm opacity-80 hover:opacity-100 transition-opacity"
+              >
+                <span>S{previousSeason.seasonNumber} 赛季说明</span>
+                {showPrevInfo ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
             )}
           </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-sm opacity-90">
-            <Users className="w-4 h-4" />
-            <span>已参赛书籍：{season.participantCount} 本</span>
-          </div>
-          {/* 有上一赛季时显示折叠按钮 */}
-          {previousSeason && (
-            <button
-              onClick={() => setShowPrevInfo(!showPrevInfo)}
-              className="flex items-center gap-1 text-sm opacity-80 hover:opacity-100 transition-opacity"
-            >
-              <span>S{previousSeason.seasonNumber} 赛季说明</span>
-              {showPrevInfo ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
-            </button>
-          )}
         </div>
       </div>
 
       {/* 上一赛季折叠说明面板 */}
       {previousSeason && showPrevInfo && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/10 border border-amber-200 dark:border-amber-800 rounded-lg p-4 transition-all">
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 transition-all">
           <h4 className="font-bold text-amber-900 dark:text-amber-100 mb-2 flex items-center gap-2">
             S{previousSeason.seasonNumber} 赛季：{previousSeason.themeKeyword}（已结束）
           </h4>

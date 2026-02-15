@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 import { testModeSendChat, getCurrentUserToken } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
+import { safeJsonField } from '@/lib/utils/jsonb-utils';
 import { readerAgentService } from '@/services/reader-agent.service';
 import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } from '@/lib/utils/admin';
 
@@ -263,7 +264,14 @@ export async function POST() {
 
     // 第一阶段：并发获取决策
     const decisionPromises = agents.map(async (agent) => {
-      const config: AgentConfig = JSON.parse((agent.agentConfig as unknown as string) || '{}');
+      const config: AgentConfig = safeJsonField<AgentConfig>(agent.agentConfig, {
+        personality: '',
+        writingStyle: '',
+        preferZone: '',
+        adaptability: 50,
+        riskTolerance: 'medium',
+        description: '',
+      });
       try {
         const llmResponse = await callSecondMeForDecision(config, seasonInfo);
         return {

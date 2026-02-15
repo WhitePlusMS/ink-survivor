@@ -23,69 +23,53 @@ interface StatsCardProps {
 
 /**
  * 创作统计卡片组件
+ * 设计规范：渐变背景卡片 + 数据可视化
  */
 export function StatsCard({ stats }: StatsCardProps) {
   return (
-    <div className="grid grid-cols-2 gap-3 mb-4">
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <div className="flex items-center gap-2 text-surface-500 mb-1">
-          <BookOpen className="w-5 h-5" />
-          <span className="text-sm">创作统计</span>
+    <div className="grid grid-cols-2 gap-4 mb-6">
+      {/* 创作数据 */}
+      <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-card">
+        <div className="mb-3">
+          <BookOpen className="h-6 w-6 text-blue-500" />
         </div>
-        <div className="text-2xl font-bold text-gray-900">
-          {stats.booksWritten}{' '}
-          <span className="text-sm font-normal text-surface-500">本</span>
+        <div className="text-2xl font-bold text-gray-900 mb-1">
+          {stats.booksWritten}
         </div>
-        <div className="text-xs text-surface-400 mt-1">
-          完本 {stats.booksCompleted} 本 | 参赛 {stats.seasonsJoined} 次 | 正在参赛 {stats.booksInProgress} 本
-        </div>
-        {stats.booksInProgressDetail && (
-          <div className="text-xs text-surface-400 mt-1">
-            <Link
-              href={`/book/${stats.booksInProgressDetail.id}`}
-              className="flex items-center gap-1 hover:text-primary-600 transition-colors"
-            >
-              <Circle className="w-3 h-3 text-green-500" />
-              <span>
-                S{stats.booksInProgressDetail.seasonNumber} · {stats.booksInProgressDetail.title}
-                （{stats.booksInProgressDetail.chapterCount} 章）
-              </span>
-            </Link>
-          </div>
-        )}
+        <div className="text-xs text-gray-600">完本书籍</div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm p-4">
-        <div className="flex items-center gap-2 text-surface-500 mb-1">
-          <Coins className="w-5 h-5" />
-          <span className="text-sm">资产</span>
+      {/* 参赛次数 */}
+      <div className="rounded-xl bg-gradient-to-br from-yellow-50 to-yellow-100 p-5 shadow-card">
+        <div className="mb-3">
+          <Trophy className="h-6 w-6 text-yellow-500" />
         </div>
-        <div className="text-2xl font-bold text-yellow-600">
+        <div className="text-2xl font-bold text-gray-900 mb-1">
+          {stats.seasonsJoined}
+        </div>
+        <div className="text-xs text-gray-600">参加赛季</div>
+      </div>
+
+      {/* Ink 余额 */}
+      <div className="rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 p-5 shadow-card">
+        <div className="mb-3">
+          <Coins className="h-6 w-6 text-purple-500" />
+        </div>
+        <div className="text-2xl font-bold text-gray-900 mb-1">
           {stats.totalInk.toLocaleString()}
         </div>
-        <div className="text-xs text-surface-400 mt-1">Ink 余额</div>
+        <div className="text-xs text-gray-600">累计 Ink</div>
       </div>
 
-      <div className="col-span-2 bg-white rounded-lg shadow-sm p-4">
-        <div className="flex items-center gap-2 text-surface-500 mb-2">
-          <Trophy className="w-5 h-5" />
-          <span className="text-sm">最高战绩</span>
+      {/* 最高排名 */}
+      <div className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 p-5 shadow-card">
+        <div className="mb-3">
+          <Medal className="h-6 w-6 text-orange-500" />
         </div>
-        <div className="flex items-center gap-4">
-          {stats.highestRank ? (
-            <div className="flex items-center gap-2">
-              <Medal className="w-8 h-8 text-yellow-500" />
-              <div>
-                <div className="text-xl font-bold text-gray-900">
-                  第 {stats.highestRank} 名
-                </div>
-                <div className="text-xs text-surface-400">历史最佳排名</div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-surface-400">暂无排名</div>
-          )}
+        <div className="text-2xl font-bold text-gray-900 mb-1">
+          {stats.highestRank ? `#${stats.highestRank}` : '--'}
         </div>
+        <div className="text-xs text-gray-600">最高排名</div>
       </div>
     </div>
   );
