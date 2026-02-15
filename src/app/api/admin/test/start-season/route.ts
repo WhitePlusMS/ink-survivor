@@ -369,10 +369,10 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        console.log(`[StartSeason]   ✅ 《${bookTitle}》创建成功`);
+        console.log(`[StartSeason]   [成功] 《${bookTitle}》创建成功`);
         return { user, book, success: true as const, skipped: false };
       } catch (error) {
-        console.error(`[StartSeason]   ❌ 创建书籍《${bookTitle}》失败:`, error);
+        console.error(`[StartSeason]   [失败] 创建书籍《${bookTitle}》失败:`, error);
         return { user, bookTitle, reason: error, success: false as const };
       }
     });

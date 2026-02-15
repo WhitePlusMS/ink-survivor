@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { BookCard } from './book-card';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
+import { BookOpen } from '@/components/icons';
 
 export interface BookListProps {
   initialBooks?: Book[];
@@ -122,7 +123,7 @@ export function BookList({ initialBooks, showSeason = true }: BookListProps) {
 
       {sortedBooks.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-surface-500">
-          <div className="mb-4 text-4xl">📚</div>
+          <BookOpen className="mb-4 w-10 h-10" />
           <p>暂无该分区的书籍</p>
         </div>
       )}

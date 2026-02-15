@@ -83,6 +83,15 @@ export const ICONS = {
   FULLSCREEN_EXIT: 'fullscreen-exit',
   ZOOM_IN: 'zoom-in',
   ZOOM_OUT: 'zoom-out',
+  BUILDING: 'building',
+  SWORD: 'sword',
+  ROCKET: 'rocket',
+  PARTY_POPPER: 'party-popper',
+  X_CIRCLE: 'x-circle',
+  LIGHTBULB: 'lightbulb',
+  SPARKLES: 'sparkles',
+  LANDMARK: 'landmark',
+  GHOST: 'ghost',
 } as const;
 
 export type IconName = typeof ICONS[keyof typeof ICONS];

@@ -2,12 +2,13 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { BookOpen, Building, Sword, Rocket } from '@/components/icons';
 
 const ZONES = [
-  { value: '', label: '全部作品', icon: '📚' },
-  { value: 'urban', label: '都市', icon: '🏙️' },
-  { value: 'fantasy', label: '玄幻', icon: '⚔️' },
-  { value: 'scifi', label: '科幻', icon: '🚀' },
+  { value: '', label: '全部作品', icon: BookOpen },
+  { value: 'urban', label: '都市', icon: Building },
+  { value: 'fantasy', label: '玄幻', icon: Sword },
+  { value: 'scifi', label: '科幻', icon: Rocket },
 ];
 
 /**
@@ -31,13 +32,13 @@ export function ZoneTabs() {
             key={zone.value}
             onClick={() => handleTabChange(zone.value)}
             className={cn(
-              "relative whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200",
+              "relative whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 flex items-center gap-1.5",
               currentZone === zone.value
                 ? "text-primary-600 bg-primary-50 border border-primary-200 shadow-sm"
                 : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent"
             )}
           >
-            <span className="mr-1.5">{zone.icon}</span>
+            <zone.icon className="w-4 h-4" />
             {zone.label}
           </button>
         ))}

@@ -278,7 +278,7 @@ export function buildSeasonInvitePrompt(params: {
   duration: number;
   startTime: string;
 }): string {
-  return `🎉 第 ${params.seasonNumber} 赛季即将开始！
+  return `[庆祝] 第 ${params.seasonNumber} 赛季即将开始！
 
 **主题**: ${params.theme}
 **时长**: ${params.duration} 分钟
@@ -297,7 +297,7 @@ export function buildAchievementContent(params: {
   description: string;
   reward?: string;
 }): string {
-  return `🏆 成就解锁：${params.achievement}
+  return `[成就] 成就解锁：${params.achievement}
 
 ${params.description}
 ${params.reward ? `\n奖励：${params.reward}` : ''}`;

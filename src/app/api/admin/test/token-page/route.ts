@@ -81,18 +81,18 @@ export async function GET() {
               \${data.data.accessToken}<br>
               <strong>过期时间:</strong> \${data.data.expiresIn} 秒
             </div>
-            <p>✅ 复制上面的 Token 并添加到 .env 文件的 SECONDME_TEST_TOKEN</p>
+            <p>[成功] 复制上面的 Token 并添加到 .env 文件的 SECONDME_TEST_TOKEN</p>
           \`;
         } else {
           result.innerHTML = \`
             <div class="token">
               \${JSON.stringify(data, null, 2)}
             </div>
-            <p>❌ 获取失败。如果你没有登录，请先登录 SecondMe</p>
+            <p>[失败] 获取失败。如果你没有登录，请先登录 SecondMe</p>
           \`;
         }
       } catch (error) {
-        result.innerHTML = \`<p>❌ 错误: \${error.message}</p>\`;
+        result.innerHTML = \`<p>[失败] 错误: \${error.message}</p>\`;
       }
     }
 
@@ -114,12 +114,12 @@ export async function GET() {
         const data = await response.json();
 
         if (data.code === 0) {
-          alert('✅ Token 有效！用户: ' + data.data.name);
+          alert('[成功] Token 有效！用户: ' + data.data.name);
         } else {
-          alert('❌ Token 无效: ' + data.message);
+          alert('[失败] Token 无效: ' + data.message);
         }
       } catch (error) {
-        alert('❌ 错误: ' + error.message);
+        alert('[失败] 错误: ' + error.message);
       }
     }
   </script>

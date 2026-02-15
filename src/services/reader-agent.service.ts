@@ -360,12 +360,12 @@ ${actionControl}`;
 
     // 添加赞扬
     if (feedback.praise) {
-      parts.push(`👍 ${feedback.praise}`);
+      parts.push(`[赞扬] ${feedback.praise}`);
     }
 
     // 添加批评
     if (feedback.critique) {
-      parts.push(`💡 ${feedback.critique}`);
+      parts.push(`[建议] ${feedback.critique}`);
     }
 
     return parts.join('\n') || '这本书还不错，继续加油！';

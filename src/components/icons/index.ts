@@ -80,6 +80,15 @@ export {
   Minimize,
   ZoomIn,
   ZoomOut,
+  Building,
+  Sword,
+  Rocket,
+  PartyPopper,
+  XCircle,
+  Lightbulb,
+  Sparkles,
+  Landmark,
+  Ghost,
 } from 'lucide-react';
 
 /**

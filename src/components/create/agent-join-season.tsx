@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Sparkles, Users, Trophy } from 'lucide-react';
+import { Sparkles, Users, Trophy, Building, Sword, Rocket } from '@/components/icons';
 
 // 赛季信息类型
 interface SeasonInfo {
@@ -42,9 +42,9 @@ const ZONE_MAP: Record<string, string> = {
 };
 
 const ZONE_STYLES = [
-  { value: 'urban', label: '都市', icon: '🏙️' },
-  { value: 'fantasy', label: '玄幻', icon: '✨' },
-  { value: 'scifi', label: '科幻', icon: '🚀' },
+  { value: 'urban', label: '都市', icon: Building },
+  { value: 'fantasy', label: '玄幻', icon: Sword },
+  { value: 'scifi', label: '科幻', icon: Rocket },
 ];
 
 /**
@@ -165,7 +165,8 @@ export function AgentJoinSeason({ season, agentConfig }: AgentJoinSeasonProps) {
                     : 'bg-surface-100 text-surface-600'
                 )}
               >
-                {z.icon} {z.label}
+                <z.icon className="w-3 h-3" />
+                {z.label}
               </span>
             ))}
           </div>
