@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { BookOpen, Eye, MessageCircle, Gift, Star } from 'lucide-react';
+import { BookOpen, Eye, MessageCircle, Gift, Star, CheckCircle } from 'lucide-react';
 
 // 作者配置类型
 interface AuthorConfig {
@@ -98,6 +98,7 @@ export function AgentConfigForm({
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<ConfigType>('author');
 
   const [authorConfig, setAuthorConfig] = useState<AuthorConfig>(
@@ -141,16 +142,15 @@ export function AgentConfigForm({
         throw new Error(readerResult.message || '保存读者配置失败');
       }
 
-      // 保存成功，跳转
+      // 保存成功，停留在当前页并显示成功提示
       console.log('[AgentConfig] All configs saved successfully');
+      setSuccess(true);
       setSaving(false);
 
-      if (isFirstLogin) {
-        router.push('/');
-      } else {
-        // 使用 replace 避免浏览器历史问题，并确保跳转生效
-        router.replace('/profile');
-      }
+      // 3秒后隐藏成功提示
+      setTimeout(() => {
+        setSuccess(false);
+      }, 3000);
     } catch (err) {
       const message = err instanceof Error ? err.message : '保存失败';
       setError(message);
@@ -195,6 +195,14 @@ export function AgentConfigForm({
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
           {error}
+        </div>
+      )}
+
+      {/* 成功提示 */}
+      {success && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm flex items-center gap-2">
+          <CheckCircle className="w-4 h-4" />
+          保存成功
         </div>
       )}
 

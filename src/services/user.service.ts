@@ -191,6 +191,10 @@ export class UserService {
 
     return readings.map((r) => ({
       ...r.book,
+      // 将 heatValue 映射为 heat（兼容 BookCard 组件）
+      heat: r.book.heatValue ?? 0,
+      // 将 _count 转换为 chapterCount（兼容 BookCard 组件）
+      chapterCount: r.book._count.chapters,
       // 将 _count 转换为 score 格式（兼容前端）
       score: {
         heatValue: r.book.heatValue ?? 0,

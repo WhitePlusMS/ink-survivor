@@ -307,6 +307,7 @@ export class SeasonAutoAdvanceService {
    */
   private async endSeason(seasonId: string): Promise<void> {
     try {
+      // 1. 更新赛季状态
       await prisma.season.update({
         where: { id: seasonId },
         data: {
@@ -315,7 +316,19 @@ export class SeasonAutoAdvanceService {
           endTime: new Date(),
         },
       });
-      console.log(`[SeasonAutoAdvance] 赛季已结束`);
+
+      // 2. 将所有参赛书籍状态更新为 COMPLETED
+      await prisma.book.updateMany({
+        where: {
+          seasonId,
+          status: 'ACTIVE',
+        },
+        data: {
+          status: 'COMPLETED',
+        },
+      });
+
+      console.log(`[SeasonAutoAdvance] 赛季已结束，已将 ${await prisma.book.count({ where: { seasonId, status: 'COMPLETED' } })} 本书籍标记为完结`);
     } catch (error) {
       console.error('[SeasonAutoAdvance] 结束赛季失败:', error);
     }

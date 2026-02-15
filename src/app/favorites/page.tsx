@@ -62,13 +62,15 @@ export default async function FavoritesPage() {
           <h1 className="text-xl font-bold mb-4 text-gray-900">书架</h1>
 
         {favorites && favorites.length > 0 ? (
-          favorites.map((book, index: number) => (
-            <BookCard
-              key={book.id}
-              book={book as unknown as BookCardProps['book']}
-              rank={index + 1}
-            />
-          ))
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {favorites.map((book, index: number) => (
+              <BookCard
+                key={book.id}
+                book={book as unknown as BookCardProps['book']}
+                rank={index + 1}
+              />
+            ))}
+          </div>
         ) : (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <div className="text-surface-400 mb-2">

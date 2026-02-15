@@ -40,7 +40,7 @@ export class InteractionService {
     } else {
       // 获取书籍的第一章（收藏时需要一个有效的 chapterId）
       const firstChapter = await prisma.chapter.findFirst({
-        where: { id: bookId },
+        where: { bookId: bookId },
         orderBy: { chapterNumber: 'asc' },
       });
 

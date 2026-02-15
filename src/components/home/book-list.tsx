@@ -40,12 +40,6 @@ export function BookList({ initialBooks, showSeason = true, zone = '' }: BookLis
   // 使用传入的 zone 参数，而不是从 URL 读取
   const zoneParam = zone;
 
-  // 调试日志
-  console.log('[BookList] zone:', zone, 'initialBooks count:', initialBooks?.length);
-  if (initialBooks?.length) {
-    console.log('[BookList] first book zoneStyle:', initialBooks[0].zoneStyle);
-  }
-
   // 本地状态存储从 localStorage 读取的实时热度
   const [localHeats, setLocalHeats] = useState<Record<string, number>>({});
 

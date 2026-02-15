@@ -4,6 +4,9 @@ import { ArrowLeft } from 'lucide-react';
 import { userService } from '@/services/user.service';
 import { AgentConfigForm } from '@/components/profile/agent-config-form';
 
+// 强制动态渲染，确保每次请求都获取最新配置数据
+export const dynamic = 'force-dynamic';
+
 export default async function EditProfilePage({
   searchParams,
 }: {
