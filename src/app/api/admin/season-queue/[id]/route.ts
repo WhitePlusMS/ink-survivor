@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seasonQueueService, UpdateSeasonQueueDto } from '@/services/season-queue.service';
+import { seasonQueueService, UpdateSeasonDto } from '@/services/season-queue.service';
 
 // GET /api/admin/season-queue/[id] - 获取单个赛季队列
 export async function GET(
@@ -42,7 +42,7 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    const dto: UpdateSeasonQueueDto = {};
+    const dto: UpdateSeasonDto = {};
 
     if (body.themeKeyword !== undefined) dto.themeKeyword = body.themeKeyword;
     if (body.constraints !== undefined) dto.constraints = body.constraints;

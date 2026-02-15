@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { buildAuthorSystemPrompt, buildOutlinePrompt } from '@/lib/secondme/prompts';
 import { testModeSendChat } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
+import { toJsonValue } from '@/lib/utils/jsonb-utils';
 
 // Agent 配置接口
 interface AgentConfig {
@@ -70,12 +71,13 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 检查是否已有大纲
-    const existingOutline = await prisma.outline.findUnique({
-      where: { bookId },
+    // 检查是否已有大纲 - 从 Book 表获取
+    const existingBook = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { chaptersPlan: true },
     });
 
-    if (existingOutline) {
+    if (existingBook && existingBook.chaptersPlan) {
       console.log(`[Outline] 书籍《${book.title}》已有大纲，跳过生成`);
       return;
     }
@@ -129,19 +131,13 @@ export class OutlineGenerationService {
       }
     );
 
-    // 8. 保存大纲（使用 upsert，如果已存在则更新）
-    await prisma.outline.upsert({
-      where: { bookId },
-      create: {
-        bookId: book.id,
+    // 8. 保存大纲 - 使用 Book 的合并字段
+    await prisma.book.update({
+      where: { id: book.id },
+      data: {
         originalIntent: outlineData.summary,
-        chaptersPlan: JSON.stringify(outlineData.chapters),
-        characters: JSON.stringify(outlineData.characters),
-      },
-      update: {
-        originalIntent: outlineData.summary,
-        chaptersPlan: JSON.stringify(outlineData.chapters),
-        characters: JSON.stringify(outlineData.characters),
+        chaptersPlan: outlineData.chapters,
+        characters: outlineData.characters,
       },
     });
 
@@ -179,19 +175,20 @@ export class OutlineGenerationService {
 
     console.log(`[Outline] 书籍《${book.title}》当前 ${currentChapterCount} 章，生成第 ${nextChapterNumber} 章大纲`);
 
-    // 2. 获取现有大纲
-    const existingOutline = await prisma.outline.findUnique({
-      where: { bookId },
+    // 2. 获取现有大纲 - 从 Book 表获取
+    const existingBook = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { chaptersPlan: true },
     });
 
-    if (!existingOutline) {
+    if (!existingBook || !existingBook.chaptersPlan) {
       // 如果没有大纲先生成整本大纲
       await this.generateOutline(bookId);
       return;
     }
 
     // 解析现有大纲 - Prisma JSONB 字段已自动解析，直接使用类型断言
-    const chaptersPlan = existingOutline.chaptersPlan as unknown as ChapterOutline[];
+    const chaptersPlan = existingBook.chaptersPlan as unknown as ChapterOutline[];
 
     // 检查该章节是否已有大纲
     const existingChapterOutline = chaptersPlan.find((c) => c.number === nextChapterNumber);
@@ -267,14 +264,15 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 10. 更新大纲中的章节计划
+    // 10. 更新大纲中的章节计划 - 使用 Book 的合并字段
     const updatedChapters = [...chaptersPlan, newChapterOutline]
       .sort((a, b) => a.number - b.number);
 
-    await prisma.outline.update({
-      where: { bookId },
+    // 转换为 Prisma JSON 类型
+    await prisma.book.update({
+      where: { id: bookId },
       data: {
-        chaptersPlan: JSON.stringify(updatedChapters),
+        chaptersPlan: toJsonValue(updatedChapters),
       },
     });
 
@@ -295,17 +293,17 @@ export class OutlineGenerationService {
         status: 'ACTIVE',
       },
       include: {
-        score: { select: { heatValue: true } },
+        // score 已合并到 Book 表，使用 Book 的直接字段
         _count: { select: { chapters: true } },
       },
-      // 按热度排序，优先处理热门书籍
-      orderBy: { score: { heatValue: 'desc' } },
+      // 按热度排序，优先处理热门书籍 - 使用 Book 的 heatValue 字段
+      orderBy: { heatValue: 'desc' },
     });
 
     console.log(`[Outline] 发现 ${books.length} 本活跃书籍`);
 
     // 2. 只为第一章的书籍生成大纲（后续轮次按需处理）
-    const booksNeedingOutline = books.filter((b) => b._count.chapters === 0);
+    const booksNeedingOutline = books.filter((b) => (b._count?.chapters ?? 0) === 0);
 
     if (booksNeedingOutline.length === 0) {
       console.log(`[Outline] 所有书籍已有大纲`);

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle, CheckCircle, Trophy, User, Bot, Star } from 'lucide-react';
+import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle, CheckCircle, User, Star } from 'lucide-react';
 import { bookService } from '@/services/book.service';
 import { OutlineDisplay } from '@/components/book/outline-display';
 import { CommentList } from '@/components/comments/comment-list';
@@ -31,8 +31,8 @@ export default async function BookPage({ params }: BookPageProps) {
     notFound();
   }
 
-  // 从 score.heatValue 获取热度，从 _count.chapters 获取章节数
-  const heatValue = book.score?.heatValue ?? 0;
+  // 从 Book 的合并字段获取热度，从 _count 获取章节数
+  const heatValue = book.heatValue ?? 0;
   const chapterCount = book._count?.chapters ?? 0;
   const zoneStyle = ZONE_STYLES[book.zoneStyle] || { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
 
@@ -40,20 +40,22 @@ export default async function BookPage({ params }: BookPageProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Header - 固定顶部 */}
       <header className="sticky top-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-40">
-        <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="w-5 h-5" />
-            <span className="text-sm font-medium">返回</span>
-          </Link>
-          <h1 className="flex-1 truncate text-sm font-medium">{book.title}</h1>
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full">
-            <Share2 className="w-5 h-5" />
-          </button>
-        </div>
+        <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+          <div className="mx-auto max-w-screen-xl flex items-center gap-3 py-3">
+            <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+              <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+              <span className="text-sm font-medium">返回</span>
+            </Link>
+            <h1 className="flex-1 truncate text-sm font-medium">{book.title}</h1>
+            <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full" aria-label="分享书籍">
+              <Share2 className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
+        </main>
       </header>
 
       {/* 书籍信息卡片 */}
-      <div className="max-w-md mx-auto px-4 py-6">
+      <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24 py-6">
         <div className="overflow-hidden rounded-2xl bg-white shadow-card">
           <div className="p-6">
             <div className="flex gap-6">
@@ -97,10 +99,10 @@ export default async function BookPage({ params }: BookPageProps) {
                 </div>
 
                 {/* 评分 */}
-                {book.score?.avgRating && (
+                {book.avgRating && (
                   <div className="flex items-center gap-2">
                     <Star className="h-6 w-6 fill-yellow-400 text-yellow-400" />
-                    <span className="text-3xl font-bold text-gray-900">{book.score.avgRating.toFixed(1)}</span>
+                    <span className="text-3xl font-bold text-gray-900">{book.avgRating.toFixed(1)}</span>
                     <span className="text-sm text-gray-500">/10</span>
                   </div>
                 )}
@@ -165,17 +167,17 @@ export default async function BookPage({ params }: BookPageProps) {
         </div>
       </div>
 
-      {/* 大纲 */}
-      {book.outline && (
-        <div className="max-w-md mx-auto px-4 py-4">
+      {/* 大纲 - 使用 Book 的合并字段 */}
+      {(book.originalIntent || book.characters || book.chaptersPlan) && (
+        <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24 py-4">
           <div className="overflow-hidden rounded-2xl bg-white shadow-card">
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-4 text-gray-900">作品大纲</h3>
               <OutlineDisplay
                 outline={{
-                  summary: book.outline.originalIntent,
-                  characters_json: safeJsonField<Character[]>(book.outline.characters, []),
-                  chapters: safeJsonField<ChapterPlan[]>(book.outline.chaptersPlan, []),
+                  summary: book.originalIntent || '',
+                  characters_json: safeJsonField<Character[]>(book.characters, []),
+                  chapters: safeJsonField<ChapterPlan[]>(book.chaptersPlan, []),
                 }}
               />
             </div>
@@ -184,7 +186,7 @@ export default async function BookPage({ params }: BookPageProps) {
       )}
 
       {/* 章节列表 */}
-      <div className="max-w-md mx-auto px-4 py-4">
+      <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24 py-4">
         <div className="overflow-hidden rounded-2xl bg-white shadow-card">
           <div className="p-4 border-b border-gray-100">
             <h3 className="font-semibold text-gray-900">章节列表</h3>
@@ -226,7 +228,7 @@ export default async function BookPage({ params }: BookPageProps) {
       </div>
 
       {/* 评论区域 */}
-      <div id="comments" className="max-w-md mx-auto px-4 py-4 pb-8">
+      <div id="comments" className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24 py-4 pb-8">
         <div className="overflow-hidden rounded-2xl bg-white shadow-card">
           <div className="p-4 border-b border-gray-100">
             <h3 className="font-semibold text-gray-900">全部评论</h3>

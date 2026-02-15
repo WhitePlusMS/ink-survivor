@@ -46,7 +46,7 @@ export class ReaderAgentService {
           book: {
             include: {
               author: { select: { id: true, nickname: true } },
-              score: true,
+              // score 已合并到 Book 表，使用 Book 的直接字段
             },
           },
         },
@@ -169,13 +169,11 @@ export class ReaderAgentService {
         return null;
       }
 
-      // 获取该赛季所有书籍按热度排序
+      // 获取该赛季所有书籍按热度排序 - 使用 Book 的 heatValue 字段
       const books = await prisma.book.findMany({
         where: { seasonId: season.id },
-        include: {
-          score: { select: { heatValue: true } },
-        },
-        orderBy: { score: { heatValue: 'desc' } },
+        // score 已合并到 Book 表，使用 Book 的直接字段
+        orderBy: { heatValue: 'desc' },
       });
 
       // 查找书籍排名

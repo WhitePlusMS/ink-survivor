@@ -17,22 +17,24 @@ export default async function ProfilePage() {
   if (!authToken) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-        <div className="max-w-md mx-auto px-4 py-8">
-          <div className="overflow-hidden rounded-2xl bg-white shadow-card p-8 text-center">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary-100 to-primary-300 flex items-center justify-center">
-              <BookOpen className="h-10 w-10 text-primary-500" />
+        <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+          <div className="mx-auto max-w-screen-xl py-8">
+            <div className="overflow-hidden rounded-2xl bg-white shadow-card p-8 text-center">
+              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary-100 to-primary-300 flex items-center justify-center">
+                <BookOpen className="h-10 w-10 text-primary-500" />
+              </div>
+              <p className="text-gray-600 mb-6">登录后可查看个人中心</p>
+              <Link
+                href="/api/auth/login"
+                className="inline-block"
+              >
+                <Button>
+                  立即登录
+                </Button>
+              </Link>
             </div>
-            <p className="text-gray-600 mb-6">登录后可查看个人中心</p>
-            <Link
-              href="/api/auth/login"
-              className="inline-block"
-            >
-              <Button>
-                立即登录
-              </Button>
-            </Link>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -47,8 +49,8 @@ export default async function ProfilePage() {
   const participations = await userService.getSeasonParticipations(user.id);
   const { books } = await userService.getUserBooks(user.id, { limit: 10 });
 
-  // 从 userLevel 获取 booksWritten
-  const booksWritten = level?.booksWritten ?? 0;
+  // 从 User 表获取 booksWritten（已合并到 User 表）
+  const booksWritten = user.booksWritten ?? 0;
 
   // 从 SeasonParticipation 中查询最高排名
   let highestRank: number | undefined;
@@ -86,6 +88,13 @@ export default async function ProfilePage() {
     agentConfig: agentConfig ?? undefined,
   };
 
+  // 构建 level 数据（User 表合并后的字段）
+  const levelData = level ? {
+    level: level.level ?? 1,
+    title: level.levelTitle ?? '新手',
+    totalPoints: level.totalPoints ?? 0,
+  } : undefined;
+
   const stats = {
     booksWritten: booksWritten,
     booksCompleted: level?.booksCompleted || 0,
@@ -106,9 +115,10 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="max-w-md mx-auto px-4 py-6">
+      <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+        <div className="mx-auto max-w-screen-xl py-6">
         {/* 用户信息 */}
-        <UserInfo user={userData} level={level || undefined} />
+        <UserInfo user={userData} level={levelData} />
 
         {/* 创作统计 */}
         <StatsCard stats={stats} />
@@ -181,6 +191,7 @@ export default async function ProfilePage() {
           <LogoutButton />
         </div>
       </div>
+      </main>
     </div>
   );
 }

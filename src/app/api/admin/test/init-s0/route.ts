@@ -91,11 +91,9 @@ export async function POST() {
         // 5. 删除章节
         await prisma.chapter.deleteMany({ where: { bookId } });
 
-        // 6. 删除大纲
-        await prisma.outline.deleteMany({ where: { bookId } });
-
-        // 7. 删除评分
-        await prisma.bookScore.deleteMany({ where: { bookId } });
+        // 6. 删除大纲 (已合并到 Book，但保留删除逻辑以兼容旧数据)
+        // await prisma.outline.deleteMany({ where: { bookId } });
+        // 注意：Outline 字段已合并到 Book 表，无需单独删除
       }
 
       // 删除所有书籍

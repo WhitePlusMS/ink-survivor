@@ -35,18 +35,20 @@ export default async function FavoritesPage() {
   if (!authToken) {
     return (
       <div className="min-h-screen bg-surface-50">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold mb-4 text-gray-900">书架</h1>
-          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-            <p className="text-surface-500 mb-4">请先登录</p>
-            <Link
-              href="/api/auth/login"
-              className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
-            >
-              立即登录
-            </Link>
+        <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+          <div className="mx-auto max-w-screen-xl py-4">
+            <h1 className="text-xl font-bold mb-4 text-gray-900">书架</h1>
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+              <p className="text-surface-500 mb-4">请先登录</p>
+              <Link
+                href="/api/auth/login"
+                className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
+              >
+                立即登录
+              </Link>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -55,8 +57,9 @@ export default async function FavoritesPage() {
 
   return (
     <div className="min-h-screen bg-surface-50">
-      <div className="max-w-md mx-auto px-4 py-4">
-        <h1 className="text-xl font-bold mb-4 text-gray-900">书架</h1>
+      <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+        <div className="mx-auto max-w-screen-xl py-4">
+          <h1 className="text-xl font-bold mb-4 text-gray-900">书架</h1>
 
         {favorites && favorites.length > 0 ? (
           favorites.map((book, index: number) => (
@@ -93,6 +96,7 @@ export default async function FavoritesPage() {
           </div>
         )}
       </div>
+      </main>
     </div>
   );
 }

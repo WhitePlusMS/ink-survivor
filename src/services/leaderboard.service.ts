@@ -7,7 +7,9 @@ import type { Prisma } from '@prisma/client';
 
 export class LeaderboardService {
   /**
-   * 生成排行榜
+   * 生成排行榜 - 优化版本
+   * 直接使用预存的 heatValue/finalScore 排序，不再循环计算
+   * 注意：Leaderboard 表已删除，使用实时查询
    */
   async generateLeaderboard(options?: {
     seasonId?: string;
@@ -24,70 +26,52 @@ export class LeaderboardService {
     if (seasonId) where.seasonId = seasonId;
     if (zoneStyle) where.zoneStyle = normalizeZoneStyle(zoneStyle);
 
-    // 获取书籍
+    // 根据类型确定排序字段 - 使用 Book 的合并字段
+    let orderBy: Prisma.BookOrderByWithRelationInput;
+    switch (type) {
+      case 'new':
+        orderBy = { createdAt: 'desc' };
+        break;
+      case 'score':
+        orderBy = { finalScore: 'desc' };
+        break;
+      case 'heat':
+      default:
+        orderBy = { heatValue: 'desc' };
+        break;
+    }
+
+    // 直接查询并排序，不重复计算分数
     const books = await prisma.book.findMany({
       where,
       include: {
         author: { select: { nickname: true } },
-        score: true,
+        // score 已合并到 Book 表，使用 Book 的直接字段
         _count: { select: { chapters: true } },
       },
-      orderBy: type === 'new'
-        ? { createdAt: 'desc' }
-        : { score: { heatValue: 'desc' } },
-      take: limit * 2, // 获取更多用于筛选
+      orderBy,
+      take: limit,
     });
 
-    // 根据类型重新排序
-    let sortedBooks = [...books];
-    if (type === 'score' || type === 'heat') {
-      // 重新计算评分
-      for (const book of sortedBooks) {
-        if (book.score) {
-          await scoreService.calculateFullScore(book.id);
-        }
-      }
-      // 重新获取排序
-      sortedBooks = await prisma.book.findMany({
-        where,
-        include: { author: { select: { nickname: true } }, score: true, _count: { select: { chapters: true } } },
-        orderBy: type === 'score'
-          ? { score: { finalScore: 'desc' } }
-          : { score: { heatValue: 'desc' } },
-        take: limit,
-      });
-    }
-
-    // 构建排行榜
-    const rankings: LeaderboardEntry[] = sortedBooks.slice(0, limit).map((book, index) => ({
-      bookId: book.id,
-      rank: index + 1,
-      score: book.score?.finalScore || 0,
-      heat: book.score?.heatValue || 0,
-      title: book.title,
-      author: book.author.nickname,
-      zoneStyle: book.zoneStyle,
-      chapterCount: book._count?.chapters ?? 0,
-    }));
-
-    // 保存排行榜快照
-    const saveData: Prisma.LeaderboardCreateInput = {
-      type: type as string,
-      rankings: JSON.stringify(rankings),
-    };
-    if (seasonId) saveData.seasonId = seasonId;
-    if (zoneStyle) saveData.zoneStyle = normalizeZoneStyle(zoneStyle);
-
-    await prisma.leaderboard.create({
-      data: saveData,
-    });
+    // 构建排行榜 - 使用 Book 的直接字段
+    const rankings: LeaderboardEntry[] = books
+      .map((book, index) => ({
+        bookId: book.id,
+        rank: index + 1,
+        score: book.finalScore || 0,
+        heat: book.heatValue || 0,
+        title: book.title,
+        author: book.author.nickname,
+        zoneStyle: book.zoneStyle,
+        chapterCount: book._count?.chapters ?? 0,
+      }));
 
     console.log(`[LeaderboardService] Generated ${type} leaderboard with ${rankings.length} entries`);
     return rankings;
   }
 
   /**
-   * 获取排行榜
+   * 获取排行榜 - 实时查询，不使用缓存
    */
   async getLeaderboard(options?: {
     seasonId?: string;
@@ -103,27 +87,11 @@ export class LeaderboardService {
       ? normalizeZoneStyle(options.zoneStyle)
       : undefined;
 
-    // 先尝试获取最近的快照
-    const snapshot = await prisma.leaderboard.findFirst({
-      where: {
-        seasonId: options?.seasonId,
-        zoneStyle: normalizedZoneStyle,
-        type: options?.type,
-      },
-      orderBy: { calculatedAt: 'desc' },
-    });
-
-    let rankings: LeaderboardEntry[] = [];
-    if (snapshot) {
-      // Prisma JSONB 字段已自动解析，直接使用类型断言
-      rankings = snapshot.rankings as unknown as LeaderboardEntry[];
-    } else {
-      // 生成新的排行榜
-      const generateOptions = options?.zoneStyle
-        ? { ...options, zoneStyle: normalizedZoneStyle }
-        : options;
-      rankings = await this.generateLeaderboard(generateOptions);
-    }
+    // 实时生成排行榜
+    const generateOptions = options?.zoneStyle
+      ? { ...options, zoneStyle: normalizedZoneStyle }
+      : options;
+    const rankings = await this.generateLeaderboard(generateOptions);
 
     // 分页
     return {
@@ -162,46 +130,32 @@ export class LeaderboardService {
   async getBookLeaderboardInfo(bookId: string) {
     const book = await prisma.book.findUnique({
       where: { id: bookId },
-      include: { score: true },
+      // score 已合并到 Book 表，使用 Book 的直接字段
     });
 
     if (!book) return null;
 
-    const { seasonId, zoneStyle, status } = book;
+    const { status } = book;
 
-    // 获取所有排行榜中的排名
-    const leaderboards = await prisma.leaderboard.findMany({
+    // 获取所有书籍按热度排序
+    const allBooks = await prisma.book.findMany({
       where: {
-        OR: [
-          { seasonId, zoneStyle },
-          { seasonId, zoneStyle: null },
-          { seasonId: null, zoneStyle },
-        ],
+        status: { not: 'DISCONTINUED' },
       },
-      orderBy: { calculatedAt: 'desc' },
+      orderBy: { heatValue: 'desc' },
+      select: { id: true },
     });
 
-    let bestRank: number | null = null;
-    let rankType: string | null = null;
-
-    for (const lb of leaderboards) {
-      // Prisma JSONB 字段已自动解析，直接使用类型断言
-      const rankings = lb.rankings as unknown as LeaderboardEntry[];
-      const entry = rankings.find((r: LeaderboardEntry) => r.bookId === bookId);
-      if (entry) {
-        if (bestRank === null || entry.rank < bestRank) {
-          bestRank = entry.rank;
-          rankType = lb.type;
-        }
-      }
-    }
+    // 找到当前书籍的排名
+    const rankIndex = allBooks.findIndex(b => b.id === bookId);
+    const bestRank = rankIndex >= 0 ? rankIndex + 1 : null;
 
     return {
       bookId,
       bestRank,
-      rankType,
-      currentHeat: book.score?.heatValue || 0,
-      currentScore: book.score?.finalScore || 0,
+      rankType: 'heat',
+      currentHeat: book.heatValue || 0,
+      currentScore: book.finalScore || 0,
       status,
     };
   }

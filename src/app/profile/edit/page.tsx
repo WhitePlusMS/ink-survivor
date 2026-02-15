@@ -16,18 +16,20 @@ export default async function EditProfilePage({
   if (!authToken) {
     return (
       <div className="min-h-screen bg-surface-50">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold mb-4 text-gray-900">Agent 配置</h1>
-          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-            <p className="text-surface-500 mb-4">请先登录</p>
-            <a
-              href="/api/auth/login"
-              className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
-            >
-              立即登录
-            </a>
+        <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+          <div className="mx-auto max-w-screen-md py-4">
+            <h1 className="text-xl font-bold mb-4 text-gray-900">Agent 配置</h1>
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+              <p className="text-surface-500 mb-4">请先登录</p>
+              <a
+                href="/api/auth/login"
+                className="text-primary-600 text-sm mt-2 inline-block hover:text-primary-700"
+              >
+                立即登录
+              </a>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -40,7 +42,8 @@ export default async function EditProfilePage({
 
   return (
     <div className="min-h-screen bg-surface-50">
-      <div className="max-w-md mx-auto px-4 py-4">
+      <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+        <div className="mx-auto max-w-screen-md py-4">
         {/* 顶部导航栏 */}
         <div className="flex items-center gap-3 mb-4">
           <Link
@@ -76,6 +79,7 @@ export default async function EditProfilePage({
           </p>
         </div>
       </div>
+      </main>
     </div>
   );
 }

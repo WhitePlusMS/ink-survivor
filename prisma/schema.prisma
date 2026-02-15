@@ -1,6 +1,5 @@
-// Prisma Schema - 番茄小说创作平台数据库设计
-// 根据 PRD 产品需求文档定义数据模型
-// 优化版本：JSON→JSONB、添加FK约束、清理冗余字段
+// Prisma Schema - InkSurvivor 创作平台数据库设计
+// 优化版本 V2：合并 1:1 关联表，删除无用表，提升查询性能
 
 generator client {
   provider = "prisma-client-js"
@@ -11,7 +10,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==================== 用户与认证 ====================
+// ==================== 用户模块 (合并后) ====================
+// 合并了 User, UserToken, UserLevel
 
 model User {
   id              String    @id @default(cuid())
@@ -19,187 +19,101 @@ model User {
   nickname        String
   avatar          String?
   email           String?
+  isAdmin         Boolean   @default(false)
 
-  // 管理员权限
-  isAdmin         Boolean   @default(false)  // 是否为管理员
+  // Agent 配置
+  agentConfig     Json?
+  readerConfig    Json?
 
-  // Agent 配置 - JSONB 类型支持高效查询
-  agentConfig     Json?     // 作者配置
-  readerConfig    Json?     // 读者配置
-
-  // 统计数据
-  totalInk        Int       @default(0)
-  // @deprecated: 已删除，使用 UserLevel.booksWritten
-  // booksWritten    Int       @default(0)
-  seasonsJoined   Int       @default(0)
-  // @deprecated: 已删除，从 SeasonParticipation.rankings 汇总
-  // highestRank     Int       @default(0)
-
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  // 关联
-  token          UserToken?
-  userLevel      UserLevel?
-  books          Book[]
-  comments       Comment[]
-  readings       Reading[]
-}
-
-model UserToken {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  accessToken     String
-  refreshToken    String
+  // Token 信息 (从 UserToken 合并)
+  accessToken     String?
+  refreshToken    String?
   tokenType       String    @default("Bearer")
-  expiresAt       DateTime
-  refreshExpiresAt DateTime
-  scope           String
+  tokenExpiresAt      DateTime?
+  tokenRefreshExpiresAt DateTime?
+  tokenScope          String?
+  tokenIsValid        Boolean   @default(true)
+  tokenLastRefreshed  DateTime?
+  tokenRefreshCount   Int       @default(0)
 
-  isValid         Boolean   @default(true)
-  lastRefreshed   DateTime  @default(now())
-  refreshCount    Int       @default(0)
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model UserLevel {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  // 等级信息 (从 UserLevel 合并)
   level           Int       @default(1)
-  title           String    @default("新手作者")
+  levelTitle      String    @default("新手作者")
   totalPoints     Int       @default(0)
   seasonPoints    Int       @default(0)
-
   booksWritten    Int       @default(0)
   booksCompleted  Int       @default(0)
   totalCoins      Int       @default(0)
   totalFavorites  Int       @default(0)
-  unlockedFeatures Json     @default("[]") // JSON 数组格式 - 使用 Json 类型
+  unlockedFeatures Json     @default("[]")
+
+  // 统计数据
+  totalInk        Int       @default(0)
+  seasonsJoined   Int       @default(0)
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  // 关联
+  books           Book[]
+  comments        Comment[]
+  readings        Reading[]
 }
 
 // ==================== 赛季模块 ====================
 
 model Season {
   id              String    @id @default(cuid())
-  seasonNumber    Int
+  seasonNumber    Int       @unique
   status          String    @default("PENDING")  // PENDING, ACTIVE, FINISHED, CANCELLED
 
   themeKeyword    String
-  constraints     Json       // JSON 数组 - 使用 Json 类型
-  zoneStyles      Json       // JSON 数组 - 使用 Json 类型
+  constraints     Json
+  zoneStyles      Json
 
   signupDeadline  DateTime
   startTime       DateTime
   endTime         DateTime
 
-  duration        Json       @default("{\"reading\": 10, \"outline\": 5, \"writing\": 5}")  // 各阶段时长(Json)
+  duration        Json      @default("{\"reading\": 10, \"outline\": 5, \"writing\": 5}")
   maxChapters     Int       @default(10)
   minChapters     Int       @default(3)
 
-  rewards         Json       // JSON - 使用 Json 类型
+  rewards         Json
   participantCount Int      @default(0)
 
   // 赛季轮次状态
-  currentRound    Int       @default(0)      // 当前轮次 (0=报名期刚结束, 1=第一轮, 2=第二轮...)
+  currentRound    Int       @default(0)
   roundPhase      String    @default("NONE") // NONE, READING, OUTLINE, WRITING
   roundStartTime  DateTime?
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  participations  SeasonParticipation[]
   books           Book[]
 
-  @@unique([seasonNumber])
+  @@index([status])
 }
 
-model SeasonParticipation {
-  id              String    @id @default(cuid())
-  seasonId        String
-  season          Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  userId          String
-  // userId FK 约束在 prisma 层面无法直接添加（User表在后面定义），通过数据库迁移添加
+// 删除 SeasonParticipation - 字段与 Book 重复
 
-  bookTitle       String
-  shortDescription String
-  zoneStyle       String
-  plannedChapters Int?
+// 删除 Leaderboard - 使用内存缓存
 
-  status          String    @default("PENDING")
-  submittedAt     DateTime  @default(now())
-  chatSessionId   String?
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@unique([seasonId, userId])
-}
-
-model Leaderboard {
-  id              String    @id @default(cuid())
-  seasonId        String?
-  zoneStyle       String?
-  type            String    // 'heat', 'score', 'new'
-  rankings        Json      // JSON - 使用 Json 类型
-  calculatedAt    DateTime  @default(now())
-
-  @@index([seasonId, zoneStyle, type])
-}
-
-// ==================== 赛季队列管理 ====================
-
-// 预配置的赛季队列
-model SeasonQueue {
-  id              String    @id @default(cuid())
-  seasonNumber    Int       @unique  // 赛季编号
-  themeKeyword    String
-
-  // 赛季配置 - JSONB 类型
-  constraints     Json       // JSON 数组
-  zoneStyles      Json       // JSON 数组
-  maxChapters     Int       @default(7)
-  minChapters     Int       @default(3)
-  duration        Json       // JSON: 各阶段时长
-  rewards         Json       // JSON
-
-  // 发布计划
-  plannedStartTime DateTime? // 计划开始时间
-  intervalHours   Int       @default(2)  // 与上一赛季的间隔时间(小时)
-
-  // 状态
-  status          String    @default("DRAFT")  // DRAFT, SCHEDULED, PUBLISHED, SKIPPED
-  publishedAt     DateTime?
-  publishedSeasonId String?  // 实际发布后关联的 Season ID
-
-  // LLM 优化建议
-  llmSuggestion   String?   // LLM 生成的优化建议
-  llmOptimized    Boolean   @default(false)  // 是否已应用 LLM 优化
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
+// 删除 SeasonQueue - 未使用
 
 // 系统设置
 model SystemSettings {
   id              String    @id @default(cuid())
   key             String    @unique
-  value           Json      // JSON 值 - 使用 Json 类型
+  value           Json
   description     String?
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
 
-// ==================== 书籍模块 ====================
+// ==================== 书籍模块 (合并后) ====================
+// 合并了 Book, BookScore, Outline
 
 model Book {
   id              String    @id @default(cuid())
@@ -220,75 +134,15 @@ model Book {
   plannedChapters Int?
 
   inkBalance      Int       @default(0)
-  // @deprecated: 已删除，使用 BookScore.heatValue
-  // heat            Int       @default(0)
-  // @deprecated: 已删除，使用 COUNT(Chapter)
-  // chapterCount    Int       @default(0)
-
   participationId String?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  // ===== 大纲信息 (从 Outline 合并) =====
+  originalIntent  String?
+  characters      Json?
+  chaptersPlan    Json?
+  modificationLog Json?
 
-  outline         Outline?
-  chapters        Chapter[]
-  comments        Comment[]
-  readings        Reading[]
-  score           BookScore?
-}
-
-model Outline {
-  id              String    @id @default(cuid())
-  bookId          String    @unique
-  book            Book      @relation(fields: [bookId], references: [id])
-
-  originalIntent  String
-  characters      Json       // JSON - 使用 Json 类型
-  chaptersPlan    Json       // JSON 数组 - 使用 Json 类型
-  modificationLog Json?      // JSON 数组 - 使用 Json 类型
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-model Chapter {
-  id              String    @id @default(cuid())
-  bookId          String
-  book            Book      @relation(fields: [bookId], references: [id])
-
-  chapterNumber   Int
-  title           String
-  content         String    @default("")
-  contentLength   Int       @default(0)
-
-  status          String    @default("DRAFT")
-  publishedAt     DateTime?
-
-  chatSessionId   String?
-
-  readCount       Int       @default(0)
-  commentCount    Int       @default(0)
-  likeCount      Int       @default(0)
-  inkCost         Int       @default(10)
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  // 反向关系
-  comments        Comment[]
-  readings        Reading[]
-  likes           Like[]
-
-  @@unique([bookId, chapterNumber])
-}
-
-// ==================== 互动模块 ====================
-
-model BookScore {
-  id              String    @id @default(cuid())
-  bookId          String    @unique
-  book            Book      @relation(fields: [bookId], references: [id])
-
+  // ===== 评分信息 (从 BookScore 合并) =====
   viewCount       Int       @default(0)
   favoriteCount   Int       @default(0)
   likeCount       Int       @default(0)
@@ -304,14 +158,71 @@ model BookScore {
   finalScore      Float     @default(0)
   heatValue       Float     @default(0)
   completenessBonus Float   @default(0)
-
   adaptabilityBonus Float    @default(0)
   adoptionRate     Float    @default(0)
   adoptedComments  Int      @default(0)
 
-  lastCalculated   DateTime @default(now())
+  scoreLastCalculated DateTime?
+
+  createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  // 关联
+  chapters        Chapter[]
+  comments        Comment[]
+  readings        Reading[]
+
+  @@index([authorId])
+  @@index([seasonId])
+  @@index([zoneStyle])
+  @@index([status])
+  @@index([createdAt])
+  @@index([heatValue])
+  @@index([finalScore])
+  @@index([viewCount])
+  @@index([likeCount])
 }
+
+// 删除 Outline - 已合并到 Book
+// 删除 BookScore - 已合并到 Book
+
+// ==================== 章节模块 ====================
+
+model Chapter {
+  id              String    @id @default(cuid())
+  bookId          String
+  book            Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  chapterNumber   Int
+  title           String
+  content         String    @default("")
+  contentLength   Int       @default(0)
+
+  status          String    @default("DRAFT")
+  publishedAt     DateTime?
+
+  chatSessionId   String?
+
+  readCount       Int       @default(0)
+  commentCount    Int       @default(0)
+  likeCount       Int       @default(0)
+  inkCost         Int       @default(10)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // 反向关系
+  comments        Comment[]
+  readings        Reading[]
+  likes           Like[]
+
+  @@unique([bookId, chapterNumber])
+  @@index([bookId])
+  @@index([status])
+  @@index([publishedAt])
+}
+
+// ==================== 互动模块 ====================
 
 model Comment {
   id              String    @id @default(cuid())
@@ -337,6 +248,9 @@ model Comment {
   updatedAt       DateTime  @updatedAt
 
   @@index([bookId])
+  @@index([chapterId])
+  @@index([userId])
+  @@index([isAdopted])
 }
 
 model Reading {
@@ -365,7 +279,6 @@ model Like {
 
   createdAt       DateTime  @default(now())
 
-  // 同一用户对同一章节只能点赞一次
   @@unique([userId, chapterId])
   @@index([chapterId])
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Trophy, Clock, Flame, Users, ChevronDown, ChevronUp, CalendarX, Timer } from 'lucide-react';
+import { Trophy, Flame, Users, ChevronDown, ChevronUp, CalendarX, Timer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Season {
@@ -219,9 +219,6 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
       </div>
     );
   }
-
-  // 判断赛季是否已结束
-  const isSeasonEnded = timeLeft.hours === 0 && timeLeft.minutes === 0 && timeLeft.seconds === 0 && !endTime;
 
   return (
     <div className="space-y-3">

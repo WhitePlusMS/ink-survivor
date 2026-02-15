@@ -119,12 +119,12 @@ export class SeasonService {
 
   /**
    * 获取赛季的参与记录
+   * 注意：SeasonParticipation 表已删除，返回空数组
    */
-  async getSeasonParticipations(seasonId: string) {
-    return prisma.seasonParticipation.findMany({
-      where: { seasonId },
-      orderBy: { submittedAt: 'desc' },
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async getSeasonParticipations(_seasonId: string) {
+    // SeasonParticipation 表已删除，返回空数组
+    return [];
   }
 
   /**
@@ -280,12 +280,11 @@ export class SeasonService {
           where: { seasonId: season.id },
           include: {
             author: { select: { nickname: true } },
-            score: { select: { heatValue: true, viewCount: true, finalScore: true, avgRating: true } },
             _count: { select: { chapters: true } },
             chapters: { select: { readCount: true, commentCount: true } },
           },
-          // 使用 score.heatValue 排序
-          orderBy: { score: { heatValue: 'desc' } },
+          // 使用 Book.heatValue 排序（score 已合并到 Book 表）
+          orderBy: { heatValue: 'desc' },
           take: limitPerSeason,
         });
 
@@ -300,17 +299,17 @@ export class SeasonService {
             coverImage: book.coverImage ?? undefined,
             shortDesc: book.shortDesc ?? undefined,
             zoneStyle: book.zoneStyle,
-            // 使用 score.heatValue
-            heat: book.score?.heatValue ?? 0,
+            // 使用 Book.heatValue（score 已合并到 Book 表）
+            heat: book.heatValue ?? 0,
             chapterCount: book._count?.chapters ?? 0,
             viewCount: chapterReadCount,
             commentCount: chapterCommentCount,
             author: { nickname: book.author.nickname },
-            score: book.score ? {
-              heatValue: book.score.heatValue,
-              finalScore: book.score.finalScore,
-              avgRating: book.score.avgRating,
-            } : undefined,
+            score: {
+              heatValue: book.heatValue ?? 0,
+              finalScore: book.finalScore ?? 0,
+              avgRating: book.avgRating ?? 0,
+            },
             seasonNumber: season.seasonNumber,
           };
         });

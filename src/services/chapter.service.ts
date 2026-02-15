@@ -68,9 +68,14 @@ export class ChapterService {
     type: string;
     data?: Record<string, unknown>;
   }> {
+    // 使用 Book 的合并字段获取大纲
     const book = await prisma.book.findUnique({
       where: { id: bookId },
-      include: { outline: true, season: true },
+      select: {
+        title: true,
+        chaptersPlan: true,
+        season: true,
+      },
     });
 
     if (!book) {
@@ -78,20 +83,20 @@ export class ChapterService {
       return;
     }
 
-    const outline = book.outline;
-    if (!outline) {
-      yield { type: 'error', data: { message: 'Outline not found' } };
-      return;
-    }
-
-    // Prisma JSONB 字段已自动解析，直接使用类型断言
-    const chaptersPlan = outline.chaptersPlan as unknown as Array<{
+    // 使用 Book 的 chaptersPlan 字段
+    const chaptersPlan = book.chaptersPlan as unknown as Array<{
       number: number;
       title: string;
       summary: string;
       key_events: string[];
       word_count_target: number;
-    }>;
+    }> | null;
+
+    if (!chaptersPlan) {
+      yield { type: 'error', data: { message: 'Outline not found' } };
+      return;
+    }
+
     const chapterPlan = chaptersPlan.find((c: Record<string, unknown>) => c.number === chapterNumber);
 
     if (!chapterPlan) {

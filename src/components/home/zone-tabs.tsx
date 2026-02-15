@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { BookOpen, Building, Sword, Rocket } from '@/components/icons';
 
@@ -11,26 +10,23 @@ const ZONES = [
   { value: 'scifi', label: '科幻', icon: Rocket },
 ];
 
+interface ZoneTabsProps {
+  currentZone: string;
+  onZoneChange: (zone: string) => void;
+}
+
 /**
  * 分区 Tab 切换组件
- * 设计规范：粘性定位 + 流畅动画
+ * 使用回调函数，纯前端切换，瞬时响应
  */
-export function ZoneTabs() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const currentZone = searchParams.get('zone') || '';
-
-  const handleTabChange = (zone: string) => {
-    router.push(zone ? `/?zone=${zone}` : '/');
-  };
-
+export function ZoneTabs({ currentZone, onZoneChange }: ZoneTabsProps) {
   return (
     <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur-lg mb-6">
       <div className="flex gap-1 overflow-x-auto py-3 px-1 scrollbar-hide">
         {ZONES.map((zone) => (
           <button
             key={zone.value}
-            onClick={() => handleTabChange(zone.value)}
+            onClick={() => onZoneChange(zone.value)}
             className={cn(
               "relative whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 flex items-center gap-1.5",
               currentZone === zone.value

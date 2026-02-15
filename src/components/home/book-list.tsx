@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { BookCard } from './book-card';
 import { normalizeZoneStyle } from '@/lib/utils/zone';
 import { BookOpen } from '@/components/icons';
@@ -9,6 +8,7 @@ import { BookOpen } from '@/components/icons';
 export interface BookListProps {
   initialBooks?: Book[];
   showSeason?: boolean; // 是否在书籍卡片上显示赛季标签
+  zone?: string; // 当前选中的分区，从父组件传入
 }
 
 export interface Book {
@@ -34,10 +34,17 @@ export interface Book {
 /**
  * 书籍列表组件
  * 设计规范：瀑布流网格布局
+ * zone 参数从父组件传入，纯前端过滤，瞬时切换
  */
-export function BookList({ initialBooks, showSeason = true }: BookListProps) {
-  const searchParams = useSearchParams();
-  const zoneParam = searchParams.get('zone') || '';
+export function BookList({ initialBooks, showSeason = true, zone = '' }: BookListProps) {
+  // 使用传入的 zone 参数，而不是从 URL 读取
+  const zoneParam = zone;
+
+  // 调试日志
+  console.log('[BookList] zone:', zone, 'initialBooks count:', initialBooks?.length);
+  if (initialBooks?.length) {
+    console.log('[BookList] first book zoneStyle:', initialBooks[0].zoneStyle);
+  }
 
   // 本地状态存储从 localStorage 读取的实时热度
   const [localHeats, setLocalHeats] = useState<Record<string, number>>({});
@@ -69,7 +76,7 @@ export function BookList({ initialBooks, showSeason = true }: BookListProps) {
 
     const normalizedZone = normalizeZoneStyle(zoneParam);
     return initialBooks.filter((book) => {
-      const bookZone = normalizeZoneStyle(book.zoneStyle);
+      const bookZone = normalizeZoneStyle(book.zoneStyle || '');
       return bookZone === normalizedZone;
     });
   }, [initialBooks, zoneParam]);
@@ -99,8 +106,15 @@ export function BookList({ initialBooks, showSeason = true }: BookListProps) {
 
   return (
     <div>
-      {/* 网格布局 - 瀑布流 */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {/* 网格布局 - 响应式列数：手机1列 -> 大屏6列 */}
+      <div className="grid gap-4
+        grid-cols-1
+        sm:grid-cols-2
+        md:grid-cols-3
+        lg:grid-cols-4
+        xl:grid-cols-5
+        2xl:grid-cols-6
+      ">
         {sortedBooks.map((book, index) => {
           const localHeat = localHeats[book.id];
           const displayHeat = (localHeat !== undefined && localHeat > book.heat)

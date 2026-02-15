@@ -81,6 +81,16 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
     currentPhase: string;
     phaseDisplayName: string;
   } | null>(null);
+  const [currentZone, setCurrentZone] = useState('');
+  // 客户端状态保存书籍数据，避免切换分区时数据丢失
+  const [clientBooks, setClientBooks] = useState<Book[]>([]);
+
+  // 初始化客户端书籍数据
+  useEffect(() => {
+    if (books && books.length > 0) {
+      setClientBooks(books);
+    }
+  }, [books]);
 
   // 获取 S0 赛季状态
   useEffect(() => {
@@ -257,17 +267,6 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
     const showHistorySeasons = !season || (season && !isS0Season && !hasRealBooks);
     const hasFinishedSeasons = seasonsWithBooks && seasonsWithBooks.length > 0;
 
-    // 调试：打印实际值
-    console.log('[HomeContent] Debug:', {
-      seasonNumber: season?.seasonNumber,
-      seasonNumberType: typeof season?.seasonNumber,
-      isS0Season,
-      hasRealBooks,
-      showHistorySeasons,
-      hasFinishedSeasons,
-      seasonsWithBooksLength: seasonsWithBooks?.length,
-    });
-
     return (
       <>
         {/* 赛季 Banner */}
@@ -279,6 +278,9 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
           realParticipantCount={realParticipantCount}
           booksCount={books?.length ?? 0}
         />
+
+        {/* 分区 Tab - 放在往届赛季精彩作品上面 */}
+        <ZoneTabs currentZone={currentZone} onZoneChange={setCurrentZone} />
 
         {/* 已结束赛季的历史榜单 */}
         {showHistorySeasons && hasFinishedSeasons && (
@@ -301,7 +303,7 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
                   </span>
                 </div>
                 {/* 赛季内的书籍列表 */}
-                <BookList initialBooks={seasonData.books} showSeason={false} />
+                <BookList initialBooks={seasonData.books} showSeason={false} zone={currentZone} />
               </div>
             ))}
           </div>
@@ -438,21 +440,18 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
           </div>
         )}
 
-        {/* 分区 Tab */}
-        <ZoneTabs />
-
         {/* 书籍列表 */}
-        <BookList initialBooks={(books as Book[]) || []} />
+        <BookList initialBooks={clientBooks} zone={currentZone} />
       </>
     );
   }
 
-  // 未登录时显示登录入口
+  // 未登录时显示登录入口（参考主页全宽布局）
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24 w-full mx-auto">
       {/* 错误提示 */}
       {error && (
-        <div className="w-full max-w-xs mb-4">
+        <div className="w-full max-w-md mb-4">
           <Alert variant="error" dismissible onDismiss={clearError}>
             {error}
           </Alert>
@@ -460,7 +459,7 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
       )}
 
       {/* 欢迎语 */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-8 max-w-2xl">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-primary-100 to-primary-300 dark:from-primary-900/30 dark:to-primary-800/50 mb-4">
           <Sparkles className="w-8 h-8 text-primary-600 dark:text-primary-400" />
         </div>
@@ -473,7 +472,9 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
       </div>
 
       {/* 赛季信息 */}
-      <SeasonBanner season={season || undefined} latestFinishedSeason={latestFinishedSeason || undefined} />
+      <div className="w-full max-w-screen-xl">
+        <SeasonBanner season={season || undefined} latestFinishedSeason={latestFinishedSeason || undefined} />
+      </div>
 
       {/* 登录按钮 */}
       <div className="mt-8">
@@ -483,35 +484,48 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
         </Button>
       </div>
 
-      {/* 平台统计 */}
-      <PlatformStats
-        season={season}
-        realParticipantCount={realParticipantCount}
-        booksCount={books?.length ?? 0}
-      />
+      {/* 平台统计 - 全宽显示 */}
+      <div className="w-full max-w-screen-xl mt-8">
+        <PlatformStats
+          season={season}
+          realParticipantCount={realParticipantCount}
+          booksCount={books?.length ?? 0}
+        />
+      </div>
+
+      {/* 分区 Tab - 登录/未登录都显示 */}
+      <ZoneTabs currentZone={currentZone} onZoneChange={setCurrentZone} />
+
+      {/* 书籍列表 - 全宽显示 */}
       {season && (books?.length ?? 0) > 0 && (
-        <div className="w-full mt-6">
+        <div className="w-full max-w-screen-xl mt-6">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 px-1">
             本赛季热度 TOP 3
           </h2>
-          <BookList initialBooks={(books as Book[]).slice(0, 3)} showSeason={false} />
+          <BookList initialBooks={(books as Book[]) || []} zone={currentZone} showSeason={false} />
         </div>
       )}
-      {!season && (seasonsWithBooks?.length ?? 0) > 0 && (
-        <div className="w-full mt-6">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 px-1">
-            上赛季热度 TOP 3
-          </h2>
-          <BookList initialBooks={seasonsWithBooks![0].books.slice(0, 3)} showSeason={false} />
-        </div>
-      )}
+      {/* 往届赛季精彩作品 - 只显示有作品的赛季 */}
+      {!season && seasonsWithBooks && seasonsWithBooks.length > 0 && (() => {
+        // 找到第一个有书籍的赛季
+        const seasonWithBooks = seasonsWithBooks.find(s => s.books && s.books.length > 0);
+        if (!seasonWithBooks) return null;
+        return (
+          <div className="w-full max-w-screen-xl mt-6">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 px-1">
+              上赛季热度 TOP 3
+            </h2>
+            <BookList initialBooks={seasonWithBooks.books.slice(0, 3)} showSeason={false} zone={currentZone} />
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 /**
  * 平台统计组件
- * 设计原则：简洁的统计展示，使用真实数据
+ * 设计原则：简洁的统计展示，使用真实数据，全宽显示
  */
 function PlatformStats({
   season,
@@ -524,8 +538,8 @@ function PlatformStats({
 }) {
   const count = realParticipantCount ?? 0;
   return (
-    <div className="mt-4 mb-2">
-      <div className="grid grid-cols-3 gap-3 text-center max-w-xs mx-auto">
+    <div className="w-full">
+      <div className="grid grid-cols-3 gap-3 text-center max-w-screen-md mx-auto">
         <div className="p-4 bg-white dark:bg-surface-800 rounded-lg shadow-sm border border-surface-100 dark:border-surface-700">
           <div className="text-2xl font-bold text-primary-600 dark:text-primary-400">
             {/* 真实参与数，赛季进行中显示真实数据，否则显示 -- */}

@@ -390,20 +390,7 @@ export async function POST() {
             seasonId: season.id,
             status: 'ACTIVE',
             inkBalance: 50,
-          },
-        });
-
-        // 创建评分记录
-        await prisma.bookScore.create({
-          data: {
-            bookId: book.id,
-            finalScore: 0,
-            avgRating: 0,
-            viewCount: 0,
-            favoriteCount: 0,
-            likeCount: 0,
-            coinCount: 0,
-            completionRate: 0,
+            // 评分字段已在 Book 表中初始化
           },
         });
 
@@ -465,8 +452,8 @@ export async function POST() {
               }, 100);
 
               // 更新书籍热度 - 通过 score 表更新 heatValue
-              await prisma.bookScore.update({
-                where: { bookId: book.id },
+              await prisma.book.update({
+                where: { id: book.id },
                 data: { heatValue: 100 },
               });
 

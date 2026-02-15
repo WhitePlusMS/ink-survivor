@@ -53,12 +53,16 @@ export class ChapterWritingService {
       return;
     }
 
-    // 获取最新大纲（Outline 是 @unique 的）
-    const latestOutline = await prisma.outline.findUnique({
-      where: { bookId },
+    // 获取最新大纲 - 从 Book 表获取合并的字段
+    const latestOutline = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: {
+        chaptersPlan: true,
+        characters: true,
+      },
     });
 
-    if (!latestOutline) {
+    if (!latestOutline || !latestOutline.chaptersPlan) {
       console.error(`[Chapter] 书籍 ${bookId} 没有可用的大纲`);
       return;
     }
@@ -180,9 +184,9 @@ export class ChapterWritingService {
       },
     });
 
-    // 12. 更新评分（通过 BookScore 更新热度）
-    await prisma.bookScore.update({
-      where: { bookId },
+    // 12. 更新评分 - 使用 Book 的合并字段
+    await prisma.book.update({
+      where: { id: bookId },
       data: {
         heatValue: { increment: 100 }, // 发布加成
         finalScore: { increment: 100 + Math.floor(Math.random() * 50) },
@@ -299,12 +303,13 @@ export class ChapterWritingService {
       console.log(`[CatchUp] 书籍《${book.title}》当前 ${book._count.chapters} 章，需补 ${missingCount} 章`);
 
       try {
-        // 2.1 先生成大纲（如果没有）
-        const existingOutline = await prisma.outline.findUnique({
-          where: { bookId: book.id },
+        // 2.1 检查是否有大纲 - 从 Book 表获取
+        const existingBook = await prisma.book.findUnique({
+          where: { id: book.id },
+          select: { chaptersPlan: true },
         });
 
-        if (!existingOutline) {
+        if (!existingBook || !existingBook.chaptersPlan) {
           console.log(`[CatchUp] 书籍《${book.title}》没有大纲，生成整本书大纲`);
           await outlineGenerationService.generateOutline(book.id);
         }

@@ -9,6 +9,10 @@ import {
   CalculatedScore,
 } from '@/types/score';
 
+// 简单的内存缓存：bookId -> { score, timestamp }
+const scoreCache = new Map<string, { score: CalculatedScore; timestamp: number }>();
+const CACHE_TTL = 60000; // 缓存有效期 60 秒
+
 export class ScoreService {
   // 权重配置
   private scoreWeights: ScoreWeights = {
@@ -39,13 +43,69 @@ export class ScoreService {
   };
 
   /**
+   * 检查缓存是否有效
+   */
+  private isCacheValid(bookId: string): boolean {
+    const cached = scoreCache.get(bookId);
+    if (!cached) return false;
+    return Date.now() - cached.timestamp < CACHE_TTL;
+  }
+
+  /**
+   * 获取缓存的分数
+   */
+  private getCachedScore(bookId: string): CalculatedScore | null {
+    if (this.isCacheValid(bookId)) {
+      return scoreCache.get(bookId)!.score;
+    }
+    return null;
+  }
+
+  /**
+   * 设置缓存
+   */
+  private setCache(bookId: string, score: CalculatedScore): void {
+    scoreCache.set(bookId, { score, timestamp: Date.now() });
+  }
+
+  /**
+   * 增量更新分数 - 当有互动发生时调用，避免完整重算
+   */
+  async incrementScore(bookId: string, type: 'view' | 'like' | 'favorite' | 'coin' | 'comment'): Promise<void> {
+    const weightMap: Record<string, { heat: number; interaction: number }> = {
+      view: { heat: 1.0, interaction: 1.0 },
+      like: { heat: 1.5, interaction: 1.5 },
+      favorite: { heat: 2.0, interaction: 2.0 },
+      coin: { heat: 3.0, interaction: 3.0 },
+      comment: { heat: 0.5, interaction: 0.5 },
+    };
+
+    const weights = weightMap[type];
+    if (!weights) return;
+
+    // 直接增量更新 heatValue 和 interactionScore - 使用 Book 的合并字段
+    await prisma.book.update({
+      where: { id: bookId },
+      data: {
+        heatValue: { increment: weights.heat },
+        interactionScore: { increment: weights.interaction },
+        scoreLastCalculated: new Date(),
+      },
+    });
+
+    // 清除缓存
+    scoreCache.delete(bookId);
+    console.log(`[ScoreService] Incremented ${type} for book ${bookId}`);
+  }
+
+  /**
    * 获取书籍评分数据
    */
   async getBookScoreData(bookId: string): Promise<BookScoreData | null> {
     const book = await prisma.book.findUnique({
       where: { id: bookId },
       include: {
-        score: true,
+        // score 已合并到 Book 表，使用 Book 的直接字段
         chapters: {
           where: { status: 'PUBLISHED' },
           orderBy: { publishedAt: 'desc' },
@@ -57,22 +117,22 @@ export class ScoreService {
 
     // 计算平均完读率
     const avgCompletionRate = book.chapters.length > 0
-      ? book.chapters.reduce((sum, c) => sum + (c.readCount > 0 ? 1 : 0), 0) / book.chapters.length
+      ? book.chapters.reduce((sum: number, c) => sum + (c.readCount > 0 ? 1 : 0), 0) / book.chapters.length
       : 0;
 
     return {
       bookId,
       interaction: {
-        viewCount: book.score?.viewCount || 0,
-        favoriteCount: book.score?.favoriteCount || 0,
-        likeCount: book.score?.likeCount || 0,
-        coinCount: book.score?.coinCount || 0,
+        viewCount: book.viewCount || 0,
+        favoriteCount: book.favoriteCount || 0,
+        likeCount: book.likeCount || 0,
+        coinCount: book.coinCount || 0,
         completionRate: avgCompletionRate,
       },
       sentiment: {
-        avgSentiment: book.score?.avgSentiment || 0,
-        readerCount: book.score?.readerCount || 0,
-        avgRating: book.score?.avgRating || 0,
+        avgSentiment: book.avgSentiment || 0,
+        readerCount: book.readerCount || 0,
+        avgRating: book.avgRating || 0,
         willingness: 0.5, // 从用户配置获取，简化处理
       },
       adaptability: 0.5,
@@ -175,9 +235,17 @@ export class ScoreService {
   }
 
   /**
-   * 计算完整评分
+   * 计算完整评分 - 优化版本：使用缓存
    */
-  async calculateFullScore(bookId: string): Promise<CalculatedScore> {
+  async calculateFullScore(bookId: string, forceRecalculate = false): Promise<CalculatedScore> {
+    // 如果不强制重算且缓存有效，直接返回缓存
+    if (!forceRecalculate) {
+      const cached = this.getCachedScore(bookId);
+      if (cached) {
+        return cached;
+      }
+    }
+
     const data = await this.getBookScoreData(bookId);
     if (!data) {
       throw new Error('Book not found');
@@ -197,9 +265,9 @@ export class ScoreService {
       data.publishedAt
     );
 
-    // 保存到数据库
-    await prisma.bookScore.update({
-      where: { bookId },
+    // 保存到数据库 - 使用 Book 的合并字段
+    await prisma.book.update({
+      where: { id: bookId },
       data: {
         interactionScore,
         sentimentScore,
@@ -207,13 +275,11 @@ export class ScoreService {
         heatValue,
         completenessBonus: completenessBonus > 1 ? 50 : 0,
         adaptabilityBonus: adaptabilityBonusValue,
-        lastCalculated: new Date(),
+        scoreLastCalculated: new Date(),
       },
     });
 
-    console.log(`[ScoreService] Score calculated for book ${bookId}: finalScore=${finalScore}, heatValue=${heatValue}`);
-
-    return {
+    const result = {
       interactionScore,
       sentimentScore,
       finalScore,
@@ -221,6 +287,13 @@ export class ScoreService {
       adaptabilityBonus: adaptabilityBonusValue,
       completenessBonus,
     };
+
+    // 设置缓存
+    this.setCache(bookId, result);
+
+    console.log(`[ScoreService] Score calculated for book ${bookId}: finalScore=${finalScore}, heatValue=${heatValue}`);
+
+    return result;
   }
 
   /**
@@ -228,10 +301,10 @@ export class ScoreService {
    */
   async getBookRank(bookId: string): Promise<number> {
     const score = await this.calculateFullScore(bookId);
-    const higherCount = await prisma.bookScore.count({
+    const higherCount = await prisma.book.count({
       where: {
         heatValue: { gt: score.heatValue },
-        book: { status: { not: 'DISCONTINUED' } },
+        status: { not: 'DISCONTINUED' },
       },
     });
 

@@ -1,5 +1,6 @@
-import { Medal, Settings, Sparkles, User, Mail } from 'lucide-react';
+import { Medal, Settings, Mail } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 interface UserInfoProps {
@@ -47,10 +48,11 @@ export function UserInfo({ user, level }: UserInfoProps) {
         <div className="relative -mt-16 mb-4 inline-block">
           <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-white shadow-lg bg-gradient-to-br from-primary-400 to-primary-600">
             {user.avatar ? (
-              <img
+              <Image
                 src={user.avatar}
                 alt={user.nickname}
-                className="h-full w-full object-cover"
+                fill
+                className="object-cover"
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-white text-2xl font-bold">

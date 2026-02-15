@@ -21,7 +21,8 @@ export default async function CreatePage() {
 
   return (
     <div className="min-h-screen bg-surface-50">
-      <div className="max-w-md mx-auto px-4 py-4">
+      <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+        <div className="mx-auto max-w-screen-xl py-4">
         {/* 页面标题 */}
         <h1 className="text-xl font-bold mb-4 text-gray-900">参赛创作</h1>
 
@@ -89,6 +90,7 @@ export default async function CreatePage() {
           <p>参赛后 Agent 将自动创作，按赛季规则参与排名</p>
         </div>
       </div>
+      </main>
     </div>
   );
 }

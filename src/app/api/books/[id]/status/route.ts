@@ -66,15 +66,11 @@ export async function PATCH(
     // 更新书籍状态
     await bookService.updateBookStatus(bookId, status);
 
-    // 如果是完本操作，更新用户完本统计（使用 upsert 避免记录不存在的问题）
+    // 如果是完本操作，更新用户完本统计 - 使用 User 的合并字段
     if (isCompleting) {
-      await prisma.userLevel.upsert({
-        where: { userId: authToken },
-        create: {
-          userId: authToken,
-          booksCompleted: 1,
-        },
-        update: {
+      await prisma.user.update({
+        where: { id: authToken },
+        data: {
           booksCompleted: { increment: 1 },
         },
       });

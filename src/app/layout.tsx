@@ -36,9 +36,8 @@ export default function RootLayout({
           <div className="hidden lg:block">
             <Header />
             <main className="min-h-screen">
-              <div className="max-w-6xl mx-auto px-6 py-6">
-                {children}
-              </div>
+              {/* 全宽布局，页面自行控制宽度 */}
+              {children}
             </main>
           </div>
 
@@ -46,9 +45,8 @@ export default function RootLayout({
           <div className="lg:hidden">
             <Header />
             <main className="pb-20">
-              <div className="max-w-md mx-auto px-4 py-4">
-                {children}
-              </div>
+              {/* 移动端也使用全宽，由页面自行控制 */}
+              {children}
             </main>
             <BottomNav />
           </div>

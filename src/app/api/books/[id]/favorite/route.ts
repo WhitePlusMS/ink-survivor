@@ -38,14 +38,14 @@ export async function POST(
 
     const result = await interactionService.toggleFavorite(bookId, authToken);
 
-    // 获取书籍最新的热度值
+    // 获取书籍最新的热度值 - 使用 Book 的合并字段
     const book = await prisma.book.findUnique({
       where: { id: bookId },
-      include: { score: { select: { heatValue: true } } },
+      select: { heatValue: true },
     });
 
     const responseData = ToggleFavoriteResponseDto.fromResult(result);
-    responseData.heat = book?.score?.heatValue || 0;
+    responseData.heat = book?.heatValue || 0;
 
     return NextResponse.json({
       code: 0,

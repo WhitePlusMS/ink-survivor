@@ -63,26 +63,29 @@ export default async function HomePage() {
         ...activeBooks,
         ...draftBooks.filter((draft) => !activeBooks.some((active) => active.id === draft.id)),
       ];
-      const rawBooks = mergedBooks.sort((a, b) => (b.score?.heatValue ?? 0) - (a.score?.heatValue ?? 0));
+      // 使用 Book 的合并字段 heatValue 进行排序
+      const rawBooks = mergedBooks.sort((a, b) => (b.heatValue ?? 0) - (a.heatValue ?? 0));
 
       console.log('[HomePage] 当前赛季ID:', season.id, '赛季号:', season.seasonNumber);
       console.log('[HomePage] 找到书籍数量:', rawBooks.length);
       rawBooks.forEach((b, i) => {
-        console.log(`[HomePage] 书籍 ${i + 1}: ${b.title} - heatValue: ${b.score?.heatValue ?? 0}, seasonId: ${b.seasonId?.slice(0, 8)}...`);
+        console.log(`[HomePage] 书籍 ${i + 1}: ${b.title} - heatValue: ${b.heatValue ?? 0}, seasonId: ${b.seasonId?.slice(0, 8)}...`);
       });
 
+      // 使用 Book 的合并字段
       books = (rawBooks || []).map((b) => ({
         id: b.id,
         title: b.title,
         coverImage: b.coverImage ?? undefined,
         shortDesc: b.shortDesc ?? undefined,
         zoneStyle: b.zoneStyle,
-        heat: b.score?.heatValue ?? 0,
-        chapterCount: b._count?.chapters ?? 0,
-        author: { nickname: b.author.nickname },
+        heat: b.heatValue ?? 0,
+        chapterCount: b.chapterCount ?? 0,
+        author: { nickname: b.author?.nickname ?? '未知' },
         viewCount: b.viewCount ?? 0,
         commentCount: b.commentCount ?? 0,
-        score: b.score ? { finalScore: b.score.finalScore, avgRating: b.score.avgRating } : undefined,
+        // 使用 Book 的合并字段
+        score: b.finalScore ? { finalScore: b.finalScore, avgRating: b.avgRating ?? 0 } : undefined,
       }));
 
       const previousSeasonData = await seasonService.getPreviousSeason(season.id);
@@ -97,16 +100,19 @@ export default async function HomePage() {
     } else {
       seasonsWithBooks = await seasonService.getAllSeasonsWithTopBooks({ limitPerSeason: 5 });
 
-      if (seasonsWithBooks.length > 0) {
+      // 找到第一个有作品的赛季作为最新结束赛季
+      const seasonWithBooks = seasonsWithBooks.find(s => s.books && s.books.length > 0);
+
+      if (seasonWithBooks) {
         latestFinishedSeason = {
-          id: seasonsWithBooks[0].id,
-          seasonNumber: seasonsWithBooks[0].seasonNumber,
-          themeKeyword: seasonsWithBooks[0].themeKeyword,
-          endTime: seasonsWithBooks[0].endTime,
+          id: seasonWithBooks.id,
+          seasonNumber: seasonWithBooks.seasonNumber,
+          themeKeyword: seasonWithBooks.themeKeyword,
+          endTime: seasonWithBooks.endTime,
         };
       }
 
-      console.log('[HomePage] No active season, loaded', seasonsWithBooks.length, 'finished seasons with top 5 books each');
+      console.log('[HomePage] No active season, loaded', seasonsWithBooks.length, 'finished seasons with top 5 books each', seasonWithBooks ? `, first with books: S${seasonWithBooks.seasonNumber}` : ', no seasons with books');
     }
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
@@ -115,16 +121,18 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4">
-      {/* 赛季 Banner */}
-      <HomeContent
-        season={season}
-        realParticipantCount={realParticipantCount}
-        books={books}
-        seasonsWithBooks={seasonsWithBooks}
-        latestFinishedSeason={latestFinishedSeason}
-        previousSeason={previousSeason}
-      />
+    <div className="min-h-screen">
+      {/* 全宽布局 */}
+      <main className="w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+        <HomeContent
+          season={season}
+          realParticipantCount={realParticipantCount}
+          books={books}
+          seasonsWithBooks={seasonsWithBooks}
+          latestFinishedSeason={latestFinishedSeason}
+          previousSeason={previousSeason}
+        />
+      </main>
     </div>
   );
 }

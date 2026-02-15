@@ -5,7 +5,7 @@ import { SecondMeClient } from '@/lib/secondme/client';
 import { buildOutlinePrompt } from '@/lib/secondme/prompts';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { OutlineData, ChapterPlan, GenerateOutlineParams, Character } from '@/types/outline';
-import { toJsonValue, fromJsonValue } from '@/lib/utils/jsonb-utils';
+import { toJsonValue, fromJsonValue, safeJsonField } from '@/lib/utils/jsonb-utils';
 
 export class OutlineService {
   /**
@@ -79,31 +79,18 @@ export class OutlineService {
   }
 
   /**
-   * 保存大纲到数据库
+   * 保存大纲到数据库 - 使用 Book 的合并字段
    * JSONB 类型直接传入对象，Prisma 自动处理
    */
   async saveOutline(bookId: string, outline: OutlineData) {
-    // 更新或创建 Outline
-    await prisma.outline.upsert({
-      where: { bookId },
-      create: {
-        bookId,
+    // 使用 Book 的合并字段保存大纲
+    await prisma.book.update({
+      where: { id: bookId },
+      data: {
         originalIntent: outline.summary,
         // JSONB 直接传入数组
         characters: toJsonValue(outline.characters),
         chaptersPlan: toJsonValue(outline.chapters),
-      },
-      update: {
-        originalIntent: outline.summary,
-        characters: toJsonValue(outline.characters),
-        chaptersPlan: toJsonValue(outline.chapters),
-      },
-    });
-
-    // 更新书籍状态和计划章节数
-    await prisma.book.update({
-      where: { id: bookId },
-      data: {
         longDesc: outline.summary,
         plannedChapters: outline.chapters.length,
       },
@@ -113,12 +100,25 @@ export class OutlineService {
   }
 
   /**
-   * 获取大纲
+   * 获取大纲 - 从 Book 表获取
    */
   async getOutline(bookId: string) {
-    return prisma.outline.findUnique({
-      where: { bookId },
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: {
+        originalIntent: true,
+        characters: true,
+        chaptersPlan: true,
+      },
     });
+
+    if (!book) return null;
+
+    return {
+      summary: book.originalIntent || '',
+      characters: safeJsonField(book.characters, []),
+      chapters: safeJsonField(book.chaptersPlan, []),
+    };
   }
 
   /**
@@ -131,10 +131,10 @@ export class OutlineService {
 
     return {
       title: '',
-      summary: outline.originalIntent,
-      // JSONB 自动解析
-      characters: fromJsonValue<Character[]>(outline.characters) || [],
-      chapters: fromJsonValue<ChapterPlan[]>(outline.chaptersPlan) || [],
+      summary: outline.summary,
+      // JSONB 自动解析 - 使用类型断言
+      characters: (outline.characters as Character[]) || [],
+      chapters: (outline.chapters as ChapterPlan[]) || [],
       themes: [],
       tone: '',
     };
@@ -149,11 +149,17 @@ export class OutlineService {
     chapterNumber: number,
     plan: Partial<ChapterPlan>
   ) {
-    const outline = await prisma.outline.findUnique({ where: { bookId } });
-    if (!outline) throw new Error('Outline not found');
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: {
+        chaptersPlan: true,
+        modificationLog: true,
+      },
+    });
+    if (!book) throw new Error('Book not found');
 
     // JSONB 自动解析
-    const chapters = fromJsonValue<ChapterPlan[]>(outline.chaptersPlan) || [];
+    const chapters = fromJsonValue<ChapterPlan[]>(book.chaptersPlan) || [];
     const index = chapters.findIndex((c) => c.number === chapterNumber);
     if (index === -1) throw new Error('Chapter not found');
 
@@ -164,15 +170,15 @@ export class OutlineService {
       chapterNumber: number;
       updatedAt: string;
       changes: Partial<ChapterPlan>;
-    }>>(outline.modificationLog) || [];
+    }>>(book.modificationLog) || [];
     mods.push({
       chapterNumber,
       updatedAt: new Date().toISOString(),
       changes: plan,
     });
 
-    return prisma.outline.update({
-      where: { bookId },
+    return prisma.book.update({
+      where: { id: bookId },
       data: {
         chaptersPlan: toJsonValue(chapters),
         modificationLog: toJsonValue(mods),
@@ -189,23 +195,26 @@ export class OutlineService {
     chapterNumber: number,
     changes: Partial<ChapterPlan>
   ) {
-    const outline = await prisma.outline.findUnique({ where: { bookId } });
-    if (!outline) return;
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { modificationLog: true },
+    });
+    if (!book) return;
 
     // JSONB 自动解析和处理
     const mods = fromJsonValue<Array<{
       chapterNumber: number;
       updatedAt: string;
       changes: Partial<ChapterPlan>;
-    }>>(outline.modificationLog) || [];
+    }>>(book.modificationLog) || [];
     mods.push({
       chapterNumber,
       updatedAt: new Date().toISOString(),
       changes,
     });
 
-    await prisma.outline.update({
-      where: { bookId },
+    await prisma.book.update({
+      where: { id: bookId },
       data: {
         modificationLog: toJsonValue(mods),
       },

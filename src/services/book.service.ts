@@ -6,7 +6,7 @@ import { normalizeZoneStyle } from '@/lib/utils/zone';
 
 export class BookService {
   /**
-   * 获取书籍列表
+   * 获取书籍列表 - 优化版本：使用数据库聚合替代代码循环
    */
   async getBooks(options?: {
     zoneStyle?: string;
@@ -27,34 +27,30 @@ export class BookService {
         where,
         include: {
           author: { select: { id: true, nickname: true, avatar: true } },
-          score: { select: { viewCount: true, finalScore: true, avgRating: true, heatValue: true } },
-          _count: { select: { chapters: true } },
-          chapters: { select: { readCount: true, commentCount: true } },
+          // score 已合并到 Book 表，使用 Book 的直接字段
+          _count: {
+            select: {
+              chapters: true,
+              comments: { where: { chapterId: null } }, // 只统计书籍评论，不含章节评论
+            },
+          },
         },
-        orderBy: { score: { heatValue: 'desc' } },
+        orderBy: { heatValue: 'desc' },
         take: options?.limit || 20,
         skip: options?.offset || 0,
       }),
       prisma.book.count({ where }),
     ]);
 
-    // 聚合计算整本书的观看数和评论数（章节级别的）
-    const booksWithAggregatedStats = books.map((book) => {
-      const chapterStats = book.chapters.reduce(
-        (acc: { viewCount: number; commentCount: number }, ch: { readCount?: number; commentCount?: number }) => ({
-          viewCount: acc.viewCount + (ch.readCount || 0),
-          commentCount: acc.commentCount + (ch.commentCount || 0),
-        }),
-        { viewCount: 0, commentCount: 0 }
-      );
-      return {
-        ...book,
-        viewCount: chapterStats.viewCount,
-        commentCount: chapterStats.commentCount,
-      };
-    });
+    // 直接使用 _count 结果，无需代码聚合
+    const booksWithStats = books.map((book) => ({
+      ...book,
+      chapterCount: book._count.chapters,
+      commentCount: book._count.comments,
+      viewCount: book.viewCount || 0,
+    }));
 
-    return { books: booksWithAggregatedStats, total };
+    return { books: booksWithStats, total };
   }
 
   /**
@@ -66,11 +62,11 @@ export class BookService {
       include: {
         author: { select: { id: true, nickname: true, avatar: true } },
         season: { select: { id: true, seasonNumber: true, themeKeyword: true } },
-        outline: true,
+        // outline 字段已合并到 Book 表
         chapters: {
           orderBy: { chapterNumber: 'asc' },
         },
-        score: true,
+        // score 已合并到 Book 表，使用 Book 的直接字段
         _count: { select: { chapters: true, comments: true } },
       },
     });
@@ -96,12 +92,8 @@ export class BookService {
         seasonId: data.seasonId,
         status: 'DRAFT',
         inkBalance: 50, // 参赛初始 Ink
+        // 初始化评分字段（默认值为0，由 schema 定义）
       },
-    });
-
-    // 创建空的 BookScore
-    await prisma.bookScore.create({
-      data: { bookId: book.id },
     });
 
     console.log(`[BookService] Created book: ${book.id}`);
@@ -136,12 +128,11 @@ export class BookService {
   }
 
   /**
-   * 更新书籍热度
+   * 更新书籍热度 - 使用 Book.heatValue (已合并)
    */
   async updateHeat(bookId: string, heatDelta: number) {
-    // 更新 BookScore.heatValue
-    await prisma.bookScore.update({
-      where: { bookId },
+    await prisma.book.update({
+      where: { id: bookId },
       data: { heatValue: { increment: heatDelta } },
     });
   }
@@ -159,12 +150,11 @@ export class BookService {
   }
 
   /**
-   * 增加阅读量
+   * 增加阅读量 - 使用 Book 的合并字段
    */
   async incrementReadCount(bookId: string) {
-    // 更新 BookScore.heatValue 和 viewCount
-    await prisma.bookScore.update({
-      where: { bookId },
+    await prisma.book.update({
+      where: { id: bookId },
       data: {
         heatValue: { increment: 1 },
         viewCount: { increment: 1 },
@@ -192,7 +182,7 @@ export class BookService {
       where: { authorId },
       include: {
         season: { select: { id: true, seasonNumber: true, themeKeyword: true } },
-        outline: true,
+        // outline 字段已合并到 Book 表
         _count: { select: { chapters: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -212,7 +202,7 @@ export class BookService {
       },
       include: {
         author: { select: { id: true, nickname: true } },
-        score: true,
+        // score 已合并到 Book 表，使用 Book 的直接字段
         _count: { select: { chapters: true } },
       },
       orderBy: { createdAt: 'desc' },

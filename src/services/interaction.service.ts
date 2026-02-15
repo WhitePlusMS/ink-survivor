@@ -15,8 +15,8 @@ export class InteractionService {
     });
 
     // 获取当前热度值
-    const currentScore = await prisma.bookScore.findUnique({
-      where: { bookId },
+    const currentScore = await prisma.book.findUnique({
+      where: { id: bookId },
       select: { heatValue: true },
     });
     const currentHeat = currentScore?.heatValue || 0;
@@ -24,8 +24,8 @@ export class InteractionService {
     if (existing) {
       // 取消收藏
       await prisma.reading.delete({ where: { id: existing.id } });
-      await prisma.bookScore.update({
-        where: { bookId },
+      await prisma.book.update({
+        where: { id: bookId },
         data: {
           favoriteCount: { decrement: 1 },
           heatValue: { decrement: 3 },
@@ -40,7 +40,7 @@ export class InteractionService {
     } else {
       // 获取书籍的第一章（收藏时需要一个有效的 chapterId）
       const firstChapter = await prisma.chapter.findFirst({
-        where: { bookId },
+        where: { id: bookId },
         orderBy: { chapterNumber: 'asc' },
       });
 
@@ -58,8 +58,8 @@ export class InteractionService {
           finished: false,
         },
       });
-      await prisma.bookScore.update({
-        where: { bookId },
+      await prisma.book.update({
+        where: { id: bookId },
         data: {
           favoriteCount: { increment: 1 },
           heatValue: { increment: 3 },
@@ -90,8 +90,8 @@ export class InteractionService {
     }
 
     // 获取当前热度值
-    const currentScore = await prisma.bookScore.findUnique({
-      where: { bookId: chapter.bookId },
+    const currentScore = await prisma.book.findUnique({
+      where: { id: chapter.bookId },
       select: { heatValue: true },
     });
     const currentHeat = currentScore?.heatValue || 0;
@@ -111,8 +111,8 @@ export class InteractionService {
         data: { likeCount: { decrement: 1 } },
       });
       // 更新点赞统计和热度（-1.5）
-      await prisma.bookScore.update({
-        where: { bookId: chapter.bookId },
+      await prisma.book.update({
+        where: { id: chapter.bookId },
         data: {
           likeCount: { decrement: 1 },
           heatValue: { decrement: 1.5 },
@@ -134,8 +134,8 @@ export class InteractionService {
         data: { likeCount: { increment: 1 } },
       });
       // 更新点赞统计和热度（+1.5）
-      await prisma.bookScore.update({
-        where: { bookId: chapter.bookId },
+      await prisma.book.update({
+        where: { id: chapter.bookId },
         data: {
           likeCount: { increment: 1 },
           heatValue: { increment: 1.5 },
@@ -186,8 +186,8 @@ export class InteractionService {
     }
 
     // 获取当前热度值
-    const currentScore = await prisma.bookScore.findUnique({
-      where: { bookId },
+    const currentScore = await prisma.book.findUnique({
+      where: { id: bookId },
       select: { heatValue: true },
     });
     const currentHeat = currentScore?.heatValue || 0;
@@ -205,8 +205,8 @@ export class InteractionService {
     });
 
     // 更新打赏统计和热度（+ amount * 2）
-    await prisma.bookScore.update({
-      where: { bookId },
+    await prisma.book.update({
+      where: { id: bookId },
       data: {
         coinCount: { increment: amount },
         heatValue: { increment: amount * 2 },
@@ -226,15 +226,15 @@ export class InteractionService {
    */
   async poke(bookId: string, userId: string): Promise<{ success: boolean }> {
     // 获取当前热度值
-    const currentScore = await prisma.bookScore.findUnique({
-      where: { bookId },
+    const currentScore = await prisma.book.findUnique({
+      where: { id: bookId },
       select: { heatValue: true },
     });
     const currentHeat = currentScore?.heatValue || 0;
 
     // 更新热度 +1
-    await prisma.bookScore.update({
-      where: { bookId },
+    await prisma.book.update({
+      where: { id: bookId },
       data: { heatValue: { increment: 1 } },
     });
 
@@ -309,15 +309,15 @@ export class InteractionService {
     });
 
     // 获取当前热度值
-    const currentScore = await prisma.bookScore.findUnique({
-      where: { bookId },
+    const currentScore = await prisma.book.findUnique({
+      where: { id: bookId },
       select: { heatValue: true },
     });
     const currentHeat = currentScore?.heatValue || 0;
 
     // 更新热度 +1
-    await prisma.bookScore.update({
-      where: { bookId },
+    await prisma.book.update({
+      where: { id: bookId },
       data: { heatValue: { increment: 1 } },
     });
 
@@ -329,8 +329,8 @@ export class InteractionService {
    * 获取互动统计
    */
   async getInteractionStats(bookId: string) {
-    const score = await prisma.bookScore.findUnique({
-      where: { bookId },
+    const score = await prisma.book.findUnique({
+      where: { id: bookId },
     });
 
     const readingCount = await prisma.reading.count({
@@ -360,7 +360,7 @@ export class InteractionService {
         book: {
           include: {
             author: { select: { id: true, nickname: true, avatar: true } },
-            score: { select: { heatValue: true } },
+            // score 已合并到 Book 表，使用 Book 的直接字段
           },
         },
       },

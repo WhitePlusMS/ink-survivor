@@ -49,26 +49,31 @@ export class SecondMeClient {
       return SECONDME_CONFIG.TEST_TOKEN;
     }
 
-    const userToken = await prisma.userToken.findUnique({
-      where: { userId: this.userId },
+    const user = await prisma.user.findUnique({
+      where: { id: this.userId },
+      select: {
+        accessToken: true,
+        refreshToken: true,
+        tokenExpiresAt: true,
+      },
     });
 
-    if (!userToken) {
+    if (!user || !user.accessToken) {
       throw new Error('User token not found');
     }
 
     // 如果 Token 即将过期，刷新它
-    const expiresIn = userToken.expiresAt.getTime() - Date.now();
+    const expiresIn = user.tokenExpiresAt!.getTime() - Date.now();
     const threshold = SECONDME_CONFIG.TOKEN.REFRESH_THRESHOLD_MINUTES * 60 * 1000;
 
     if (expiresIn < threshold) {
       console.log('[SecondMeClient] Token expiring soon, refreshing');
-      const newTokens = await refreshAccessToken(userToken.refreshToken, this.userId);
+      const newTokens = await refreshAccessToken(user.refreshToken!, this.userId);
       await saveUserToken(this.userId, newTokens);
       return newTokens.accessToken;
     }
 
-    return userToken.accessToken;
+    return user.accessToken;
   }
 
   /**
@@ -309,7 +314,7 @@ let cachedToken: { userId: string; accessToken: string; expiresAt: number } | nu
 
 /**
  * 获取当前登录用户的 Access Token
- * 从数据库中获取当前用户的 Token
+ * 从数据库中获取当前用户的 Token - 使用 User 表的合并字段
  */
 export async function getCurrentUserToken(): Promise<string | null> {
   try {
@@ -318,18 +323,19 @@ export async function getCurrentUserToken(): Promise<string | null> {
     let userId = authToken;
 
     if (!userId) {
-      const latestToken = await prisma.userToken.findFirst({
-        where: { isValid: true },
+      // 查找最后一个有效的 token 对应的用户
+      const latestUser = await prisma.user.findFirst({
+        where: { tokenIsValid: true },
         orderBy: { updatedAt: 'desc' },
-        select: { userId: true },
+        select: { id: true },
       });
 
-      if (!latestToken) {
+      if (!latestUser) {
         console.log('[Token] 未找到 auth_token cookie');
         return null;
       }
 
-      userId = latestToken.userId;
+      userId = latestUser.id;
     }
 
     if (

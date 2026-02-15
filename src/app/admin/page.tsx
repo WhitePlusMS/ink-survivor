@@ -37,25 +37,29 @@ export default async function AdminPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-          赛季管理
-        </h1>
-        <p className="text-surface-500 dark:text-surface-400">
-          管理员：{nickname}
-        </p>
-      </div>
+    <div className="min-h-screen bg-surface-50">
+      <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24 py-8">
+        <div className="mx-auto max-w-screen-xl">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              赛季管理
+            </h1>
+            <p className="text-surface-500 dark:text-surface-400">
+              管理员：{nickname}
+            </p>
+          </div>
 
-      <AdminSeasonClient
-        season={currentSeason ? {
-          id: currentSeason.id,
-          seasonNumber: currentSeason.seasonNumber,
-          themeKeyword: currentSeason.themeKeyword,
-          status: currentSeason.status,
-        } : null}
-        phaseStatus={phaseStatus}
-      />
+          <AdminSeasonClient
+            season={currentSeason ? {
+              id: currentSeason.id,
+              seasonNumber: currentSeason.seasonNumber,
+              themeKeyword: currentSeason.themeKeyword,
+              status: currentSeason.status,
+            } : null}
+            phaseStatus={phaseStatus}
+          />
+        </div>
+      </main>
     </div>
   );
 }

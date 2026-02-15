@@ -43,10 +43,6 @@ export class UserService {
   async getUserById(userId: string) {
     return prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        token: { select: { scope: true, expiresAt: true, refreshCount: true } },
-        userLevel: true,
-      },
     });
   }
 
@@ -138,15 +134,39 @@ export class UserService {
 
   /**
    * 获取用户的赛季参赛记录
+   * 注意：SeasonParticipation 表已删除，改为从 Book 表查询
    */
   async getSeasonParticipations(userId: string) {
-    return prisma.seasonParticipation.findMany({
-      where: { userId },
+    // SeasonParticipation 表已删除，从 Book 表查询用户参与的赛季
+    const books = await prisma.book.findMany({
+      where: { authorId: userId, seasonId: { not: null } },
       include: {
-        season: true,
+        season: { select: { id: true, seasonNumber: true, themeKeyword: true, status: true } },
       },
-      orderBy: { submittedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
+
+    // 按赛季分组
+    const seasonMap = new Map<string, typeof books[0] & { submittedAt: Date }>();
+    for (const book of books) {
+      if (book.seasonId && !seasonMap.has(book.seasonId)) {
+        seasonMap.set(book.seasonId, { ...book, submittedAt: book.createdAt });
+      }
+    }
+
+    return Array.from(seasonMap.values())
+      .filter((book): book is typeof book & { season: NonNullable<typeof book.season> } => book.season !== null)
+      .map(book => ({
+        id: `participation-${book.seasonId}`,
+        userId,
+        seasonId: book.seasonId!,
+        submittedAt: book.submittedAt,
+        season: book.season,
+        // 补充 SeasonCard 需要的字段
+        bookTitle: book.title,
+        zoneStyle: book.zoneStyle,
+        status: book.status,
+      }));
   }
 
   /**
@@ -162,13 +182,22 @@ export class UserService {
         book: {
           include: {
             author: { select: { nickname: true, avatar: true } },
-            score: true,
+            // score 已合并到 Book 表，使用 Book 的直接字段
+            _count: { select: { chapters: true } },
           },
         },
       },
     });
 
-    return readings.map((r) => r.book);
+    return readings.map((r) => ({
+      ...r.book,
+      // 将 _count 转换为 score 格式（兼容前端）
+      score: {
+        heatValue: r.book.heatValue ?? 0,
+        finalScore: r.book.finalScore ?? 0,
+        avgRating: r.book.avgRating ?? 0,
+      },
+    }));
   }
 
   /**
@@ -192,7 +221,7 @@ export class UserService {
         where,
         include: {
           season: { select: { seasonNumber: true, themeKeyword: true } },
-          score: true,
+          // score 已合并到 Book 表，使用 Book 的直接字段
           _count: { select: { chapters: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -224,32 +253,15 @@ export class UserService {
   }
 
   /**
-   * 增加书籍创作数量
-   * 使用 UserLevel.booksWritten
+   * 增加书籍创作数量 - 使用 User.booksWritten (已合并)
    */
   async incrementBooksWritten(userId: string) {
-    // 先检查 UserLevel 是否存在
-    const userLevel = await prisma.userLevel.findUnique({
-      where: { userId },
+    return prisma.user.update({
+      where: { id: userId },
+      data: {
+        booksWritten: { increment: 1 },
+      },
     });
-
-    if (userLevel) {
-      // 更新已有的 UserLevel
-      return prisma.userLevel.update({
-        where: { userId },
-        data: {
-          booksWritten: { increment: 1 },
-        },
-      });
-    } else {
-      // 创建新的 UserLevel
-      return prisma.userLevel.create({
-        data: {
-          userId,
-          booksWritten: 1,
-        },
-      });
-    }
   }
 
   /**
@@ -288,20 +300,13 @@ export class UserService {
       seasonPoints?: number;
     }
   ) {
-    return prisma.userLevel.upsert({
-      where: { userId },
-      create: {
-        userId,
+    return prisma.user.update({
+      where: { id: userId },
+      data: {
         level: data.level || 1,
-        title: data.title || '新手作者',
+        levelTitle: data.title || '新手作者',
         totalPoints: data.totalPoints || 0,
         seasonPoints: data.seasonPoints || 0,
-      },
-      update: {
-        level: data.level,
-        title: data.title,
-        totalPoints: data.totalPoints,
-        seasonPoints: data.seasonPoints,
       },
     });
   }
@@ -310,9 +315,21 @@ export class UserService {
    * 获取用户等级
    */
   async getUserLevel(userId: string) {
-    return prisma.userLevel.findUnique({
-      where: { userId },
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        level: true,
+        levelTitle: true,
+        totalPoints: true,
+        seasonPoints: true,
+        booksWritten: true,
+        booksCompleted: true,
+        totalCoins: true,
+        totalFavorites: true,
+        unlockedFeatures: true,
+      },
     });
+    return user;
   }
 }
 

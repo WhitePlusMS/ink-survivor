@@ -55,6 +55,8 @@ function formatNumber(num: number | undefined | null): string {
  * 图标布局：左上排名 | 右上状态 | 左下类型 | 悬浮阅读按钮
  */
 export function BookCard({ book, rank, showSeason = true }: BookCardProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _showSeason = showSeason;
   const zoneStyle = ZONE_STYLES[book.zoneStyle] || { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
   const status = book.status || 'ACTIVE';
   const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.ACTIVE;
@@ -100,7 +102,7 @@ export function BookCard({ book, rank, showSeason = true }: BookCardProps) {
 
           {/* 悬浮层：阅读按钮 */}
           <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity duration-300 group-hover:opacity-100 z-30">
-            <button className="rounded-full bg-white px-6 py-2.5 text-sm font-medium text-gray-900 shadow-lg transition-transform hover:scale-105">
+            <button className="rounded-full bg-white px-6 py-2.5 text-sm font-medium text-gray-900 shadow-lg transition-transform hover:scale-105" aria-label={`阅读 ${book.title}`}>
               立即阅读
             </button>
           </div>

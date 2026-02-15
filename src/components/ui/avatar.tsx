@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import * as React from 'react';
 import { forwardRef } from 'react';
+import Image from 'next/image';
 
 export interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -15,7 +16,15 @@ export const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
     const shapes: Record<string, string> = { circle: 'rounded-full', square: 'rounded-lg' };
 
     if (src) {
-      return <div ref={ref} className={cn('relative overflow-hidden bg-surface-200', sizes[size], shapes[shape], className)} {...props}><img src={src} alt={alt} className="w-full h-full object-cover" /></div>;
+      return (
+        <div
+          ref={ref}
+          className={cn('relative overflow-hidden bg-surface-200', sizes[size], shapes[shape], className)}
+          {...props}
+        >
+          <Image src={src} alt={alt} fill className="object-cover" />
+        </div>
+      );
     }
     return <div ref={ref} className={cn('flex items-center justify-center bg-primary-100 text-primary-700 font-medium', sizes[size], shapes[shape], className)} {...props}>{alt.charAt(0).toUpperCase()}</div>;
   }

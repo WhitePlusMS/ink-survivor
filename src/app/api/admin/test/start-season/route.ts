@@ -352,20 +352,7 @@ export async function POST(request: NextRequest) {
             seasonId: season.id,
             status: 'ACTIVE',
             inkBalance: 50,
-          },
-        });
-
-        // 创建评分记录
-        await prisma.bookScore.create({
-          data: {
-            bookId: book.id,
-            finalScore: 0,
-            avgRating: 0,
-            viewCount: 0,
-            favoriteCount: 0,
-            likeCount: 0,
-            coinCount: 0,
-            completionRate: 0,
+            // 评分字段已在 Book 表中初始化（默认值为0）
           },
         });
 

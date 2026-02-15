@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { CommentItem } from './comment-item';
 import { CommentForm } from './comment-form';
 import { Spinner } from '@/components/ui/spinner';
@@ -39,7 +39,7 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
   const [comments, setComments] = useState<Comment[]>(initialComments || []);
   const [loading, setLoading] = useState(!initialComments);
 
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     setLoading(true);
     try {
       // 构建查询参数
@@ -63,13 +63,13 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
     } finally {
       setLoading(false);
     }
-  };
+  }, [bookId, chapterId, showChapterFilter]);
 
   useEffect(() => {
     if (!initialComments) {
       loadComments();
     }
-  }, [initialComments, bookId, chapterId, showChapterFilter]);
+  }, [initialComments, loadComments]);
 
   const handleNewComment = (comment: Record<string, unknown>) => {
     setComments((prev) => [comment as unknown as Comment, ...prev]);

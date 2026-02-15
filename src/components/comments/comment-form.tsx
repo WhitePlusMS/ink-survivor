@@ -47,9 +47,13 @@ export function CommentForm({ bookId, chapterId, onSubmit }: CommentFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <form onSubmit={handleSubmit} className="flex gap-2" aria-label="发表评论">
+      <label htmlFor="comment-input" className="sr-only">评论内容</label>
       <input
+        id="comment-input"
         type="text"
+        name="comment"
+        autoComplete="off"
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder="说点什么..."

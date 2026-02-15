@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seasonQueueService, CreateSeasonQueueDto } from '@/services/season-queue.service';
+import { seasonQueueService, CreateSeasonDto } from '@/services/season-queue.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,21 +32,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const dto: CreateSeasonQueueDto = {
+    // 计算开始和结束时间
+    const startTime = body.startTime ? new Date(body.startTime) : new Date();
+    const duration = body.duration || { reading: 10, outline: 5, writing: 5 };
+    const totalDays = (duration.reading + duration.outline + duration.writing) / 24; // 转换为天
+    const endTime = body.endTime ? new Date(body.endTime) : new Date(startTime.getTime() + totalDays * 24 * 60 * 60 * 1000);
+
+    const dto: CreateSeasonDto = {
       seasonNumber: body.seasonNumber,
       themeKeyword: body.themeKeyword,
       constraints: body.constraints || [],
       zoneStyles: body.zoneStyles || [],
       maxChapters: body.maxChapters || 7,
       minChapters: body.minChapters || 3,
-      duration: {
-        reading: body.duration?.reading || 10,
-        outline: body.duration?.outline || 5,
-        writing: body.duration?.writing || 5,
-      },
+      duration,
       rewards: body.rewards || { first: 1000, second: 500, third: 200 },
-      plannedStartTime: body.plannedStartTime ? new Date(body.plannedStartTime) : undefined,
-      intervalHours: body.intervalHours || 2,
+      startTime,
+      endTime,
     };
 
     const item = await seasonQueueService.create(dto);

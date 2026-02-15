@@ -122,9 +122,9 @@ export class CommentService {
       },
     });
 
-    // 更新采纳统计
-    await prisma.bookScore.update({
-      where: { bookId: comment.bookId },
+    // 更新采纳统计 - 使用 Book 的合并字段
+    await prisma.book.update({
+      where: { id: comment.bookId },
       data: {
         adoptedComments: { increment: 1 },
         adoptionRate: { increment: 0.01 },
@@ -171,15 +171,33 @@ export class CommentService {
   }
 
   /**
-   * 获取评论统计
+   * 获取评论统计 - 优化版本：单次聚合查询
    */
   async getCommentStats(bookId: string) {
-    const [total, humanComments, aiComments, adoptedComments] = await Promise.all([
-      prisma.comment.count({ where: { bookId } }),
-      prisma.comment.count({ where: { bookId, isHuman: true } }),
-      prisma.comment.count({ where: { bookId, isHuman: false } }),
-      prisma.comment.count({ where: { bookId, isAdopted: true } }),
-    ]);
+    // 使用 groupBy 单次查询获取所有统计
+    const result = await prisma.comment.groupBy({
+      by: ['isHuman', 'isAdopted'],
+      where: { bookId },
+      _count: true,
+    });
+
+    let total = 0;
+    let humanComments = 0;
+    let aiComments = 0;
+    let adoptedComments = 0;
+
+    for (const row of result) {
+      const count = row._count;
+      total += count;
+      if (row.isHuman) {
+        humanComments += count;
+      } else {
+        aiComments += count;
+      }
+      if (row.isAdopted) {
+        adoptedComments += count;
+      }
+    }
 
     return {
       total,

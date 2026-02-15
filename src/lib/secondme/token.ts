@@ -101,7 +101,7 @@ export async function refreshAccessToken(
 }
 
 /**
- * 存储用户 Token
+ * 存储用户 Token - 使用 User 表的合并字段
  * @param userId 用户 ID
  * @param tokens Token 响应
  */
@@ -110,25 +110,20 @@ export async function saveUserToken(userId: string, tokens: TokenResponse): Prom
     ? tokens.scope.join(',')
     : tokens.scope || '';
 
-  await prisma.userToken.upsert({
-    where: { userId },
-    create: {
-      userId,
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       tokenType: tokens.tokenType,
-      expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
-      refreshExpiresAt: new Date(
+      tokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+      tokenRefreshExpiresAt: new Date(
         Date.now() + SECONDME_CONFIG.TOKEN.REFRESH_TOKEN_EXPIRY_SECONDS * 1000
       ),
-      scope,
-    },
-    update: {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
-      lastRefreshed: new Date(),
-      refreshCount: { increment: 1 },
+      tokenScope: scope,
+      tokenIsValid: true,
+      tokenLastRefreshed: new Date(),
+      tokenRefreshCount: { increment: 1 },
     },
   });
 
@@ -143,21 +138,26 @@ export async function getValidUserToken(userId: string): Promise<{
   accessToken: string;
   expiresAt: Date;
 }> {
-  const userToken = await prisma.userToken.findUnique({
-    where: { userId },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      accessToken: true,
+      refreshToken: true,
+      tokenExpiresAt: true,
+    },
   });
 
-  if (!userToken) {
+  if (!user || !user.accessToken) {
     throw new Error('User token not found');
   }
 
   // 检查 Token 是否即将过期
-  const expiresIn = userToken.expiresAt.getTime() - Date.now();
+  const expiresIn = user.tokenExpiresAt!.getTime() - Date.now();
   const threshold = SECONDME_CONFIG.TOKEN.REFRESH_THRESHOLD_MINUTES * 60 * 1000;
 
   if (expiresIn < threshold) {
     console.log('[Token] Expiring soon, refreshing for user:', userId);
-    const newTokens = await refreshAccessToken(userToken.refreshToken, userId);
+    const newTokens = await refreshAccessToken(user.refreshToken!, userId);
     await saveUserToken(userId, newTokens);
 
     return {
@@ -167,8 +167,8 @@ export async function getValidUserToken(userId: string): Promise<{
   }
 
   return {
-    accessToken: userToken.accessToken,
-    expiresAt: userToken.expiresAt,
+    accessToken: user.accessToken,
+    expiresAt: user.tokenExpiresAt!,
   };
 }
 
@@ -186,12 +186,17 @@ export async function isTokenValid(userId: string): Promise<boolean> {
 }
 
 /**
- * 删除用户 Token（登出时使用）
+ * 删除用户 Token（登出时使用）- 使用 User 表的合并字段
  * @param userId 用户 ID
  */
 export async function deleteUserToken(userId: string): Promise<void> {
-  await prisma.userToken.delete({
-    where: { userId },
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      accessToken: null,
+      refreshToken: null,
+      tokenIsValid: false,
+    },
   }).catch(() => {
     // 如果不存在，忽略错误
     console.log('[Token] Token delete skipped (not found) for user:', userId);
@@ -205,14 +210,15 @@ export async function deleteUserToken(userId: string): Promise<void> {
  * @param userId 用户 ID
  */
 export async function getTokenTTL(userId: string): Promise<number> {
-  const userToken = await prisma.userToken.findUnique({
-    where: { userId },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tokenExpiresAt: true },
   });
 
-  if (!userToken) {
+  if (!user || !user.tokenExpiresAt) {
     return 0;
   }
 
-  const remaining = userToken.expiresAt.getTime() - Date.now();
+  const remaining = user.tokenExpiresAt.getTime() - Date.now();
   return Math.max(0, Math.floor(remaining / 1000));
 }

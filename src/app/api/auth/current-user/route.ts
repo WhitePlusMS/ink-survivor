@@ -3,6 +3,7 @@
  * GET /api/auth/current-user
  *
  * 返回当前登录用户的信息
+ * 优化：token 和 userLevel 已合并到 User 表
  */
 
 import { NextResponse } from 'next/server';
@@ -24,23 +25,9 @@ export async function GET() {
       );
     }
 
-    // 获取用户信息
+    // 获取用户信息 - 使用合并后的字段
     const user = await prisma.user.findUnique({
       where: { id: authToken },
-      include: {
-        token: {
-          select: {
-            scope: true,
-            expiresAt: true,
-            refreshCount: true,
-          },
-        },
-        userLevel: {
-          select: {
-            booksWritten: true,
-          },
-        },
-      },
     });
 
     if (!user) {
@@ -60,11 +47,11 @@ export async function GET() {
         avatar: user.avatar,
         email: user.email,
         totalInk: user.totalInk,
-        booksWritten: user.userLevel?.booksWritten ?? 0,
+        booksWritten: user.booksWritten ?? 0,
         seasonsJoined: user.seasonsJoined,
         agentConfig: user.agentConfig,
-        tokenScope: user.token?.scope,
-        tokenExpiresAt: user.token?.expiresAt,
+        tokenScope: user.tokenScope,
+        tokenExpiresAt: user.tokenExpiresAt,
       },
     });
   } catch (error) {

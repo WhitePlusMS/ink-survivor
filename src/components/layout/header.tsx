@@ -91,8 +91,9 @@ export function Header() {
                       : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800',
                   isDisabled && 'opacity-50 pointer-events-none'
                 )}
+                aria-label={item.label}
               >
-                <item.icon className="w-4 h-4" />
+                <item.icon className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">{item.label}</span>
               </Link>
             );

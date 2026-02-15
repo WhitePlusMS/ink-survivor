@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Bookmark, Heart, Gift, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,12 +14,12 @@ interface InteractionBarProps {
 }
 
 /**
- * 防抖 hook
+ * 防抖 hook - 简化版本
  */
-function useDebounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
+function useDebounce<T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number
-): T {
+): (...args: Parameters<T>) => void {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -30,17 +30,14 @@ function useDebounce<T extends (...args: Parameters<T>) => ReturnType<T>>(
     };
   }, []);
 
-  return useCallback(
-    ((...args: Parameters<T>) => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = setTimeout(() => {
-        callback(...args);
-      }, delay);
-    }) as T,
-    [callback, delay]
-  );
+  return (...args: Parameters<T>) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      callback(...args);
+    }, delay);
+  };
 }
 
 /**

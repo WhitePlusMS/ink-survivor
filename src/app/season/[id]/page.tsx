@@ -3,6 +3,7 @@ import { Clock, Users } from 'lucide-react';
 import { seasonService } from '@/services/season.service';
 import { LeaderboardTabs } from '@/components/season/leaderboard-tabs';
 import { LeaderboardList } from '@/components/season/leaderboard-list';
+import { PhaseProgressBar } from '@/components/season/phase-progress-bar';
 
 // 强制动态渲染（避免静态预渲染时访问数据库失败）
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,8 @@ export default async function SeasonPage({ params, searchParams }: SeasonPagePro
 
   return (
     <div className="min-h-screen bg-surface-50">
-      <div className="max-w-md mx-auto px-4 py-4">
+      <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
+        <div className="mx-auto max-w-screen-xl py-4">
         {/* 赛季信息 */}
         <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg p-4 mb-4">
           <h1 className="text-xl font-bold mb-2">
@@ -58,12 +60,22 @@ export default async function SeasonPage({ params, searchParams }: SeasonPagePro
           )}
         </div>
 
+        {/* 阶段进度条 - 地铁线路风格 */}
+        <PhaseProgressBar
+          currentRound={season.currentRound}
+          currentPhase={season.currentPhase as 'NONE' | 'READING' | 'OUTLINE' | 'WRITING'}
+          roundStartTime={season.roundStartTime ? new Date(season.roundStartTime).toISOString() : null}
+          phaseDurations={season.phaseDurations || { reading: 10, outline: 5, writing: 5 }}
+          seasonStatus={season.status}
+        />
+
         {/* 排行榜 Tab */}
         <LeaderboardTabs seasonId={params.id} />
 
         {/* 排行榜列表 - 使用 Server Component 渲染 */}
         <LeaderboardListWrapper seasonId={params.id} type={type} />
       </div>
+      </main>
     </div>
   );
 }

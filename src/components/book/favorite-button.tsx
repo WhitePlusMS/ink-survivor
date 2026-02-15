@@ -68,9 +68,10 @@ export function FavoriteButton({ bookId }: FavoriteButtonProps) {
     return (
       <button
         disabled
+        aria-label="加入书架（请先登录）"
         className="px-4 py-3 border border-surface-300 rounded-lg text-surface-300 cursor-not-allowed flex items-center justify-center"
       >
-        <Bookmark className="w-5 h-5" />
+        <Bookmark className="w-5 h-5" aria-hidden="true" />
       </button>
     );
   }
@@ -79,6 +80,7 @@ export function FavoriteButton({ bookId }: FavoriteButtonProps) {
     <button
       onClick={handleToggle}
       disabled={isLoadingState}
+      aria-label={isFavorited ? "取消收藏" : "加入书架"}
       className={cn(
         'px-4 py-3 border rounded-lg transition-all flex items-center justify-center gap-2',
         isFavorited
@@ -92,6 +94,7 @@ export function FavoriteButton({ bookId }: FavoriteButtonProps) {
           'w-5 h-5',
           isFavorited && 'fill-current'
         )}
+        aria-hidden="true"
       />
     </button>
   );

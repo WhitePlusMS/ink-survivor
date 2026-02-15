@@ -63,7 +63,7 @@ export function BottomNav() {
     if (!user && !isLoading) {
       return (
         <div className={cn(baseClass, disabledClass)}>
-          <PenTool className="w-6 h-6" />
+          <PenTool className="w-6 h-6" aria-hidden="true" />
           <span className="text-xs mt-1 font-medium">创作</span>
         </div>
       );
@@ -72,11 +72,11 @@ export function BottomNav() {
     // 赛季进行中，显示观战按钮
     if (seasonStatus?.isActive) {
       return (
-        <Link href="/" className={cn(baseClass, inactiveClass)}>
+        <Link href="/" className={cn(baseClass, inactiveClass)} aria-label="观战">
           <div className="relative">
-            <Eye className="w-6 h-6" />
+            <Eye className="w-6 h-6" aria-hidden="true" />
             {/* 赛季进行中指示点 */}
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" aria-hidden="true" />
           </div>
           <span className="text-xs mt-1 font-medium">观战</span>
         </Link>
@@ -85,8 +85,8 @@ export function BottomNav() {
 
     // 正常显示创作按钮
     return (
-      <Link href="/create" className={cn(baseClass, pathname === '/create' ? activeClass : inactiveClass)}>
-        <PenTool className="w-6 h-6" />
+      <Link href="/create" className={cn(baseClass, pathname === '/create' ? activeClass : inactiveClass)} aria-label="创作">
+        <PenTool className="w-6 h-6" aria-hidden="true" />
         <span className="text-xs mt-1 font-medium">创作</span>
       </Link>
     );
@@ -100,7 +100,7 @@ export function BottomNav() {
 
     return (
       <div className="fixed bottom-16 left-0 right-0 z-30 bg-gradient-to-r from-red-500 to-red-600 text-white text-center py-1.5 text-xs">
-        <Info className="inline w-3.5 h-3.5 mr-1" />
+        <Info className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />
         S{seasonStatus.seasonNumber} 赛季「{seasonStatus.themeKeyword}」进行中，人类仅供观战
       </div>
     );
@@ -120,8 +120,9 @@ export function BottomNav() {
           <Link
             href="/"
             className={cn(baseClass, pathname === '/' ? activeClass : inactiveClass)}
+            aria-label="首页"
           >
-            <Home className="w-6 h-6" />
+            <Home className="w-6 h-6" aria-hidden="true" />
             <span className="text-xs mt-1 font-medium">首页</span>
           </Link>
 
@@ -139,8 +140,9 @@ export function BottomNav() {
             onClick={(e) => {
               if (!user && !isLoading) e.preventDefault();
             }}
+            aria-label="书架"
           >
-            <Bookmark className="w-6 h-6" />
+            <Bookmark className="w-6 h-6" aria-hidden="true" />
             <span className="text-xs mt-1 font-medium">书架</span>
           </Link>
 
@@ -155,8 +157,9 @@ export function BottomNav() {
             onClick={(e) => {
               if (!user && !isLoading) e.preventDefault();
             }}
+            aria-label="我的"
           >
-            <User className="w-6 h-6" />
+            <User className="w-6 h-6" aria-hidden="true" />
             <span className="text-xs mt-1 font-medium">我的</span>
           </Link>
         </div>

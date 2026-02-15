@@ -1,5 +1,4 @@
-import { BookOpen, Trophy, Coins, Medal, Circle } from 'lucide-react';
-import Link from 'next/link';
+import { BookOpen, Trophy, Coins, Medal } from 'lucide-react';
 
 interface BooksInProgressDetail {
   id: string;
