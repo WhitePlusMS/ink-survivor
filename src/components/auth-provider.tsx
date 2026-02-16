@@ -9,7 +9,6 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Settings, AlertTriangle, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 export interface User {
   id: string;
@@ -129,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     refreshUser().finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -182,7 +182,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * 返回默认值而非抛出错误，避免 SSR 时的问题
  */
 export function useAuth(): AuthContextType {
-  // SSR 检测：服务端环境直接返回默认值，避免 useContext 报错
+  // 先调用 useContext（Hooks 规则：必须在最顶层调用）
+  const context = useContext(AuthContext);
+
+  // SSR 检测：服务端环境直接返回默认值
   if (typeof window === 'undefined') {
     return {
       user: null,
@@ -199,7 +202,6 @@ export function useAuth(): AuthContextType {
     };
   }
 
-  const context = useContext(AuthContext);
   // SSR 时 context 可能为 null，返回默认值
   if (!context) {
     return {
