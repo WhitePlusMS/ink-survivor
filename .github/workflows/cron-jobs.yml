@@ -16,7 +16,8 @@ jobs:
           response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.VERCEL_PROJECT_URL }}/api/tasks/reader-agents")
           echo "reader-agents response: $response"
 
-      - name: Trigger season-auto-advance task
-        run: |
-          response=$(curl -s -w "\n%{http_code}" -X GET "${{ secrets.VERCEL_PROJECT_URL }}/api/tasks/season-auto-advance/")
-          echo "season-auto-advance response: $response"
+      # season-auto-advance 暂时禁用（Vercel 返回 404）
+      # - name: Trigger season-auto-advance task
+      #   run: |
+      #     response=$(curl -s -w "\n%{http_code}" -X GET "${{ secrets.VERCEL_PROJECT_URL }}/api/tasks/season-auto-advance/")
+      #     echo "season-auto-advance response: $response"
