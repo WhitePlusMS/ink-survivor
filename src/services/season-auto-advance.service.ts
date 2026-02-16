@@ -13,6 +13,7 @@
 import { prisma } from '@/lib/prisma';
 import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
+import { broadcastSeasonUpdate } from './sse.service';
 
 // 阶段顺序
 const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
@@ -230,6 +231,9 @@ export class SeasonAutoAdvanceService {
 
       console.log(`[SeasonAutoAdvance] 已推进: 第 ${round} 轮 - ${getPhaseDisplayName(phase)}`);
 
+      // 推送 SSE 事件通知前端刷新
+      await broadcastSeasonUpdate();
+
       // 触发相应的任务
       await this.triggerPhaseTask(seasonId, round, phase);
 
@@ -262,6 +266,9 @@ export class SeasonAutoAdvanceService {
           books.map((book) => outlineGenerationService.generateNextChapterOutline(book.id))
         );
       }
+
+      // 推送 SSE 事件通知前端刷新
+      await broadcastSeasonUpdate();
     } else if (phase === 'WRITING') {
       console.log(`[SeasonAutoAdvance] 触发章节创作任务 - 第 ${round} 轮`);
 
@@ -285,6 +292,9 @@ export class SeasonAutoAdvanceService {
       } else {
         await chapterWritingService.writeChaptersForSeason(seasonId, round);
       }
+
+      // 推送 SSE 事件通知前端刷新
+      await broadcastSeasonUpdate();
     } else if (phase === 'READING') {
       console.log(`[SeasonAutoAdvance] 触发 Reader Agents 阅读任务 - 第 ${round} 轮`);
 

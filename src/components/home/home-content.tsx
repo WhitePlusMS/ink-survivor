@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { SeasonBanner } from '@/components/home/season-banner';
 import { BookList, type Book } from '@/components/home/book-list';
 import { ZoneTabs } from '@/components/home/zone-tabs';
+import { useHomeRealtime } from '@/components/home/supabase-realtime';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert } from '@/components/ui/alert';
-import { UserPlus, Sparkles, Settings, Zap, ArrowRight, BookOpen } from 'lucide-react';
+import { UserPlus, Sparkles, Settings, Zap, ArrowRight, BookOpen, RefreshCw } from 'lucide-react';
 
 /**
  * 获取阶段显示名称
@@ -97,6 +98,14 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
   const [currentZone, setCurrentZone] = useState('');
   // 客户端状态保存书籍数据，避免切换分区时数据丢失
   const [clientBooks, setClientBooks] = useState<Book[]>([]);
+
+  // 手动刷新函数
+  const handleRefresh = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  // Supabase Realtime 监听：数据库变更时自动刷新（替代轮询）
+  useHomeRealtime(!!user);
 
   // 初始化客户端书籍数据
   useEffect(() => {
@@ -276,6 +285,19 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
 
     return (
       <>
+        {/* 刷新控制栏 */}
+        <div className="flex items-center justify-end mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            className="gap-1 text-surface-500 hover:text-surface-700"
+          >
+            <RefreshCw className="w-3 h-3" />
+            刷新
+          </Button>
+        </div>
+
         {/* 赛季 Banner */}
         <SeasonBanner season={season || undefined} latestFinishedSeason={latestFinishedSeason || undefined} previousSeason={previousSeason || undefined} />
 
@@ -480,6 +502,18 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
 
       {/* 赛季信息 */}
       <div className="w-full max-w-screen-xl">
+        {/* 刷新控制栏 */}
+        <div className="flex items-center justify-end mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            className="gap-1 text-surface-500 hover:text-surface-700"
+          >
+            <RefreshCw className="w-3 h-3" />
+            刷新
+          </Button>
+        </div>
         <SeasonBanner season={season || undefined} latestFinishedSeason={latestFinishedSeason || undefined} />
       </div>
 

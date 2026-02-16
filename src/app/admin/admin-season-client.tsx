@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
+import { BookCard } from '@/components/home/book-card';
 import {
-  Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save
+  Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save, Trophy
 } from 'lucide-react';
 import { ZONE_CONFIGS, ZONE_VALUES } from '@/lib/utils/zone';
 
@@ -158,8 +159,9 @@ export function AdminSeasonClient({
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionType, setActionType] = useState<'init' | 'start' | 'nextPhase' | 'endSeason' | null>(null);
+  const [deletingSeason, setDeletingSeason] = useState<string | null>(null);
   // 非管理员默认显示历史赛季 Tab
-  const [activeTab, setActiveTab] = useState<'queue' | 'immediate' | 'history'>(isAdmin ? 'queue' : 'history');
+  const [activeTab, setActiveTab] = useState<'queue' | 'immediate' | 'history' | 'delete'>(isAdmin ? 'queue' : 'history');
 
   // 赛季队列状态
   const [seasonQueue, setSeasonQueue] = useState<SeasonQueueItem[]>([]);
@@ -185,6 +187,68 @@ export function AdminSeasonClient({
     intervalHours: 2,
   });
 
+  // 排行榜数据状态 - 按赛季ID存储
+  const [leaderboardData, setLeaderboardData] = useState<Record<string, {
+    books: Array<{
+      bookId: string;
+      rank: number;
+      title: string;
+      author: string;
+      zoneStyle: string;
+      chapterCount: number;
+      coverImage?: string;
+      shortDesc?: string;
+      viewCount?: number;
+      commentCount?: number;
+      heat: number;
+      status?: 'ACTIVE' | 'COMPLETED' | 'DRAFT';
+    }>;
+    loading: boolean;
+  }>>({});
+
+  // 使用 ref 存储 leaderboardData，避免 fetchSeasonLeaderboard 依赖 leaderboardData 导致无限循环
+  const leaderboardDataRef = useRef(leaderboardData);
+
+  // 同步 leaderboardData 到 ref
+  useEffect(() => {
+    leaderboardDataRef.current = leaderboardData;
+  }, [leaderboardData]);
+
+  // 获取赛季排行榜
+  const fetchSeasonLeaderboard = useCallback(async (seasonId: string) => {
+    const currentData = leaderboardDataRef.current;
+    // 如果已有数据且不在加载，不重复获取
+    if (currentData[seasonId]?.books?.length > 0 && !currentData[seasonId]?.loading) {
+      return;
+    }
+
+    // 设置加载状态
+    setLeaderboardData(prev => ({
+      ...prev,
+      [seasonId]: { ...prev[seasonId], loading: true, books: prev[seasonId]?.books || [] },
+    }));
+
+    try {
+      const response = await fetch(`/api/seasons/${seasonId}/leaderboard?limit=10&type=heat`);
+      const result = await response.json();
+      if (result.code === 0 && result.data?.data) {
+        setLeaderboardData(prev => ({
+          ...prev,
+          [seasonId]: {
+            loading: false,
+            books: result.data.data,
+          },
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch leaderboard:', err);
+      setLeaderboardData(prev => ({
+        ...prev,
+        [seasonId]: { ...prev[seasonId], loading: false, books: [] },
+      }));
+    }
+  }, []); // 移除 leaderboardData 依赖，使用 ref 访问最新数据
+
   // 获取赛季队列
   const fetchSeasonQueue = async () => {
     setQueueLoading(true);
@@ -204,6 +268,18 @@ export function AdminSeasonClient({
   useEffect(() => {
     fetchSeasonQueue();
   }, []);
+
+  // 自动加载所有历史赛季的排行榜
+  useEffect(() => {
+    // 当切换到历史赛季 tab 时，或非管理员默认显示历史时
+    if (activeTab === 'history' && allSeasons && allSeasons.length > 0) {
+      // 加载所有非ACTIVE赛季的排行榜
+      const finishedSeasons = allSeasons.filter(s => s.status !== 'ACTIVE');
+      finishedSeasons.forEach(s => {
+        fetchSeasonLeaderboard(s.id);
+      });
+    }
+  }, [activeTab, allSeasons, fetchSeasonLeaderboard]);
 
   // 获取下一个可用赛季编号
   const getNextSeasonNumber = () => {
@@ -486,6 +562,43 @@ export function AdminSeasonClient({
     }
   };
 
+  // 删除历史赛季
+  const handleDeleteSeason = async (seasonId: string, seasonNumber: number) => {
+    if (!confirm(`确定要删除 S${seasonNumber} 赛季吗？此操作将删除该赛季下的所有书籍和章节，且不可恢复！`)) {
+      return;
+    }
+
+    // 二次确认
+    if (!confirm(`再次确认：删除 S${seasonNumber} 赛季的所有数据？`)) {
+      return;
+    }
+
+    setDeletingSeason(seasonId);
+    try {
+      const response = await fetch(`/api/admin/seasons/${seasonId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (result.code === 0) {
+        alert(`S${seasonNumber} 删除成功！\n共删除 ${result.data?.deletedBooks || 0} 本书籍和 ${result.data?.deletedChapters || 0} 个章节`);
+        // 清除该赛季的排行榜缓存数据
+        setLeaderboardData(prev => {
+          const newData = { ...prev };
+          delete newData[seasonId];
+          return newData;
+        });
+        // 刷新页面数据
+        router.refresh();
+      } else {
+        alert(result.message || '删除失败');
+      }
+    } catch (err) {
+      alert('删除失败: ' + (err as Error).message);
+    } finally {
+      setDeletingSeason(null);
+    }
+  };
+
   // 配置表单变更处理
   const handleConfigChange = (field: keyof SeasonConfigForm, value: string | number) => {
     setConfigForm(prev => ({ ...prev, [field]: value }));
@@ -563,6 +676,16 @@ export function AdminSeasonClient({
             }`}
           >
             历史赛季 ({allSeasons?.length || 0})
+          </button>
+          <button
+            onClick={() => setActiveTab('delete')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'delete'
+                ? 'border-red-500 text-red-600'
+                : 'border-transparent text-surface-600 hover:text-surface-900'
+            }`}
+          >
+            删除赛季
           </button>
         </div>
       )}
@@ -1116,12 +1239,125 @@ export function AdminSeasonClient({
                       </div>
                     </div>
                   )}
+
+                  {/* 前10名书籍列表 - 默认显示 */}
+                  {s.status !== 'ACTIVE' && s.participantCount > 0 && (
+                    <div className="mt-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Trophy className="w-4 h-4 text-yellow-500" />
+                        <span className="text-sm font-medium">热度排行 TOP 10</span>
+                      </div>
+                      {leaderboardData[s.id]?.loading ? (
+                        <div className="text-center py-4">
+                          <Spinner className="w-6 h-6 mx-auto" />
+                          <p className="text-sm text-surface-500 mt-2">加载中...</p>
+                        </div>
+                      ) : leaderboardData[s.id]?.books && leaderboardData[s.id]!.books.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                          {leaderboardData[s.id]!.books.map((book) => (
+                            <BookCard
+                              key={book.bookId}
+                              book={{
+                                id: book.bookId,
+                                title: book.title,
+                                coverImage: book.coverImage,
+                                shortDesc: book.shortDesc,
+                                zoneStyle: book.zoneStyle,
+                                status: book.status || 'COMPLETED',
+                                heat: book.heat,
+                                chapterCount: book.chapterCount,
+                                viewCount: book.viewCount || 0,
+                                commentCount: book.commentCount || 0,
+                                author: { nickname: book.author },
+                              }}
+                              rank={book.rank}
+                              showSeason={false}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-surface-500">
+                          暂无书籍数据
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-center py-8 text-surface-500">
               暂无历史赛季
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 删除赛季 Tab */}
+      {activeTab === 'delete' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-300 mb-2">
+              <Trash2 className="w-5 h-5" />
+              <h3 className="font-medium">删除赛季</h3>
+            </div>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              选择要删除的赛季。此操作将删除该赛季下的所有书籍和章节，且不可恢复！
+            </p>
+          </div>
+
+          {allSeasons && allSeasons.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {allSeasons
+                .filter(s => s.status !== 'ACTIVE')
+                .map((s) => (
+                  <div
+                    key={s.id}
+                    className="p-4 bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold">S{s.seasonNumber}</span>
+                        <span className="font-semibold">{s.themeKeyword}</span>
+                        {getStatusBadge(s.status)}
+                      </div>
+                      <div className="text-sm text-surface-500">
+                        {s.participantCount} 本书籍 · {s.startTime ? new Date(s.startTime).toLocaleDateString('zh-CN') : '-'}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteSeason(s.id, s.seasonNumber)}
+                      disabled={deletingSeason === s.id}
+                      className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    >
+                      {deletingSeason === s.id ? (
+                        <>
+                          <Spinner className="w-3 h-3 mr-1" />
+                          删除中
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          删除
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-surface-500">
+              暂无可删除的赛季
+            </div>
+          )}
+
+          {allSeasons && allSeasons.some(s => s.status === 'ACTIVE') && (
+            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                注意：当前进行中的赛季无法删除，请先结束赛季后再操作。
+              </p>
             </div>
           )}
         </div>

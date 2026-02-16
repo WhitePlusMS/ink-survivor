@@ -47,7 +47,9 @@ export class LeaderboardService {
       include: {
         author: { select: { nickname: true } },
         // score 已合并到 Book 表，使用 Book 的直接字段
-        _count: { select: { chapters: true } },
+        _count: { select: { chapters: true, comments: true } },
+        chapters: { select: { commentCount: true } },
+        season: { select: { seasonNumber: true } },
       },
       orderBy,
       take: limit,
@@ -55,16 +57,32 @@ export class LeaderboardService {
 
     // 构建排行榜 - 使用 Book 的直接字段
     const rankings: LeaderboardEntry[] = books
-      .map((book, index) => ({
-        bookId: book.id,
-        rank: index + 1,
-        score: book.finalScore || 0,
-        heat: book.heatValue || 0,
-        title: book.title,
-        author: book.author.nickname,
-        zoneStyle: book.zoneStyle,
-        chapterCount: book._count?.chapters ?? 0,
-      }));
+      .map((book, index) => {
+        // 计算章节评论总数
+        const chapterCommentCount = book.chapters.reduce(
+          (sum, ch) => sum + (ch.commentCount || 0),
+          0
+        );
+        const bookCommentCount = book._count?.comments || 0;
+
+        return {
+          bookId: book.id,
+          rank: index + 1,
+          score: book.finalScore || 0,
+          heat: book.heatValue || 0,
+          title: book.title,
+          author: book.author.nickname,
+          zoneStyle: book.zoneStyle,
+          chapterCount: book._count?.chapters ?? 0,
+          // BookCard 需要的额外字段
+          coverImage: book.coverImage ?? undefined,
+          shortDesc: book.shortDesc ?? undefined,
+          viewCount: book.viewCount ?? 0,
+          commentCount: chapterCommentCount + bookCommentCount,
+          status: book.status as 'ACTIVE' | 'COMPLETED' | 'DRAFT',
+          seasonNumber: book.season?.seasonNumber,
+        };
+      });
 
     console.log(`[LeaderboardService] Generated ${type} leaderboard with ${rankings.length} entries`);
     return rankings;

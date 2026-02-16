@@ -36,9 +36,10 @@ export function SeasonInfo({ season }: SeasonInfoProps) {
   const minutesLeft = Math.floor(timeLeft / (1000 * 60));
 
   // 提取奖励金额
-  const firstReward = typeof season.rewards.first === 'number' ? season.rewards.first : 0;
-  const secondReward = typeof season.rewards.second === 'number' ? season.rewards.second : 0;
-  const thirdReward = typeof season.rewards.third === 'number' ? season.rewards.third : 0;
+  const rewards = season.rewards as Record<string, unknown> | null | undefined;
+  const firstReward = typeof rewards?.first === 'number' ? rewards.first : 0;
+  const secondReward = typeof rewards?.second === 'number' ? rewards.second : 0;
+  const thirdReward = typeof rewards?.third === 'number' ? rewards.third : 0;
 
   return (
     <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg p-4 mb-4">
@@ -57,12 +58,12 @@ export function SeasonInfo({ season }: SeasonInfoProps) {
         <p className="font-medium mb-1">参赛要求</p>
         <ul className="space-y-1 text-sm opacity-90">
           <li>章节数：{season.minChapters} - {season.maxChapters} 章</li>
-          <li>分区：{season.zoneStyles.join(' / ')}</li>
+          <li>分区：{Array.isArray(season.zoneStyles) ? season.zoneStyles.join(' / ') : '暂无'}</li>
         </ul>
       </div>
 
       {/* 约束 */}
-      {season.constraints.length > 0 && (
+      {Array.isArray(season.constraints) && season.constraints.length > 0 && (
         <div className="text-xs opacity-80 mb-3">
           <p>硬性限制：</p>
           <ul className="list-disc list-inside">

@@ -793,3 +793,82 @@ SyntaxError: "[object Object]" is not valid JSON
 2. 响应式适配
 3. 性能优化
 4. 用户体验测试
+
+---
+
+## 2026-02-16 - 添加登录时 Agent 配置检查
+
+### 问题描述
+用户开启新赛季时，只有部分用户自动参赛。原因是系统只会选择有 Agent 配置（`agentConfig` 不为 null）的用户来发送赛季邀请。
+
+### 需求
+在用户登录时检查 Agent 配置是否为空：
+- 如果为空，弹出提示让用户选择是否配置
+- 告知用户不配置将无法参加赛季比赛
+- 用户可以选择跳过，但需要有明确提示
+
+### 修改的文件
+
+#### 1. src/components/auth-provider.tsx
+- **修改原因**: 需要在每次刷新用户信息时检查 Agent 配置状态，并在需要时弹出提示
+- **修改内容**:
+  - 添加 `hasAgentConfig`、`showAgentConfigModal`、`setShowAgentConfigModal`、`dismissAgentConfigModal` 状态到 AuthContextType
+  - 添加 `prevAgentConfigStatus` 状态用于跟踪配置状态变化
+  - 在 `refreshUser` 函数中检查 `agentConfig` 是否为空
+  - 新增 `AgentConfigPromptModal` 组件，用于显示配置提示弹窗
+  - 弹窗包含两个选项：立即配置（跳转到 /profile/edit）和暂不配置
+
+### 实现逻辑
+1. 每次调用 `refreshUser` 时检查用户的 `agentConfig` 状态
+2. 如果 `agentConfig` 为空（null），弹出提示弹窗
+3. 用户点击"立即配置"跳转到 Agent 配置页面
+4. 用户点击"暂不配置"关闭弹窗，并记录状态防止再次自动弹出
+5. 如果用户之后配置了 Agent，状态会更新，后续登录不会再弹出
+
+### 影响范围
+- AuthProvider 的所有子组件都可以通过 `useAuth()` 获取新增的状态和方法
+- 不影响现有的首次登录逻辑（/api/auth/callback 中的 firstLogin 跳转）
+
+### 代码复用
+- 复用了现有的 AgentConfigForm 组件和 /profile/edit 页面
+- 复用了现有的 Button 组件和 Lucide React 图标
+
+---
+
+## 2026-02-16 - 修复 season.zoneStyles.join 运行时错误
+
+### 问题描述
+运行时错误：
+```
+Error: season.zoneStyles.join is not a function
+Source: src\components\create\season-info.tsx (60:37)
+```
+
+### 原因分析
+`zoneStyles` 是 Prisma 数据库中的 `Json` 类型字段，当数据库中存储的值不是数组时（如 `null` 或其他非数组类型），前端直接调用 `.join()` 方法会报错。
+
+### 修改的文件
+
+#### 1. src/components/create/season-info.tsx
+- **修改原因**: `zoneStyles`、`constraints` 和 `rewards` 可能不是预期的数组/对象类型，导致运行时错误
+- **修改内容**:
+  1. `zoneStyles`: 添加 `Array.isArray()` 检查
+  2. `constraints`: 添加 `Array.isArray()` 检查
+  3. `rewards`: 使用类型断言并添加可选链检查
+- **修改前**:
+  ```tsx
+  <li>分区：{season.zoneStyles.join(' / ')}</li>
+  {season.constraints.length > 0 && ...}
+  const firstReward = typeof season.rewards.first === 'number' ? season.rewards.first : 0;
+  ```
+- **修改后**:
+  ```tsx
+  <li>分区：{Array.isArray(season.zoneStyles) ? season.zoneStyles.join(' / ') : '暂无'}</li>
+  {Array.isArray(season.constraints) && season.constraints.length > 0 && ...}
+  const rewards = season.rewards as Record<string, unknown> | null | undefined;
+  const firstReward = typeof rewards?.first === 'number' ? rewards.first : 0;
+  ```
+
+### 修复原则
+- 遵循最简原则，添加防御性检查
+- 与项目中其他组件（如 season-banner.tsx, admin-season-client.tsx）保持一致的防御性写法

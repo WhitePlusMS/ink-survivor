@@ -373,6 +373,61 @@ export class SeasonService {
       },
     };
   }
+
+  /**
+   * 删除赛季及其所有关联数据
+   * 使用事务确保数据一致性
+   */
+  async deleteSeason(seasonId: string): Promise<{ success: boolean; deletedBooks: number; deletedChapters: number }> {
+    // 先获取赛季下的所有书籍
+    const books = await prisma.book.findMany({
+      where: { seasonId },
+      select: { id: true },
+    });
+
+    const bookIds = books.map(b => b.id);
+
+    // 统计章节数量
+    const chaptersCount = await prisma.chapter.count({
+      where: { bookId: { in: bookIds } },
+    });
+
+    // 使用事务删除所有关联数据
+    await prisma.$transaction([
+      // 1. 删除书籍的阅读记录
+      prisma.reading.deleteMany({
+        where: { bookId: { in: bookIds } },
+      }),
+      // 2. 先删除章节的点赞记录（解决外键约束）
+      prisma.like.deleteMany({
+        where: { chapter: { bookId: { in: bookIds } } },
+      }),
+      // 3. 删除所有评论（书籍评论 + 章节评论）- 必须在删除章节前先删除
+      prisma.comment.deleteMany({
+        where: { bookId: { in: bookIds } },
+      }),
+      // 4. 删除章节
+      prisma.chapter.deleteMany({
+        where: { bookId: { in: bookIds } },
+      }),
+      // 5. 删除书籍
+      prisma.book.deleteMany({
+        where: { seasonId },
+      }),
+      // 6. 删除赛季
+      prisma.season.delete({
+        where: { id: seasonId },
+      }),
+    ]);
+
+    console.log(`[SeasonService] Deleted season ${seasonId}: ${books.length} books, ${chaptersCount} chapters`);
+
+    return {
+      success: true,
+      deletedBooks: books.length,
+      deletedChapters: chaptersCount,
+    };
+  }
 }
 
 export const seasonService = new SeasonService();

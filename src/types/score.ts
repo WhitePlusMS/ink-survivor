@@ -86,6 +86,13 @@ export interface LeaderboardEntry {
   author: string;
   zoneStyle: string;
   chapterCount: number;
+  // BookCard 需要的额外字段
+  coverImage?: string;
+  shortDesc?: string;
+  viewCount?: number;
+  commentCount?: number;
+  status?: 'ACTIVE' | 'COMPLETED' | 'DRAFT';
+  seasonNumber?: number;
 }
 
 /**
