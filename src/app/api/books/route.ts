@@ -12,11 +12,10 @@ function parseQueryParams(url: string) {
   const urlObj = new URL(url);
   const zoneStyle = urlObj.searchParams.get('zoneStyle') || undefined;
   const status = urlObj.searchParams.get('status') || undefined;
-  const keyword = urlObj.searchParams.get('keyword') || undefined;
   const limit = parseInt(urlObj.searchParams.get('limit') || '20', 10);
   const offset = parseInt(urlObj.searchParams.get('offset') || '0', 10);
 
-  return { zoneStyle, status, keyword, limit: Math.min(limit, 100), offset };
+  return { zoneStyle, status, limit: Math.min(limit, 100), offset };
 }
 
 /**
@@ -24,26 +23,14 @@ function parseQueryParams(url: string) {
  * 支持参数:
  * - zoneStyle: 分区筛选
  * - status: 状态筛选
- * - keyword: 搜索关键词
  * - limit: 每页数量
  * - offset: 偏移量
  */
 export async function GET(request: Request) {
   try {
-    const { zoneStyle, status, keyword, limit, offset } = parseQueryParams(request.url);
+    const { zoneStyle, status, limit, offset } = parseQueryParams(request.url);
 
-    console.log('[Books] GET /api/books - params:', { zoneStyle, status, keyword, limit, offset });
-
-    // 如果有搜索关键词，使用搜索功能
-    if (keyword) {
-      const books = await bookService.searchBooks(keyword);
-      const bookItems = books.map((book) => BookListItemDto.fromEntity(book as unknown as Record<string, unknown>));
-      return NextResponse.json({
-        code: 0,
-        data: bookItems,
-        message: 'success',
-      });
-    }
+    console.log('[Books] GET /api/books - params:', { zoneStyle, status, limit, offset });
 
     const { books, total } = await bookService.getBooks({
       zoneStyle,

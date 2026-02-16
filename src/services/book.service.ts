@@ -189,26 +189,6 @@ export class BookService {
     });
   }
 
-  /**
-   * 搜索书籍
-   */
-  async searchBooks(keyword: string) {
-    return prisma.book.findMany({
-      where: {
-        OR: [
-          { title: { contains: keyword } },
-          { shortDesc: { contains: keyword } },
-        ],
-      },
-      include: {
-        author: { select: { id: true, nickname: true } },
-        // score 已合并到 Book 表，使用 Book 的直接字段
-        _count: { select: { chapters: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-  }
 }
 
 export const bookService = new BookService();

@@ -1127,8 +1127,8 @@ export function AdminSeasonClient({
         </div>
       )}
 
-      {/* 赛季控制按钮 */}
-      {season && (
+      {/* 赛季控制按钮 - 仅管理员显示 */}
+      {season && isAdmin && (
         <div className="grid grid-cols-2 gap-3">
           <Button
             onClick={handleNextPhase}
@@ -1159,25 +1159,27 @@ export function AdminSeasonClient({
         </div>
       )}
 
-      {/* 初始化 S0 */}
-      <Button
-        onClick={handleInitS0}
-        disabled={isProcessing}
-        variant="outline"
-        className="w-full gap-2 border-purple-300 text-purple-700 hover:bg-purple-100"
-      >
-        {isProcessing && actionType === 'init' ? (
-          <>
-            <Spinner className="w-4 h-4" />
-            初始化中...
-          </>
-        ) : (
-          <>
-            <Settings className="w-4 h-4" />
-            初始化 S0 测试环境
-          </>
-        )}
-      </Button>
+      {/* 初始化 S0 - 仅管理员显示 */}
+      {isAdmin && (
+        <Button
+          onClick={handleInitS0}
+          disabled={isProcessing}
+          variant="outline"
+          className="w-full gap-2 border-purple-300 text-purple-700 hover:bg-purple-100"
+        >
+          {isProcessing && actionType === 'init' ? (
+            <>
+              <Spinner className="w-4 h-4" />
+              初始化中...
+            </>
+          ) : (
+            <>
+              <Settings className="w-4 h-4" />
+              初始化 S0 测试环境
+            </>
+          )}
+        </Button>
+      )}
     </div>
   );
 }

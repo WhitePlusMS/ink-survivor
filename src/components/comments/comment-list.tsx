@@ -66,7 +66,7 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
     } finally {
       setLoading(false);
     }
-  }, [bookId, chapterId, showChapterFilter]);
+  }, [bookId, chapterId, showChapterFilter, showError]);
 
   useEffect(() => {
     if (!initialComments) {

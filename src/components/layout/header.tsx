@@ -43,13 +43,13 @@ export function Header() {
     checkAdmin();
   }, [user]);
 
-  // 管理员导航项
-  const adminNavItem = {
+  // 管理员/历史赛季导航项
+  const seasonNavItem = {
     href: '/admin',
     icon: Crown,
-    label: '赛季管理',
+    label: isAdmin ? '赛季管理' : '历史赛季',
     requireAuth: true,
-    requireAdmin: true,
+    requireAdmin: false, // 所有登录用户都可以访问
   };
 
   // 过滤导航项：只显示有权限的项
@@ -58,9 +58,9 @@ export function Header() {
     return true;
   });
 
-  // 如果是管理员，添加管理员导航项
-  const allNavItems: Array<typeof NAV_ITEMS[0] & { isAdmin?: boolean }> = isAdmin
-    ? [...visibleNavItems, { ...adminNavItem, isAdmin: true }]
+  // 添加赛季管理入口（所有登录用户可见，名称根据权限区分）
+  const allNavItems: Array<typeof NAV_ITEMS[0] & { isAdmin?: boolean }> = user
+    ? [...visibleNavItems, { ...seasonNavItem, isAdmin }]
     : visibleNavItems;
 
   return (
