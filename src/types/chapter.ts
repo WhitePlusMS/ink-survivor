@@ -56,34 +56,3 @@ export interface ChapterGenerationResult {
   contentLength: number;
   duration: number;
 }
-
-/**
- * SSE 事件类型
- */
-export type SSEEventType = 'start' | 'chunk' | 'complete' | 'error' | 'done';
-
-/**
- * SSE 事件数据
- */
-export interface SSEEventData {
-  type: SSEEventType;
-  data?: {
-    chapterNumber?: number;
-    content?: string;
-    title?: string;
-    contentLength?: number;
-    duration?: number;
-    message?: string;
-  };
-}
-
-/**
- * 流式生成进度
- */
-export interface GenerationProgress {
-  bookId: string;
-  chapterNumber: number;
-  progress: number;      // 0-100
-  contentLength: number;
-  startedAt: Date;
-}
