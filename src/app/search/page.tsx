@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Search as SearchIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BookCard } from '@/components/home/book-card';
@@ -14,7 +13,6 @@ import { Spinner } from '@/components/ui/spinner';
  * 设计原则：简洁的搜索体验
  */
 export default function SearchPage() {
-  const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Book[]>([]);
   const [loading, setLoading] = useState(false);

@@ -10,8 +10,23 @@ import { seasonAutoAdvanceService } from '@/services/season-auto-advance.service
 
 export const dynamic = 'force-dynamic';
 
+// 确保自动推进服务正在运行
+let autoAdvanceStarted = false;
+
+async function ensureAutoAdvanceRunning() {
+  if (!autoAdvanceStarted) {
+    console.log('[SeasonStatus] 启动自动推进服务...');
+    await seasonAutoAdvanceService.start();
+    autoAdvanceStarted = true;
+  }
+}
+
 export async function GET() {
   try {
+    // 确保自动推进服务正在运行
+    await ensureAutoAdvanceRunning();
+
+    // 立即执行一次检查和推进
     await seasonAutoAdvanceService.checkAndAdvance();
     const season = await prisma.season.findFirst({
       where: {

@@ -10,8 +10,8 @@ import {
   Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save
 } from 'lucide-react';
 
-// 可选分区列表
-const ZONE_OPTIONS = [
+// 所有可用分区（用于显示，实际赛季使用全部）
+const ALL_ZONES = [
   { value: 'urban', label: '都市' },
   { value: 'fantasy', label: '玄幻' },
   { value: 'scifi', label: '科幻' },
@@ -82,20 +82,85 @@ const ZONE_LABELS: Record<string, string> = {
   game: '游戏',
 };
 
+// 所有分区（赛季默认使用全部）
+const ALL_ZONE_STYLES = ['urban', 'fantasy', 'scifi', 'history', 'game'];
+
+// 赛季详情接口（用于历史赛季列表）
+interface SeasonDetail {
+  id: string;
+  seasonNumber: number;
+  themeKeyword: string;
+  status: string;
+  constraints: string[];
+  zoneStyles: string[];
+  maxChapters: number;
+  minChapters: number;
+  duration: {
+    reading: number;
+    outline: number;
+    writing: number;
+  };
+  rewards: Record<string, number>;
+  startTime: Date | string | null;
+  endTime: Date | string | null;
+  participantCount: number;
+  currentRound: number;
+  roundPhase: string;
+  roundStartTime: Date | string | null;
+}
+
+// 阶段显示名称
+function getPhaseDisplayName(phase: string): string {
+  const names: Record<string, string> = {
+    NONE: '未开始',
+    READING: '阅读窗口期',
+    OUTLINE: '大纲生成期',
+    WRITING: '章节创作期',
+  };
+  return names[phase] || phase;
+}
+
+// 状态显示
+function getStatusBadge(status: string) {
+  const styles: Record<string, string> = {
+    ACTIVE: 'bg-green-100 text-green-700',
+    FINISHED: 'bg-gray-100 text-gray-700',
+    DRAFT: 'bg-yellow-100 text-yellow-700',
+    SCHEDULED: 'bg-blue-100 text-blue-700',
+    PUBLISHED: 'bg-green-100 text-green-700',
+    SKIPPED: 'bg-red-100 text-red-700',
+  };
+  const labels: Record<string, string> = {
+    ACTIVE: '进行中',
+    FINISHED: '已结束',
+    DRAFT: '草稿',
+    SCHEDULED: '待发布',
+    PUBLISHED: '已发布',
+    SKIPPED: '已跳过',
+  };
+  return (
+    <span className={`px-2 py-0.5 text-xs rounded-full ${styles[status] || 'bg-gray-100'}`}>
+      {labels[status] || status}
+    </span>
+  );
+}
+
 /**
  * 管理员赛季管理客户端组件
  */
 export function AdminSeasonClient({
   season,
   phaseStatus,
+  allSeasons,
 }: {
   season: Season | null;
   phaseStatus: PhaseStatus | null;
+  allSeasons?: SeasonDetail[];
 }) {
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionType, setActionType] = useState<'init' | 'start' | 'nextPhase' | 'endSeason' | null>(null);
-  const [activeTab, setActiveTab] = useState<'queue' | 'immediate'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'immediate' | 'history'>('queue');
 
   // 赛季队列状态
   const [seasonQueue, setSeasonQueue] = useState<SeasonQueueItem[]>([]);
@@ -108,7 +173,7 @@ export function AdminSeasonClient({
     seasonNumber: 1,
     themeKeyword: '',
     constraints: '',
-    zoneStyles: ['urban', 'fantasy', 'scifi'],
+    zoneStyles: ALL_ZONE_STYLES,
     maxChapters: 7,
     minChapters: 3,
     phaseDurations: {
@@ -157,7 +222,7 @@ export function AdminSeasonClient({
       seasonNumber: getNextSeasonNumber(),
       themeKeyword: '',
       constraints: '',
-      zoneStyles: ['urban', 'fantasy', 'scifi'],
+      zoneStyles: ALL_ZONE_STYLES,
       maxChapters: 7,
       minChapters: 3,
       phaseDurations: { reading: 10, outline: 5, writing: 5 },
@@ -435,36 +500,6 @@ export function AdminSeasonClient({
     }));
   };
 
-  // 分区勾选处理
-  const toggleZoneStyle = (zoneValue: string) => {
-    setConfigForm(prev => {
-      const updated = prev.zoneStyles.includes(zoneValue)
-        ? prev.zoneStyles.filter(z => z !== zoneValue)
-        : [...prev.zoneStyles, zoneValue];
-      return { ...prev, zoneStyles: updated };
-    });
-  };
-
-  // 获取状态标签
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      DRAFT: 'bg-gray-100 text-gray-700',
-      SCHEDULED: 'bg-blue-100 text-blue-700',
-      PUBLISHED: 'bg-green-100 text-green-700',
-      SKIPPED: 'bg-red-100 text-red-700',
-    };
-    const labels: Record<string, string> = {
-      DRAFT: '草稿',
-      SCHEDULED: '待发布',
-      PUBLISHED: '已发布',
-      SKIPPED: '已跳过',
-    };
-    return (
-      <span className={`px-2 py-0.5 text-xs rounded-full ${styles[status] || 'bg-gray-100'}`}>
-        {labels[status] || status}
-      </span>
-    );
-  };
 
   return (
     <div className="space-y-6">
@@ -518,6 +553,16 @@ export function AdminSeasonClient({
           }`}
         >
           立即创建赛季
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'history'
+              ? 'border-purple-500 text-purple-600'
+              : 'border-transparent text-surface-600 hover:text-surface-900'
+          }`}
+        >
+          历史赛季 ({allSeasons?.length || 0})
         </button>
       </div>
 
@@ -594,30 +639,11 @@ export function AdminSeasonClient({
                 />
               </div>
 
-              {/* 可选分区 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  可选分区
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {ZONE_OPTIONS.map(option => (
-                    <label
-                      key={option.value}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${
-                        configForm.zoneStyles.includes(option.value)
-                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700'
-                          : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={configForm.zoneStyles.includes(option.value)}
-                        onChange={() => toggleZoneStyle(option.value)}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">{option.label}</span>
-                    </label>
-                  ))}
+              {/* 全部分区提示 */}
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                  <Sparkles className="w-4 h-4" />
+                  <span>本赛季支持所有分区：{ALL_ZONES.map(z => z.label).join('、')}</span>
                 </div>
               </div>
 
@@ -770,15 +796,15 @@ export function AdminSeasonClient({
                         </div>
                         <div className="text-xs text-surface-500 dark:text-surface-400 space-y-1">
                           <div>
-                            约束：{item.constraints.length > 0 ? item.constraints.slice(0, 2).join('；') : '无'}
-                            {item.constraints.length > 2 && ` 等${item.constraints.length}条`}
+                            约束：{Array.isArray(item.constraints) && item.constraints.length > 0 ? item.constraints.slice(0, 2).join('；') : '无'}
+                            {Array.isArray(item.constraints) && item.constraints.length > 2 && ` 等${item.constraints.length}条`}
                           </div>
                           <div className="flex gap-4">
-                            <span>分区：{item.zoneStyles.map(z => ZONE_LABELS[z] || z).join('、')}</span>
+                            <span>分区：{Array.isArray(item.zoneStyles) ? item.zoneStyles.map(z => ZONE_LABELS[z] || z).join('、') : '无'}</span>
                             <span>章节：{item.maxChapters}</span>
                             <span>
                               时长：
-                              {item.duration.reading + item.duration.outline + item.duration.writing}分钟/轮
+                              {item.duration?.reading + item.duration?.outline + item.duration?.writing || 0}分钟/轮
                             </span>
                           </div>
                           {item.plannedStartTime && (
@@ -916,29 +942,11 @@ export function AdminSeasonClient({
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                可选分区
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {ZONE_OPTIONS.map(option => (
-                  <label
-                    key={option.value}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${
-                      configForm.zoneStyles.includes(option.value)
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={configForm.zoneStyles.includes(option.value)}
-                      onChange={() => toggleZoneStyle(option.value)}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">{option.label}</span>
-                  </label>
-                ))}
+            {/* 全部分区提示 */}
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                <Sparkles className="w-4 h-4" />
+                <span>本赛季支持所有分区：{ALL_ZONES.map(z => z.label).join('、')}</span>
               </div>
             </div>
 
@@ -1010,6 +1018,102 @@ export function AdminSeasonClient({
               )}
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* 历史赛季 Tab */}
+      {activeTab === 'history' && (
+        <div className="space-y-4">
+          {allSeasons && allSeasons.length > 0 ? (
+            <div className="space-y-3">
+              {allSeasons.map((s) => (
+                <div
+                  key={s.id}
+                  className="p-4 bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold">S{s.seasonNumber}</span>
+                      <span className="text-lg font-semibold">{s.themeKeyword}</span>
+                      {getStatusBadge(s.status)}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">开始时间</div>
+                      <div className="font-medium">
+                        {s.startTime ? new Date(s.startTime).toLocaleString('zh-CN') : '-'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">结束时间</div>
+                      <div className="font-medium">
+                        {s.endTime ? new Date(s.endTime).toLocaleString('zh-CN') : '-'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">参赛书籍</div>
+                      <div className="font-medium">{s.participantCount} 本</div>
+                    </div>
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">最大章节</div>
+                      <div className="font-medium">{s.maxChapters} 章</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">阅读期</div>
+                      <div className="font-medium">{s.duration?.reading || 10} 分钟</div>
+                    </div>
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">大纲期</div>
+                      <div className="font-medium">{s.duration?.outline || 5} 分钟</div>
+                    </div>
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">创作期</div>
+                      <div className="font-medium">{s.duration?.writing || 5} 分钟</div>
+                    </div>
+                    <div>
+                      <div className="text-surface-500 dark:text-surface-400">当前状态</div>
+                      <div className="font-medium">
+                        {s.status === 'ACTIVE'
+                          ? `第 ${s.currentRound} 轮 - ${getPhaseDisplayName(s.roundPhase)}`
+                          : getPhaseDisplayName(s.roundPhase)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 约束和分区 */}
+                  <div className="mt-3 text-sm">
+                    <div className="text-surface-500 dark:text-surface-400 mb-1">
+                      约束: {Array.isArray(s.constraints) && s.constraints.length > 0 ? s.constraints.join('；') : '无'}
+                    </div>
+                    <div className="text-surface-500 dark:text-surface-400">
+                      分区: {Array.isArray(s.zoneStyles) ? s.zoneStyles.map(z => ZONE_LABELS[z] || z).join('、') : '无'}
+                    </div>
+                  </div>
+
+                  {/* 奖励 */}
+                  {s.rewards && Object.keys(s.rewards).length > 0 && (
+                    <div className="mt-3 text-sm">
+                      <div className="text-surface-500 dark:text-surface-400">奖励:</div>
+                      <div className="flex gap-3 mt-1">
+                        {s.rewards.first && <span className="text-yellow-600">🥇 {s.rewards.first} Ink</span>}
+                        {s.rewards.second && <span className="text-gray-500">🥈 {s.rewards.second} Ink</span>}
+                        {s.rewards.third && <span className="text-amber-700">🥉 {s.rewards.third} Ink</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-surface-500">
+              暂无历史赛季
+            </div>
+          )}
         </div>
       )}
 

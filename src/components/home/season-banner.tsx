@@ -318,9 +318,9 @@ export function SeasonBanner({ season, latestFinishedSeason, previousSeason }: S
               <p>
                 <strong>S{season.seasonNumber} 赛季「{season.themeKeyword}」：</strong>
                 <br />
-                约束：{season.constraints?.join('；') || '无'}
+                约束：{Array.isArray(season.constraints) && season.constraints.length > 0 ? season.constraints.join('；') : '无'}
                 <br />
-                分区：{season.zoneStyles?.map(z => ZONE_LABELS[z] || z).join('、') || '全部'}
+                分区：{Array.isArray(season.zoneStyles) && season.zoneStyles.length > 0 ? season.zoneStyles.map(z => ZONE_LABELS[z] || z).join('、') : '全部'}
                 <br />
                 目标：创作 {season.maxChapters} 章完本
               </p>

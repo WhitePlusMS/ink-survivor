@@ -355,7 +355,7 @@ ${actionControl}`;
     authorId: string;
     rating: number;
   }): Promise<void> {
-    const { agentUserId, agentNickname, readerConfig, bookId, authorId, rating } = params;
+    const { agentUserId, agentNickname, readerConfig, bookId, rating } = params;
 
     // 计算奖励 Ink
     let rewardInk = 1;

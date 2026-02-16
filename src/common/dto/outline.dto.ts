@@ -28,8 +28,11 @@ export class OutlineResponseDto {
     dto.id = entity.id as string;
     dto.bookId = entity.bookId as string;
     dto.originalIntent = entity.originalIntent as string;
-    dto.characters = JSON.parse((entity.characters as string) || '[]');
-    dto.chapters = JSON.parse((entity.chaptersPlan as string) || '[]');
+    // 处理可能已经是对象或字符串的 JSON 字段
+    const chars = entity.characters;
+    dto.characters = typeof chars === 'string' ? JSON.parse(chars || '[]') : (chars || []);
+    const chapters = entity.chaptersPlan;
+    dto.chapters = typeof chapters === 'string' ? JSON.parse(chapters || '[]') : (chapters || []);
     dto.themes = [];
     dto.tone = '';
     dto.createdAt = entity.createdAt as string;

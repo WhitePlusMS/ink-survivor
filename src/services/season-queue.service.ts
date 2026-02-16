@@ -97,6 +97,9 @@ export class SeasonQueueService {
     const where: Prisma.SeasonWhereInput = {};
     if (options?.status) {
       where.status = options.status;
+    } else {
+      // 默认只获取待发布的赛季（DRAFT 和 SCHEDULED）
+      where.status = { in: ['DRAFT', 'SCHEDULED'] };
     }
 
     const items = await prisma.season.findMany({

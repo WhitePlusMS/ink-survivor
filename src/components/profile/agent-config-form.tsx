@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
@@ -118,7 +117,6 @@ export function AgentConfigForm({
   initialReaderConfig?: ReaderConfig;
   isFirstLogin?: boolean;
 }) {
-  const router = useRouter();
   const { success } = useToast();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -18,18 +18,27 @@ import { Season } from '@prisma/client';
 const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
 
 // 检查间隔（毫秒）
-const CHECK_INTERVAL = 5000; // 每 5 秒检查一次
+const CHECK_INTERVAL = 60 * 1000; // 每 60 秒检查一次
 
 function getPhaseDurationMs(season: Season, phase: RoundPhase): number {
   let phaseDurationMs = 10 * 60 * 1000;
   try {
-    // JSONB 类型已被 Prisma 自动解析
-    const durations = season.duration as { reading?: number; outline?: number; writing?: number } | null;
+    // JSONB 字段可能是字符串，需要解析
+    let durations: { reading?: number; outline?: number; writing?: number } | null = null;
+    const rawDuration = season.duration;
+    if (typeof rawDuration === 'string') {
+      durations = JSON.parse(rawDuration);
+    } else if (typeof rawDuration === 'object' && rawDuration !== null) {
+      durations = rawDuration as { reading?: number; outline?: number; writing?: number };
+    }
+
     if (durations) {
       const phaseKey = phase.toLowerCase() as 'reading' | 'outline' | 'writing';
-      phaseDurationMs = (durations[phaseKey] || 10) * 60 * 1000;
+      const minutes = durations[phaseKey];
+      phaseDurationMs = (minutes || 10) * 60 * 1000;
     }
-  } catch {
+  } catch (e) {
+    console.error('[SeasonAutoAdvance] duration 解析错误:', e);
     phaseDurationMs = 10 * 60 * 1000;
   }
   return phaseDurationMs;
@@ -157,7 +166,8 @@ export class SeasonAutoAdvanceService {
       while (safety < maxTransitions) {
         const durationMs = getPhaseDurationMs(season, currentPhase);
         const phaseEndTime = phaseStartTime.getTime() + durationMs;
-        if (phaseEndTime - now > 5000) {
+        const timeLeft = phaseEndTime - now;
+        if (timeLeft > 5000) {
           break;
         }
 
@@ -337,3 +347,25 @@ export class SeasonAutoAdvanceService {
 
 // 单例实例
 export const seasonAutoAdvanceService = new SeasonAutoAdvanceService();
+
+// 模式选择：
+// - 开发模式：使用轮询（每5秒检查）
+// - 生产模式（Vercel）：使用 Cron 触发，不启动轮询
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+const useCron = process.env.USE_CRON === 'true' || isProduction;
+
+if (process.env.NODE_ENV === 'test' || process.env.SEASON_AUTO_ADVANCE_ENABLED === 'false') {
+  // 明确禁用
+  console.log('[SeasonAutoAdvance] 自动推进已禁用');
+} else if (useCron) {
+  // 生产模式：使用 Cron 触发，不启动轮询
+  console.log('[SeasonAutoAdvance] 生产模式：使用 Cron 触发，不启动轮询');
+} else {
+  // 开发模式：使用轮询
+  console.log(`[SeasonAutoAdvance] ${process.env.NODE_ENV} 模式：自动启动轮询服务`);
+  setTimeout(() => {
+    seasonAutoAdvanceService.start().catch((err) => {
+      console.error('[SeasonAutoAdvance] 启动失败:', err);
+    });
+  }, 3000);
+}

@@ -7,9 +7,34 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { checkAdminPermission } from '@/lib/utils/admin';
 import { AdminSeasonClient } from './admin-season-client';
+import { JsonValue } from '@prisma/client/runtime/library';
 
 // 强制动态渲染（避免静态预渲染时访问数据库失败）
 export const dynamic = 'force-dynamic';
+
+// 赛季详情接口
+interface SeasonDetail {
+  id: string;
+  seasonNumber: number;
+  themeKeyword: string;
+  status: string;
+  constraints: string[];
+  zoneStyles: string[];
+  maxChapters: number;
+  minChapters: number;
+  duration: {
+    reading: number;
+    outline: number;
+    writing: number;
+  };
+  rewards: Record<string, number>;
+  startTime: Date | null;
+  endTime: Date | null;
+  participantCount: number;
+  currentRound: number;
+  roundPhase: string;
+  roundStartTime: Date | null;
+}
 
 export default async function AdminPage() {
   // 服务器端验证管理员权限
@@ -25,6 +50,74 @@ export default async function AdminPage() {
     where: { status: 'ACTIVE' },
     orderBy: { startTime: 'desc' },
   });
+
+  // 获取所有历史赛季（包括 FINISHED）
+  const allSeasons = await prisma.season.findMany({
+    orderBy: { seasonNumber: 'desc' },
+    take: 20, // 最近 20 个赛季
+  });
+
+  // 解析赛季详情
+  const parseSeasonDetail = (season: {
+    id: string;
+    seasonNumber: number;
+    themeKeyword: string;
+    status: string;
+    constraints: JsonValue;
+    zoneStyles: JsonValue;
+    maxChapters: number;
+    minChapters: number;
+    duration: JsonValue;
+    rewards: JsonValue;
+    startTime: Date | null;
+    endTime: Date | null;
+    participantCount: number;
+    currentRound: number;
+    roundPhase: string | null;
+    roundStartTime: Date | null;
+  }): SeasonDetail => {
+    const parseJsonField = (field: JsonValue): unknown => {
+      if (typeof field === 'string') {
+        try {
+          return JSON.parse(field);
+        } catch {
+          return field;
+        }
+      }
+      return field;
+    };
+
+    const constraints = parseJsonField(season.constraints);
+    const zoneStyles = parseJsonField(season.zoneStyles);
+    const duration = parseJsonField(season.duration) as { reading?: number; outline?: number; writing?: number } | null;
+    const rewards = parseJsonField(season.rewards) as Record<string, number> | null;
+
+    return {
+      id: season.id,
+      seasonNumber: season.seasonNumber,
+      themeKeyword: season.themeKeyword,
+      status: season.status,
+      constraints: Array.isArray(constraints) ? constraints : [],
+      zoneStyles: Array.isArray(zoneStyles) ? zoneStyles : [],
+      maxChapters: season.maxChapters,
+      minChapters: season.minChapters,
+      duration: {
+        reading: duration?.reading || 10,
+        outline: duration?.outline || 5,
+        writing: duration?.writing || 5,
+      },
+      rewards: rewards || {},
+      startTime: season.startTime,
+      endTime: season.endTime,
+      participantCount: season.participantCount,
+      currentRound: season.currentRound || 1,
+      roundPhase: season.roundPhase || 'NONE',
+      roundStartTime: season.roundStartTime,
+    };
+  };
+
+  // 格式化赛季详情为可序列化对象
+  const allSeasonsData = allSeasons.map(parseSeasonDetail);
 
   // 获取赛季状态（用于阶段推进）
   let phaseStatus = null;
@@ -57,6 +150,7 @@ export default async function AdminPage() {
               status: currentSeason.status,
             } : null}
             phaseStatus={phaseStatus}
+            allSeasons={allSeasonsData}
           />
         </div>
       </main>

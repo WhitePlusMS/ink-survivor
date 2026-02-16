@@ -112,12 +112,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 /**
  * 使用认证上下文
- * @throws 如果在 AuthProvider 外使用
+ * 返回默认值而非抛出错误，避免 SSR 时的问题
  */
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
+  // SSR 时 context 可能为 null，返回默认值
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    return {
+      user: null,
+      isLoading: true,
+      error: null,
+      login: () => {},
+      logout: () => {},
+      refreshUser: async () => {},
+      clearError: () => {},
+    };
   }
   return context;
 }

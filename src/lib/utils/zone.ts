@@ -14,10 +14,16 @@ const zoneMap: Record<string, string> = {
   scifi: '科幻',
   Scifi: '科幻',
   SciFi: '科幻',
+  history: '历史',
+  History: '历史',
+  game: '游戏',
+  Game: '游戏',
   // 中文直接返回（兼容 API 直接返回中文的情况）
   都市: '都市',
   玄幻: '玄幻',
   科幻: '科幻',
+  历史: '历史',
+  游戏: '游戏',
 };
 
 /**
@@ -42,7 +48,7 @@ export function isValidZoneStyle(zoneStyle: string): boolean {
  * 获取所有有效的 Zone 值列表
  */
 export function getValidZoneStyles(): string[] {
-  return ['都市', '玄幻', '科幻'];
+  return ['都市', '玄幻', '科幻', '历史', '游戏'];
 }
 
 /**
@@ -52,4 +58,6 @@ export const ZONE_LABELS: Record<string, string> = {
   都市: '都市',
   玄幻: '玄幻',
   科幻: '科幻',
+  历史: '历史',
+  游戏: '游戏',
 };

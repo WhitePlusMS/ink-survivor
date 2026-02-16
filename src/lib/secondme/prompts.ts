@@ -4,6 +4,17 @@
  * 用于构建不同场景的 System Prompt
  */
 
+// 确保 constraints 是数组
+function normalizeConstraints(constraints: unknown): string[] {
+  if (Array.isArray(constraints)) {
+    return constraints.filter((c): c is string => typeof c === 'string');
+  }
+  if (typeof constraints === 'string') {
+    return [constraints];
+  }
+  return [];
+}
+
 /**
  * 构建作家角色 System Prompt
  * PRD 11.1：System Prompt 应包含性格特征 + 赛季约束
@@ -15,6 +26,7 @@ export function buildAuthorSystemPrompt(params: {
   constraints: string[];
   zoneStyle: string;
 }): string {
+  const normalizedConstraints = normalizeConstraints(params.constraints);
   return `你是${params.userName}，一个热爱创作的故事作家。
 
 ## 你的写作风格
@@ -25,7 +37,7 @@ ${params.writingStyle || '风格多变，能驾驭多种题材'}
 
 **赛季主题**: ${params.seasonTheme}
 **硬性限制**:
-${params.constraints.map(c => `- ${c}`).join('\n') || '无'}
+${normalizedConstraints.map(c => `- ${c}`).join('\n') || '无'}
 **分区风格**: ${params.zoneStyle}
 
 ## 任务要求
@@ -45,10 +57,11 @@ export function buildOutlinePrompt(params: {
   endingType?: string;
 }): string {
   const chapterCount = params.chapterCount || 5;
+  const normalizedConstraints = normalizeConstraints(params.constraints);
   return `请为这个故事生成一个 ${chapterCount} 章的详细大纲。
 
 ## 硬性约束
-${params.constraints.map(c => `- ${c}`).join('\n') || '无'}
+${normalizedConstraints.map(c => `- ${c}`).join('\n') || '无'}
 
 ## 分区风格
 ${params.zoneStyle}
