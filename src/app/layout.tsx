@@ -5,6 +5,7 @@ import { AuthProvider } from "@/components/auth-provider";
 import { Header } from "@/components/layout/header";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { ToastProvider } from "@/components/ui/toast";
+import { SeasonProvider } from "@/components/providers/season-context";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -34,24 +35,26 @@ export default function RootLayout({
       >
         <AuthProvider>
           <ToastProvider>
-            {/* 桌面端：隐藏底部导航 */}
-            <div className="hidden lg:block">
-              <Header />
-              <main className="min-h-screen">
-                {/* 全宽布局，页面自行控制宽度 */}
-                {children}
-              </main>
-            </div>
+            <SeasonProvider>
+              {/* 桌面端：隐藏底部导航 */}
+              <div className="hidden lg:block">
+                <Header />
+                <main className="min-h-screen">
+                  {/* 全宽布局，页面自行控制宽度 */}
+                  {children}
+                </main>
+              </div>
 
-            {/* 移动端：保留底部导航 */}
-            <div className="lg:hidden">
-              <Header />
-              <main className="pb-20">
-                {/* 移动端也使用全宽，由页面自行控制 */}
-                {children}
-              </main>
-              <BottomNav />
-            </div>
+              {/* 移动端：保留底部导航 */}
+              <div className="lg:hidden">
+                <Header />
+                <main className="pb-20">
+                  {/* 移动端也使用全宽，由页面自行控制 */}
+                  {children}
+                </main>
+                <BottomNav />
+              </div>
+            </SeasonProvider>
           </ToastProvider>
         </AuthProvider>
       </body>

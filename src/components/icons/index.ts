@@ -89,6 +89,10 @@ export {
   Sparkles,
   Landmark,
   Ghost,
+  Gamepad2,
+  Feather,
+  Crown,
+  Sparkle,
 } from 'lucide-react';
 
 /**

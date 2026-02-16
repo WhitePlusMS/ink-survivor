@@ -30,6 +30,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const startTime = Date.now();
+
   try {
     const { id: bookId } = await params;
     const { chapterId, isHuman, limit, offset } = parseQueryParams(request.url);
@@ -43,6 +45,9 @@ export async function GET(
 
     const commentItems = comments.map((comment) => CommentResponseDto.fromEntity(comment as unknown as Record<string, unknown>));
 
+    const duration = Date.now() - startTime;
+    console.log(`✓ GET /api/books/${bookId}/comments 200 in ${duration}ms (${total} total)`);
+
     return NextResponse.json({
       code: 0,
       data: {
@@ -54,7 +59,8 @@ export async function GET(
       message: 'success',
     });
   } catch (error) {
-    console.error('Get comments error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`✗ GET /api/books/:id/comments 500 in ${duration}ms - ${error instanceof Error ? error.message : 'Unknown error'}`);
     return NextResponse.json(
       { code: 500, data: null, message: '获取评论列表失败' },
       { status: 500 }
@@ -69,6 +75,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const startTime = Date.now();
+
   try {
     const { id: bookId } = await params;
 
@@ -76,6 +84,8 @@ export async function POST(
     const authToken = cookies().get('auth_token')?.value;
 
     if (!authToken) {
+      const duration = Date.now() - startTime;
+      console.log(`✗ POST /api/books/${bookId}/comments 401 in ${duration}ms (not logged in)`);
       return NextResponse.json(
         { code: 401, data: null, message: '请先登录' },
         { status: 401 }
@@ -89,6 +99,8 @@ export async function POST(
     });
 
     if (!user) {
+      const duration = Date.now() - startTime;
+      console.log(`✗ POST /api/books/${bookId}/comments 404 in ${duration}ms (user not found)`);
       return NextResponse.json(
         { code: 404, data: null, message: '用户不存在' },
         { status: 404 }
@@ -96,12 +108,13 @@ export async function POST(
     }
 
     const userId = user.id;
-    console.log(`[Comments] User ${user.nickname} (${userId}) posting comment`);
 
     const body = await request.json();
     const { chapterId, content, isHuman, aiRole } = body;
 
     if (!content) {
+      const duration = Date.now() - startTime;
+      console.log(`✗ POST /api/books/${bookId}/comments 400 in ${duration}ms (empty content)`);
       return NextResponse.json(
         { code: 400, data: null, message: '评论内容不能为空' },
         { status: 400 }
@@ -119,13 +132,17 @@ export async function POST(
 
     const responseData = CommentResponseDto.fromEntity(comment);
 
+    const duration = Date.now() - startTime;
+    console.log(`✓ POST /api/books/${bookId}/comments 201 in ${duration}ms`);
+
     return NextResponse.json({
       code: 0,
       data: responseData,
       message: '评论成功',
     }, { status: 201 });
   } catch (error) {
-    console.error('Create comment error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`✗ POST /api/books/:id/comments 500 in ${duration}ms - ${error instanceof Error ? error.message : 'Unknown error'}`);
     return NextResponse.json(
       { code: 500, data: null, message: '评论失败' },
       { status: 500 }

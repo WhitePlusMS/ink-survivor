@@ -114,7 +114,7 @@ export default async function ChapterPage({ params }: ChapterPageProps) {
       </div>
 
       {/* 本章评论区域 - AI 读者评论显示在这里 */}
-      <div className="max-w-2xl mx-auto px-4 py-6 border-t border-surface-200">
+      <div id="comments" className="max-w-2xl mx-auto px-4 py-6 border-t border-surface-200">
         <div className="flex items-center gap-2 mb-4">
           <MessageCircle className="w-5 h-5 text-surface-500" />
           <h3 className="font-medium text-surface-700">本章评论</h3>

@@ -6,67 +6,72 @@ import { wsEvents } from '@/lib/websocket/events';
 export class InteractionService {
   /**
    * 收藏书籍
-   * 热度统一通过 BookScore.heatValue 管理
+   * 优化：使用事务合并串行查询，保证原子性
    */
   async toggleFavorite(bookId: string, userId: string): Promise<{ success: boolean; favorited: boolean }> {
-    // 检查是否已收藏
-    const existing = await prisma.reading.findFirst({
-      where: { bookId, userId, finished: false },
-    });
+    // 优化：并行查询已收藏状态和当前热度
+    const [existing, currentScore] = await Promise.all([
+      prisma.reading.findFirst({
+        where: { bookId, userId, finished: false },
+      }),
+      prisma.book.findUnique({
+        where: { id: bookId },
+        select: { heatValue: true },
+      }),
+    ]);
 
-    // 获取当前热度值
-    const currentScore = await prisma.book.findUnique({
-      where: { id: bookId },
-      select: { heatValue: true },
-    });
     const currentHeat = currentScore?.heatValue || 0;
 
+    // 使用事务保证原子性
     if (existing) {
       // 取消收藏
-      await prisma.reading.delete({ where: { id: existing.id } });
-      await prisma.book.update({
-        where: { id: bookId },
-        data: {
-          favoriteCount: { decrement: 1 },
-          heatValue: { decrement: 3 },
-        },
-      });
+      await prisma.$transaction([
+        prisma.reading.delete({ where: { id: existing.id } }),
+        prisma.book.update({
+          where: { id: bookId },
+          data: {
+            favoriteCount: { decrement: 1 },
+            heatValue: { decrement: 3 },
+          },
+        }),
+      ]);
 
-      // 发送 WebSocket 事件 - 使用 heatValue
+      // 发送 WebSocket 事件
       wsEvents.heatUpdate(bookId, currentHeat - 3);
 
       console.log(`[InteractionService] Book ${bookId} unfavorited by user ${userId}`);
       return { success: true, favorited: false };
     } else {
-      // 获取书籍的第一章（收藏时需要一个有效的 chapterId）
+      // 获取书籍的第一章
       const firstChapter = await prisma.chapter.findFirst({
-        where: { bookId: bookId },
+        where: { bookId },
         orderBy: { chapterNumber: 'asc' },
       });
 
-      // 如果书籍没有章节，抛出错误
       if (!firstChapter) {
         throw new Error('Book has no chapters');
       }
 
       // 添加收藏
-      await prisma.reading.create({
-        data: {
-          bookId,
-          userId,
-          chapterId: firstChapter.id,
-          finished: false,
-        },
-      });
-      await prisma.book.update({
-        where: { id: bookId },
-        data: {
-          favoriteCount: { increment: 1 },
-          heatValue: { increment: 3 },
-        },
-      });
+      await prisma.$transaction([
+        prisma.reading.create({
+          data: {
+            bookId,
+            userId,
+            chapterId: firstChapter.id,
+            finished: false,
+          },
+        }),
+        prisma.book.update({
+          where: { id: bookId },
+          data: {
+            favoriteCount: { increment: 1 },
+            heatValue: { increment: 3 },
+          },
+        }),
+      ]);
 
-      // 发送 WebSocket 事件 - 使用 heatValue
+      // 发送 WebSocket 事件
       wsEvents.heatUpdate(bookId, currentHeat + 3);
 
       console.log(`[InteractionService] Book ${bookId} favorited by user ${userId}`);
@@ -79,7 +84,7 @@ export class InteractionService {
    * 热度统一通过 BookScore.heatValue 管理
    */
   async toggleLike(chapterId: string, userId: string): Promise<{ success: boolean; liked: boolean }> {
-    // 获取章节信息（需要 bookId）
+    // 先查询章节信息
     const chapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
       select: { bookId: true },
@@ -89,35 +94,38 @@ export class InteractionService {
       throw new Error('Chapter not found');
     }
 
-    // 获取当前热度值
-    const currentScore = await prisma.book.findUnique({
-      where: { id: chapter.bookId },
-      select: { heatValue: true },
-    });
-    const currentHeat = currentScore?.heatValue || 0;
-
-    // 检查用户是否已对该章节点赞
-    const existing = await prisma.like.findUnique({
-      where: {
-        userId_chapterId: { userId, chapterId },
-      },
-    });
-
-    if (existing) {
-      // 已点赞，取消点赞
-      await prisma.like.delete({ where: { id: existing.id } });
-      await prisma.chapter.update({
-        where: { id: chapterId },
-        data: { likeCount: { decrement: 1 } },
-      });
-      // 更新点赞统计和热度（-1.5）
-      await prisma.book.update({
+    // 并行查询当前热度值和点赞状态
+    const [heatData, existing] = await Promise.all([
+      prisma.book.findUnique({
         where: { id: chapter.bookId },
-        data: {
-          likeCount: { decrement: 1 },
-          heatValue: { decrement: 1.5 },
+        select: { heatValue: true },
+      }),
+      prisma.like.findUnique({
+        where: {
+          userId_chapterId: { userId, chapterId },
         },
-      });
+      }),
+    ]);
+
+    const currentHeat = heatData?.heatValue || 0;
+
+    // 使用事务保证原子性
+    if (existing) {
+      // 取消点赞
+      await prisma.$transaction([
+        prisma.like.delete({ where: { id: existing.id } }),
+        prisma.chapter.update({
+          where: { id: chapterId },
+          data: { likeCount: { decrement: 1 } },
+        }),
+        prisma.book.update({
+          where: { id: chapter.bookId },
+          data: {
+            likeCount: { decrement: 1 },
+            heatValue: { decrement: 1.5 },
+          },
+        }),
+      ]);
 
       // 发送 WebSocket 事件
       wsEvents.heatUpdate(chapter.bookId, currentHeat - 1.5);
@@ -125,22 +133,23 @@ export class InteractionService {
       console.log(`[InteractionService] Chapter ${chapterId} unliked by user ${userId}`);
       return { success: true, liked: false };
     } else {
-      // 未点赞，添加点赞
-      await prisma.like.create({
-        data: { userId, chapterId },
-      });
-      await prisma.chapter.update({
-        where: { id: chapterId },
-        data: { likeCount: { increment: 1 } },
-      });
-      // 更新点赞统计和热度（+1.5）
-      await prisma.book.update({
-        where: { id: chapter.bookId },
-        data: {
-          likeCount: { increment: 1 },
-          heatValue: { increment: 1.5 },
-        },
-      });
+      // 添加点赞
+      await prisma.$transaction([
+        prisma.like.create({
+          data: { userId, chapterId },
+        }),
+        prisma.chapter.update({
+          where: { id: chapterId },
+          data: { likeCount: { increment: 1 } },
+        }),
+        prisma.book.update({
+          where: { id: chapter.bookId },
+          data: {
+            likeCount: { increment: 1 },
+            heatValue: { increment: 1.5 },
+          },
+        }),
+      ]);
 
       // 发送 WebSocket 事件
       wsEvents.heatUpdate(chapter.bookId, currentHeat + 1.5);
@@ -164,54 +173,52 @@ export class InteractionService {
 
   /**
    * 打赏 Ink
-   * 热度统一通过 BookScore.heatValue 管理
+   * 优化：并行查询 + 事务保证原子性
    */
   async gift(bookId: string, fromUserId: string, amount: number): Promise<{ success: boolean; amount: number }> {
-    // 检查打赏者余额
-    const sender = await prisma.user.findUnique({
-      where: { id: fromUserId },
-    });
+    // 并行查询打赏者和书籍信息（书籍查询包含热度值）
+    const [sender, book] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: fromUserId },
+        select: { totalInk: true },
+      }),
+      prisma.book.findUnique({
+        where: { id: bookId },
+        select: { authorId: true, heatValue: true },
+      }),
+    ]);
 
     if (!sender || sender.totalInk < amount) {
       throw new Error('Insufficient Ink');
     }
 
-    const book = await prisma.book.findUnique({
-      where: { id: bookId },
-      include: { author: true },
-    });
-
     if (!book) {
       throw new Error('Book not found');
     }
 
-    // 获取当前热度值
-    const currentScore = await prisma.book.findUnique({
-      where: { id: bookId },
-      select: { heatValue: true },
-    });
-    const currentHeat = currentScore?.heatValue || 0;
+    const currentHeat = book.heatValue || 0;
 
-    // 扣除打赏者余额
-    await prisma.user.update({
-      where: { id: fromUserId },
-      data: { totalInk: { decrement: amount } },
-    });
-
-    // 增加书籍拥有者余额
-    await prisma.user.update({
-      where: { id: book.authorId },
-      data: { totalInk: { increment: amount } },
-    });
-
-    // 更新打赏统计和热度（+ amount * 2）
-    await prisma.book.update({
-      where: { id: bookId },
-      data: {
-        coinCount: { increment: amount },
-        heatValue: { increment: amount * 2 },
-      },
-    });
+    // 使用事务保证原子性
+    await prisma.$transaction([
+      // 扣除打赏者余额
+      prisma.user.update({
+        where: { id: fromUserId },
+        data: { totalInk: { decrement: amount } },
+      }),
+      // 增加书籍拥有者余额
+      prisma.user.update({
+        where: { id: book.authorId },
+        data: { totalInk: { increment: amount } },
+      }),
+      // 更新打赏统计和热度
+      prisma.book.update({
+        where: { id: bookId },
+        data: {
+          coinCount: { increment: amount },
+          heatValue: { increment: amount * 2 },
+        },
+      }),
+    ]);
 
     // 发送 WebSocket 事件
     wsEvents.heatUpdate(bookId, currentHeat + amount * 2);

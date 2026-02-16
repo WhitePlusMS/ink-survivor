@@ -41,6 +41,7 @@ export interface SeasonResponse {
 export class SeasonService {
   /**
    * 获取当前赛季
+   * 优化：使用 count 替代 findMany 提高性能
    */
   async getCurrentSeason(): Promise<SeasonResponse | null> {
     const season = await prisma.season.findFirst({
@@ -54,19 +55,17 @@ export class SeasonService {
       return null;
     }
 
-    // 实时计算参与书籍数量
-    const participantAuthors = await prisma.book.findMany({
+    // 优化：使用 count 替代 findMany，更高效
+    const participantCount = await prisma.book.count({
       where: { seasonId: season.id },
-      distinct: ['authorId'],
-      select: { authorId: true },
     });
-    const participantCount = participantAuthors.length;
 
     return this.formatSeason(season, participantCount);
   }
 
   /**
    * 根据 ID 获取赛季
+   * 优化：使用 count 替代 findMany 提高性能
    */
   async getSeasonById(seasonId: string): Promise<SeasonResponse | null> {
     const season = await prisma.season.findUnique({
@@ -77,13 +76,10 @@ export class SeasonService {
       return null;
     }
 
-    // 实时计算参与书籍数量
-    const participantAuthors = await prisma.book.findMany({
+    // 优化：使用 count 替代 findMany，更高效
+    const participantCount = await prisma.book.count({
       where: { seasonId: season.id },
-      distinct: ['authorId'],
-      select: { authorId: true },
     });
-    const participantCount = participantAuthors.length;
 
     return this.formatSeason(season, participantCount);
   }
@@ -261,6 +257,7 @@ export class SeasonService {
   /**
    * 获取所有赛季及其前5名书籍（按热度排序）
    * 使用 BookScore.heatValue 作为热度来源
+   * 优化：使用批量查询替代 N+1 查询
    */
   async getAllSeasonsWithTopBooks(options?: { limitPerSeason?: number }) {
     const limitPerSeason = options?.limitPerSeason || 5;
@@ -273,53 +270,69 @@ export class SeasonService {
       orderBy: { seasonNumber: 'desc' },
     });
 
-    // 为每个赛季获取前5名书籍
-    const seasonsWithBooks = await Promise.all(
-      seasons.map(async (season) => {
-        const books = await prisma.book.findMany({
-          where: { seasonId: season.id },
-          include: {
-            author: { select: { nickname: true } },
-            _count: { select: { chapters: true } },
-            chapters: { select: { readCount: true, commentCount: true } },
-          },
-          // 使用 Book.heatValue 排序（score 已合并到 Book 表）
-          orderBy: { heatValue: 'desc' },
-          take: limitPerSeason,
-        });
+    if (seasons.length === 0) {
+      return [];
+    }
 
-        // 聚合计算整本书的观看数和评论数
-        const booksWithStats = books.map((book) => {
-          const chapterReadCount = book.chapters.reduce((sum: number, ch: { readCount?: number }) => sum + (ch.readCount || 0), 0);
-          const chapterCommentCount = book.chapters.reduce((sum: number, ch: { commentCount?: number }) => sum + (ch.commentCount || 0), 0);
+    // 优化赛季的：批量查询所有书籍，避免 N+1 问题
+    const seasonIds = seasons.map(s => s.id);
+    const allBooks = await prisma.book.findMany({
+      where: { seasonId: { in: seasonIds } },
+      include: {
+        author: { select: { nickname: true } },
+        _count: { select: { chapters: true, comments: true } },
+        chapters: { select: { readCount: true, commentCount: true } },
+      },
+      orderBy: { heatValue: 'desc' },
+    });
 
-          return {
-            id: book.id,
-            title: book.title,
-            coverImage: book.coverImage ?? undefined,
-            shortDesc: book.shortDesc ?? undefined,
-            zoneStyle: book.zoneStyle,
-            // 使用 Book.heatValue（score 已合并到 Book 表）
-            heat: book.heatValue ?? 0,
-            chapterCount: book._count?.chapters ?? 0,
-            viewCount: chapterReadCount,
-            commentCount: chapterCommentCount,
-            author: { nickname: book.author.nickname },
-            score: {
-              heatValue: book.heatValue ?? 0,
-              finalScore: book.finalScore ?? 0,
-              avgRating: book.avgRating ?? 0,
-            },
-            seasonNumber: season.seasonNumber,
-          };
-        });
+    // 内存中按赛季分组，每组最多取 limitPerSeason 本
+    const booksBySeason = new Map<string, typeof allBooks>();
+    for (const book of allBooks) {
+      if (!book.seasonId) continue;
+
+      const existing = booksBySeason.get(book.seasonId) || [];
+      if (existing.length < limitPerSeason) {
+        existing.push(book);
+        booksBySeason.set(book.seasonId, existing);
+      }
+    }
+
+    // 组装结果
+    const seasonsWithBooks = seasons.map((season) => {
+      const books = booksBySeason.get(season.id) || [];
+
+      // 聚合计算整本书的观看数和评论数
+      const booksWithStats = books.map((book) => {
+        const chapterReadCount = book.chapters.reduce((sum: number, ch: { readCount?: number }) => sum + (ch.readCount || 0), 0);
+        const chapterCommentCount = book.chapters.reduce((sum: number, ch: { commentCount?: number }) => sum + (ch.commentCount || 0), 0);
+        const bookCommentCount = book._count?.comments || 0;
 
         return {
-          ...this.formatSeason(season),
-          books: booksWithStats,
+          id: book.id,
+          title: book.title,
+          coverImage: book.coverImage ?? undefined,
+          shortDesc: book.shortDesc ?? undefined,
+          zoneStyle: book.zoneStyle,
+          heat: book.heatValue ?? 0,
+          chapterCount: book._count?.chapters ?? 0,
+          viewCount: chapterReadCount,
+          commentCount: chapterCommentCount + bookCommentCount,
+          author: { nickname: book.author.nickname },
+          score: {
+            heatValue: book.heatValue ?? 0,
+            finalScore: book.finalScore ?? 0,
+            avgRating: book.avgRating ?? 0,
+          },
+          seasonNumber: season.seasonNumber,
         };
-      })
-    );
+      });
+
+      return {
+        ...this.formatSeason(season),
+        books: booksWithStats,
+      };
+    });
 
     return seasonsWithBooks;
   }

@@ -134,6 +134,7 @@ model Book {
   plannedChapters Int?
 
   inkBalance      Int       @default(0)
+  rank            Int?      // 赛季排名
   participationId String?
 
   // ===== 大纲信息 (从 Outline 合并) =====

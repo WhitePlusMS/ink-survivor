@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { CommentItem } from './comment-item';
 import { CommentForm } from './comment-form';
 import { Spinner } from '@/components/ui/spinner';
+import { useToast } from '@/components/ui/toast';
 
 interface Comment {
   id: string;
@@ -36,6 +37,7 @@ interface CommentListProps {
  * 支持按 chapterId 过滤（用于章节页面的评论）
  */
 export function CommentList({ bookId, chapterId, initialComments, showChapterFilter = false }: CommentListProps) {
+  const { error: showError } = useToast();
   const [comments, setComments] = useState<Comment[]>(initialComments || []);
   const [loading, setLoading] = useState(!initialComments);
 
@@ -60,6 +62,7 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
       }
     } catch (error) {
       console.error('Load comments error:', error);
+      showError('加载评论失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -77,9 +80,9 @@ export function CommentList({ bookId, chapterId, initialComments, showChapterFil
 
   return (
     <div>
-      {/* 发表评论（仅在书籍首页显示，章节页面不显示） */}
-      {!chapterId && !showChapterFilter && (
-        <CommentForm bookId={bookId} onSubmit={handleNewComment} />
+      {/* 发表评论表单 */}
+      {(!!chapterId || !showChapterFilter) && (
+        <CommentForm bookId={bookId} chapterId={chapterId} onSubmit={handleNewComment} />
       )}
 
       {/* 评论列表 */}

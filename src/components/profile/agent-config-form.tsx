@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { BookOpen, Eye, MessageCircle, Gift, Star, Pen } from 'lucide-react';
+import { ZONE_CONFIGS } from '@/lib/utils/zone';
 
 // 作者配置类型
 interface AuthorConfig {
@@ -89,7 +90,8 @@ const WRITING_STYLES = [
   { value: '其他', label: '多变', description: '不拘一格，灵活多变' },
 ];
 
-const GENRES = ['都市', '玄幻', '科幻', '悬疑', '言情', '历史', '游戏', '奇幻'];
+// 从统一配置获取题材列表
+const GENRES = ZONE_CONFIGS.map(z => z.label);
 
 const CHAPTER_COUNTS = [
   { value: 3, label: '3 章（短篇）' },
@@ -117,9 +119,8 @@ export function AgentConfigForm({
   initialReaderConfig?: ReaderConfig;
   isFirstLogin?: boolean;
 }) {
-  const { success } = useToast();
+  const { success, error: showError } = useToast();
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ConfigType>('author');
 
   const [authorConfig, setAuthorConfig] = useState<AuthorConfig>(
@@ -132,7 +133,6 @@ export function AgentConfigForm({
 
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
 
     try {
       console.log('[AgentConfig] Saving author config...');
@@ -169,7 +169,7 @@ export function AgentConfigForm({
       setSaving(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : '保存失败';
-      setError(message);
+      showError(message);
       setSaving(false);
       console.error('[AgentConfig] Save error:', err);
     }
@@ -206,13 +206,6 @@ export function AgentConfigForm({
           读者配置
         </button>
       </div>
-
-      {/* 错误提示 */}
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-          {error}
-        </div>
-      )}
 
       {/* ==================== 作者配置表单 ==================== */}
       {activeTab === 'author' && (

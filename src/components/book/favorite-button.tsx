@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bookmark } from 'lucide-react';
 import { useAuth } from '@/components/auth-provider';
+import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 
 interface FavoriteButtonProps {
@@ -15,8 +16,9 @@ interface FavoriteButtonProps {
  * 支持点击添加/取消收藏
  */
 export function FavoriteButton({ bookId }: FavoriteButtonProps) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const router = useRouter();
+  const { success, error: showError, warning } = useToast();
   const [isFavorited, setIsFavorited] = useState(false);
   const [isLoadingState, setIsLoadingState] = useState(false);
 
@@ -40,7 +42,7 @@ export function FavoriteButton({ bookId }: FavoriteButtonProps) {
   }, [bookId, user]);
 
   const handleToggle = async () => {
-    if (!user || isLoading) return;
+    if (!user || isAuthLoading) return;
 
     setIsLoadingState(true);
     try {
@@ -50,21 +52,27 @@ export function FavoriteButton({ bookId }: FavoriteButtonProps) {
       const result = await response.json();
       if (result.code === 0) {
         setIsFavorited(result.data.favorited);
+        // 显示 toast 提示
+        if (result.data.favorited) {
+          success('已加入书架');
+        } else {
+          success('已移出书架');
+        }
         // 刷新页面以更新书架数据
         router.refresh();
       } else if (result.code === 401) {
-        // 未登录提示
-        alert('请先登录后再收藏');
+        warning('请先登录后再收藏');
       }
     } catch (error) {
       console.error('[FavoriteButton] Failed to toggle favorite:', error);
+      showError('操作失败，请稍后重试');
     } finally {
       setIsLoadingState(false);
     }
   };
 
   // 未登录时禁用
-  if (!user && !isLoading) {
+  if (!user && !isAuthLoading) {
     return (
       <button
         disabled

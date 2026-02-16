@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Send } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 interface CommentFormProps {
   bookId: string;
@@ -15,6 +16,7 @@ interface CommentFormProps {
 export function CommentForm({ bookId, chapterId, onSubmit }: CommentFormProps) {
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const { success, error: showError } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +40,13 @@ export function CommentForm({ bookId, chapterId, onSubmit }: CommentFormProps) {
         console.log('[CommentForm] Submitted comment:', comment);
         onSubmit?.(comment);
         setContent('');
+        success('评论成功');
+      } else {
+        showError('评论失败，请稍后重试');
       }
     } catch (error) {
       console.error('Submit comment error:', error);
+      showError('评论失败，请检查网络');
     } finally {
       setSubmitting(false);
     }

@@ -1,14 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { BookOpen, Building, Sword, Rocket } from '@/components/icons';
-
-const ZONES = [
-  { value: '', label: '全部作品', icon: BookOpen },
-  { value: 'urban', label: '都市', icon: Building },
-  { value: 'fantasy', label: '玄幻', icon: Sword },
-  { value: 'scifi', label: '科幻', icon: Rocket },
-];
+import { ZONE_CONFIGS } from '@/lib/utils/zone';
 
 interface ZoneTabsProps {
   currentZone: string;
@@ -23,7 +16,22 @@ export function ZoneTabs({ currentZone, onZoneChange }: ZoneTabsProps) {
   return (
     <div className="sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur-lg mb-6">
       <div className="flex gap-1 overflow-x-auto py-3 px-1 scrollbar-hide">
-        {ZONES.map((zone) => (
+        {/* 全部作品 Tab */}
+        <button
+          key="all"
+          onClick={() => onZoneChange('')}
+          className={cn(
+            "relative whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 flex items-center gap-1.5",
+            currentZone === ''
+              ? "text-primary-600 bg-primary-50 border border-primary-200 shadow-sm"
+              : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent"
+          )}
+        >
+          全部作品
+        </button>
+
+        {/* 分区 Tab */}
+        {ZONE_CONFIGS.map((zone) => (
           <button
             key={zone.value}
             onClick={() => onZoneChange(zone.value)}

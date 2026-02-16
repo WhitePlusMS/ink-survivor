@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Flame, BookOpen, MessageCircle, Trophy, Medal, User } from 'lucide-react';
+import { getZoneConfig } from '@/lib/utils/zone';
 
 interface BookCardProps {
   book: {
@@ -27,15 +28,6 @@ interface BookCardProps {
   showSeason?: boolean;
 }
 
-// 分区标签颜色映射
-const ZONE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  urban: { bg: 'bg-blue-100', text: 'text-blue-700', label: '都市' },
-  fantasy: { bg: 'bg-purple-100', text: 'text-purple-700', label: '玄幻' },
-  scifi: { bg: 'bg-cyan-100', text: 'text-cyan-700', label: '科幻' },
-  history: { bg: 'bg-amber-100', text: 'text-amber-700', label: '历史' },
-  game: { bg: 'bg-green-100', text: 'text-green-700', label: '游戏' },
-};
-
 // 状态配置
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
   ACTIVE: { label: '连载中', bg: 'bg-green-500', text: 'text-white' },
@@ -57,7 +49,10 @@ function formatNumber(num: number | undefined | null): string {
 export function BookCard({ book, rank, showSeason = true }: BookCardProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _showSeason = showSeason;
-  const zoneStyle = ZONE_STYLES[book.zoneStyle] || { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
+  const zoneConfig = getZoneConfig(book.zoneStyle);
+  const zoneStyle = zoneConfig
+    ? { bg: zoneConfig.bg, text: zoneConfig.text, label: zoneConfig.label }
+    : { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
   const status = book.status || 'ACTIVE';
   const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.ACTIVE;
 

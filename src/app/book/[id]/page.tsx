@@ -1,28 +1,21 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Share2, Flame, BookOpen, MessageCircle, CheckCircle, User, Star } from 'lucide-react';
+import { ArrowLeft, Flame, BookOpen, MessageCircle, CheckCircle, User, Star, Heart, Coins } from 'lucide-react';
 import { bookService } from '@/services/book.service';
 import { OutlineDisplay } from '@/components/book/outline-display';
 import { CommentList } from '@/components/comments/comment-list';
 import { FavoriteButton } from '@/components/book/favorite-button';
 import { CompleteButton } from '@/components/book/complete-button';
+import { ShareButton } from '@/components/book/share-button';
 import { cookies } from 'next/headers';
 import { safeJsonField } from '@/lib/utils/jsonb-utils';
 import type { Character, ChapterPlan } from '@/types/outline';
+import { getZoneConfig } from '@/lib/utils/zone';
 
 interface BookPageProps {
   params: { id: string };
 }
-
-// 分区标签颜色映射
-const ZONE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  urban: { bg: 'bg-blue-100', text: 'text-blue-700', label: '都市' },
-  fantasy: { bg: 'bg-purple-100', text: 'text-purple-700', label: '玄幻' },
-  scifi: { bg: 'bg-cyan-100', text: 'text-cyan-700', label: '科幻' },
-  history: { bg: 'bg-amber-100', text: 'text-amber-700', label: '历史' },
-  game: { bg: 'bg-green-100', text: 'text-green-700', label: '游戏' },
-};
 
 export default async function BookPage({ params }: BookPageProps) {
   const book = await bookService.getBookById(params.id);
@@ -34,12 +27,17 @@ export default async function BookPage({ params }: BookPageProps) {
   // 从 Book 的合并字段获取热度，从 _count 获取章节数
   const heatValue = book.heatValue ?? 0;
   const chapterCount = book._count?.chapters ?? 0;
-  const zoneStyle = ZONE_STYLES[book.zoneStyle] || { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
+  const likeCount = book.likeCount ?? 0;
+  const favoriteCount = book.favoriteCount ?? 0;
+  const zoneConfig = getZoneConfig(book.zoneStyle);
+  const zoneStyle = zoneConfig
+    ? { bg: zoneConfig.bg, text: zoneConfig.text, label: zoneConfig.label }
+    : { bg: 'bg-surface-100', text: 'text-surface-700', label: book.zoneStyle };
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header - 固定顶部 */}
-      <header className="sticky top-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-40">
+      <header className="sticky top-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-50">
         <main className="mx-auto w-full px-4 sm:px-6 lg:px-8 xl:px-16 2xl:px-24">
           <div className="mx-auto max-w-screen-xl flex items-center gap-3 py-3">
             <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
@@ -47,9 +45,7 @@ export default async function BookPage({ params }: BookPageProps) {
               <span className="text-sm font-medium">返回</span>
             </Link>
             <h1 className="flex-1 truncate text-sm font-medium">{book.title}</h1>
-            <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-full" aria-label="分享书籍">
-              <Share2 className="w-5 h-5" aria-hidden="true" />
-            </button>
+            <ShareButton bookId={params.id} bookTitle={book.title} />
           </div>
         </main>
       </header>
@@ -99,7 +95,7 @@ export default async function BookPage({ params }: BookPageProps) {
                 </div>
 
                 {/* 评分 */}
-                {book.avgRating && (
+                {book.avgRating !== undefined && book.avgRating !== null && book.avgRating > 0 && (
                   <div className="flex items-center gap-2">
                     <Star className="h-6 w-6 fill-yellow-400 text-yellow-400" />
                     <span className="text-3xl font-bold text-gray-900">{book.avgRating.toFixed(1)}</span>
@@ -119,7 +115,7 @@ export default async function BookPage({ params }: BookPageProps) {
             )}
 
             {/* 统计数据 */}
-            <div className="mt-4 grid grid-cols-3 gap-4 border-t border-gray-100 pt-4">
+            <div className="mt-4 grid grid-cols-5 gap-2 border-t border-gray-100 pt-4">
               <div className="text-center">
                 <div className="mb-2 flex justify-center">
                   <BookOpen className="h-5 w-5 text-primary-500" />
@@ -133,6 +129,20 @@ export default async function BookPage({ params }: BookPageProps) {
                 </div>
                 <div className="text-xl font-bold text-gray-900">{heatValue.toLocaleString()}</div>
                 <div className="text-xs text-gray-500">热度</div>
+              </div>
+              <div className="text-center">
+                <div className="mb-2 flex justify-center">
+                  <Heart className="h-5 w-5 text-red-500" />
+                </div>
+                <div className="text-xl font-bold text-gray-900">{likeCount.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">赞</div>
+              </div>
+              <div className="text-center">
+                <div className="mb-2 flex justify-center">
+                  <Coins className="h-5 w-5 text-yellow-500" />
+                </div>
+                <div className="text-xl font-bold text-gray-900">{favoriteCount.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">打赏</div>
               </div>
               <div className="text-center">
                 <div className="mb-2 flex justify-center">

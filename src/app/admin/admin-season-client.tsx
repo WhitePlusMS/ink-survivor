@@ -9,15 +9,10 @@ import { Spinner } from '@/components/ui/spinner';
 import {
   Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save
 } from 'lucide-react';
+import { ZONE_CONFIGS, ZONE_VALUES } from '@/lib/utils/zone';
 
-// 所有可用分区（用于显示，实际赛季使用全部）
-const ALL_ZONES = [
-  { value: 'urban', label: '都市' },
-  { value: 'fantasy', label: '玄幻' },
-  { value: 'scifi', label: '科幻' },
-  { value: 'history', label: '历史' },
-  { value: 'game', label: '游戏' },
-];
+// 所有可用分区（用于显示，实际赛季使用全部）- 从统一配置获取
+const ALL_ZONES = ZONE_CONFIGS.map(z => ({ value: z.value, label: z.label }));
 
 interface PhaseStatus {
   currentRound: number;
@@ -83,7 +78,8 @@ const ZONE_LABELS: Record<string, string> = {
 };
 
 // 所有分区（赛季默认使用全部）
-const ALL_ZONE_STYLES = ['urban', 'fantasy', 'scifi', 'history', 'game'];
+// 所有可用分区值数组 - 从统一配置获取
+// (使用 ZONE_VALUES)
 
 // 赛季详情接口（用于历史赛季列表）
 interface SeasonDetail {
@@ -149,10 +145,12 @@ function getStatusBadge(status: string) {
  * 管理员赛季管理客户端组件
  */
 export function AdminSeasonClient({
+  isAdmin,
   season,
   phaseStatus,
   allSeasons,
 }: {
+  isAdmin: boolean;
   season: Season | null;
   phaseStatus: PhaseStatus | null;
   allSeasons?: SeasonDetail[];
@@ -160,7 +158,8 @@ export function AdminSeasonClient({
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionType, setActionType] = useState<'init' | 'start' | 'nextPhase' | 'endSeason' | null>(null);
-  const [activeTab, setActiveTab] = useState<'queue' | 'immediate' | 'history'>('queue');
+  // 非管理员默认显示历史赛季 Tab
+  const [activeTab, setActiveTab] = useState<'queue' | 'immediate' | 'history'>(isAdmin ? 'queue' : 'history');
 
   // 赛季队列状态
   const [seasonQueue, setSeasonQueue] = useState<SeasonQueueItem[]>([]);
@@ -173,7 +172,7 @@ export function AdminSeasonClient({
     seasonNumber: 1,
     themeKeyword: '',
     constraints: '',
-    zoneStyles: ALL_ZONE_STYLES,
+    zoneStyles: ZONE_VALUES,
     maxChapters: 7,
     minChapters: 3,
     phaseDurations: {
@@ -222,7 +221,7 @@ export function AdminSeasonClient({
       seasonNumber: getNextSeasonNumber(),
       themeKeyword: '',
       constraints: '',
-      zoneStyles: ALL_ZONE_STYLES,
+      zoneStyles: ZONE_VALUES,
       maxChapters: 7,
       minChapters: 3,
       phaseDurations: { reading: 10, outline: 5, writing: 5 },
@@ -532,39 +531,50 @@ export function AdminSeasonClient({
         </div>
       )}
 
-      {/* Tab 切换 */}
-      <div className="flex gap-2 border-b border-surface-200 dark:border-surface-700">
-        <button
-          onClick={() => setActiveTab('queue')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'queue'
-              ? 'border-purple-500 text-purple-600'
-              : 'border-transparent text-surface-600 hover:text-surface-900'
-          }`}
-        >
-          赛季队列管理
-        </button>
-        <button
-          onClick={() => { resetForm(); setActiveTab('immediate'); }}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'immediate'
-              ? 'border-purple-500 text-purple-600'
-              : 'border-transparent text-surface-600 hover:text-surface-900'
-          }`}
-        >
-          立即创建赛季
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'history'
-              ? 'border-purple-500 text-purple-600'
-              : 'border-transparent text-surface-600 hover:text-surface-900'
-          }`}
-        >
-          历史赛季 ({allSeasons?.length || 0})
-        </button>
-      </div>
+      {/* Tab 切换 - 仅管理员显示完整 Tab */}
+      {isAdmin && (
+        <div className="flex gap-2 border-b border-surface-200 dark:border-surface-700">
+          <button
+            onClick={() => setActiveTab('queue')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'queue'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-surface-600 hover:text-surface-900'
+            }`}
+          >
+            赛季队列管理
+          </button>
+          <button
+            onClick={() => { resetForm(); setActiveTab('immediate'); }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'immediate'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-surface-600 hover:text-surface-900'
+            }`}
+          >
+            立即创建赛季
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'history'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-surface-600 hover:text-surface-900'
+            }`}
+          >
+            历史赛季 ({allSeasons?.length || 0})
+          </button>
+        </div>
+      )}
+
+      {/* 非管理员只显示历史赛季 Tab 标题 */}
+      {!isAdmin && (
+        <div className="mb-4">
+          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+            历史赛季 ({allSeasons?.length || 0})
+          </h2>
+        </div>
+      )}
 
       {/* 赛季队列管理 Tab */}
       {activeTab === 'queue' && (

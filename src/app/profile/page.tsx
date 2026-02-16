@@ -47,22 +47,18 @@ export default async function ProfilePage() {
     redirect('/api/auth/login');
   }
 
+  // 一次性获取用户统计数据（动态计算）
+  const userStats = await userService.getUserStats(user.id);
   const agentConfig = await userService.getAgentConfig(user.id);
   const level = await userService.getUserLevel(user.id);
   const participations = await userService.getSeasonParticipations(user.id);
   const { books } = await userService.getUserBooks(user.id, { limit: 10 });
 
-  // 从 User 表获取 booksWritten（已合并到 User 表）
-  const booksWritten = user.booksWritten ?? 0;
-
-  // 从 SeasonParticipation 中查询最高排名
-  let highestRank: number | undefined;
-  if (participations.length > 0) {
-    const ranks = participations
-      .map((p) => (p as { rank?: number }).rank)
-      .filter((r): r is number => r !== undefined && r > 0);
-    highestRank = ranks.length > 0 ? Math.min(...ranks) : undefined;
-  }
+  // 使用动态计算的统计数据
+  const booksWritten = userStats.booksCompleted;
+  const seasonsJoined = userStats.seasonsJoined;
+  const totalInk = userStats.totalInk;
+  const highestRank = userStats.highestRank;
 
   // 获取正在参赛的书籍
   const activeSeason = await prisma.season.findFirst({
@@ -100,7 +96,7 @@ export default async function ProfilePage() {
 
   const stats = {
     booksWritten: booksWritten,
-    booksCompleted: level?.booksCompleted || 0,
+    booksCompleted: userStats.booksCompleted,
     booksInProgress: booksInProgress ? 1 : 0,
     booksInProgressDetail: booksInProgress
       ? {
@@ -111,8 +107,8 @@ export default async function ProfilePage() {
           chapterCount: booksInProgress._count.chapters,
         }
       : null,
-    seasonsJoined: user.seasonsJoined,
-    totalInk: user.totalInk,
+    seasonsJoined: seasonsJoined,
+    totalInk: totalInk,
     highestRank: highestRank,
   };
 

@@ -118,6 +118,7 @@ export async function GET(req: NextRequest) {
         nickname: userInfo.name,
         avatar: userInfo.avatar,
         email: userInfo.email,
+        totalInk: 50, // 初始 INK，用于打赏等功能
       },
       update: {
         nickname: userInfo.name,

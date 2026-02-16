@@ -11,10 +11,12 @@ interface SeasonCardProps {
       themeKeyword: string;
       status: string;
     };
+    bookId: string;
     bookTitle: string;
     zoneStyle: string;
     status: string;
     submittedAt: string | Date;
+    rank?: number | null;
   };
 }
 
@@ -22,7 +24,7 @@ interface SeasonCardProps {
  * 赛季卡片组件
  */
 export function SeasonCard({ participation }: SeasonCardProps) {
-  const { season, bookTitle, zoneStyle, status } = participation;
+  const { season, bookId, bookTitle, zoneStyle, status, rank } = participation;
 
   // 获取状态图标
   const getStatusIcon = () => {
@@ -54,7 +56,7 @@ export function SeasonCard({ participation }: SeasonCardProps) {
 
   return (
     <Link
-      href={`/profile/season/${season.id}`}
+      href={`/book/${bookId}`}
       className="bg-white rounded-lg shadow-sm p-4 mb-3 hover:shadow-md transition-shadow block"
     >
       <div className="flex items-start justify-between mb-2">
@@ -81,6 +83,11 @@ export function SeasonCard({ participation }: SeasonCardProps) {
         <span className="px-2 py-0.5 bg-surface-100 rounded text-xs">
           {zoneStyle}
         </span>
+        {rank && (
+          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+            第 {rank} 名
+          </span>
+        )}
       </div>
 
       <div className="text-xs text-surface-400">

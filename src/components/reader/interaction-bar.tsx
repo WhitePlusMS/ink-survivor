@@ -91,9 +91,16 @@ export function InteractionBar({
           localStorage.setItem(`heat:${bookId}`, String(data.data.heat));
         }
         setFavorited(!favorited);
+        // 显示 toast 提示
+        if (data.data?.favorited) {
+          success('已加入书架');
+        } else {
+          success('已移出书架');
+        }
       }
     } catch (error) {
       console.error('Favorite error:', error);
+      showError('操作失败，请稍后重试');
     } finally {
       setIsLoading(false);
     }
@@ -119,15 +126,21 @@ export function InteractionBar({
           const heat = data.data.heat;
           localStorage.setItem(`heat:${bookId}`, String(heat));
           console.log(`[InteractionBar] 点赞成功，热度: ${heat}`);
+          // 显示 toast 提示
+          if (!previousLiked) {
+            success('点赞 +1');
+          }
         }
       } else {
         // 请求失败，回滚状态
         setLiked(previousLiked);
+        showError('点赞失败，请稍后重试');
         console.error('Like request failed');
       }
     } catch (error) {
       // 网络错误，回滚状态
       setLiked(previousLiked);
+      showError('点赞失败，请检查网络');
       console.error('Like error:', error);
     } finally {
       setIsLoading(false);
@@ -223,9 +236,9 @@ export function InteractionBar({
             <span className="text-xs">打赏</span>
           </button>
 
-          {/* 评论 */}
+          {/* 评论 - 跳转到本章评论区域 */}
           <Link
-            href={`/book/${bookId}#comments`}
+            href={chapterNum ? `/book/${bookId}/chapter/${chapterNum}#comments` : `/book/${bookId}#comments`}
             className="flex flex-col items-center gap-1 text-surface-500"
           >
             <MessageCircle className="w-6 h-6" />

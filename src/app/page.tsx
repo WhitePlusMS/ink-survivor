@@ -80,10 +80,10 @@ export default async function HomePage() {
         shortDesc: b.shortDesc ?? undefined,
         zoneStyle: b.zoneStyle,
         heat: b.heatValue ?? 0,
-        chapterCount: b.chapterCount ?? 0,
+        chapterCount: b._count?.chapters ?? 0,
         author: { nickname: b.author?.nickname ?? '未知' },
         viewCount: b.viewCount ?? 0,
-        commentCount: b.commentCount ?? 0,
+        commentCount: b._count?.comments ?? 0,
         // 使用 Book 的合并字段
         score: b.finalScore ? { finalScore: b.finalScore, avgRating: b.avgRating ?? 0 } : undefined,
       }));

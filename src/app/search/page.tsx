@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button';
 import { BookCard } from '@/components/home/book-card';
 import type { Book } from '@/components/home/book-list';
 import { Spinner } from '@/components/ui/spinner';
+import { useToast } from '@/components/ui/toast';
 
 /**
  * 搜索页面
  * 设计原则：简洁的搜索体验
  */
 export default function SearchPage() {
+  const { error: showError } = useToast();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Book[]>([]);
   const [loading, setLoading] = useState(false);
@@ -31,6 +33,7 @@ export default function SearchPage() {
       }
     } catch (error) {
       console.error('Search error:', error);
+      showError('搜索失败，请稍后重试');
       setResults([]);
     } finally {
       setLoading(false);

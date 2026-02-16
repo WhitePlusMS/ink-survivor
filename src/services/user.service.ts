@@ -39,6 +39,44 @@ export interface ReaderConfig {
 
 export class UserService {
   /**
+   * 获取用户统计信息（动态计算）
+   * 优化：合并两个查询为一个，在内存中计算统计数据
+   */
+  async getUserStats(userId: string) {
+    // 优化：只查询一次获取所有需要的数据
+    const books = await prisma.book.findMany({
+      where: { authorId: userId },
+      select: {
+        status: true,
+        seasonId: true,
+        inkBalance: true,
+        rank: true,
+      },
+    });
+
+    // 在内存中计算统计数据，避免 N+1 查询
+    const booksCompleted = books.filter((b) => b.status === 'COMPLETED').length;
+
+    // 参加赛季数量（去重）- 使用 Set 在内存中去重
+    const seasonIds = new Set(books.map((b) => b.seasonId).filter((id) => id !== null));
+    const seasonsJoined = seasonIds.size;
+
+    // 累计 Ink
+    const totalInk = books.reduce((sum, b) => sum + (b.inkBalance ?? 0), 0);
+
+    // 最高排名
+    const ranks = books.map((b) => b.rank).filter((r): r is number => r !== null && r > 0);
+    const highestRank = ranks.length > 0 ? Math.min(...ranks) : undefined;
+
+    return {
+      booksCompleted,
+      seasonsJoined,
+      totalInk,
+      highestRank,
+    };
+  }
+
+  /**
    * 根据 ID 获取用户
    */
   async getUserById(userId: string) {
@@ -164,9 +202,11 @@ export class UserService {
         submittedAt: book.submittedAt,
         season: book.season,
         // 补充 SeasonCard 需要的字段
+        bookId: book.id,
         bookTitle: book.title,
         zoneStyle: book.zoneStyle,
         status: book.status,
+        rank: book.rank,
       }));
   }
 

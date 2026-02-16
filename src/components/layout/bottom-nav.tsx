@@ -1,21 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, PenTool, Bookmark, User, Eye, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth-provider';
-
-/**
- * 赛季状态接口
- */
-interface SeasonStatus {
-  isActive: boolean;
-  seasonNumber: number;
-  themeKeyword: string;
-  participantCount: number;
-}
+import { useSeasonContext } from '@/components/providers/season-context';
 
 /**
  * 底部导航栏组件
@@ -25,31 +15,8 @@ interface SeasonStatus {
  */
 export function BottomNav() {
   const pathname = usePathname();
-  const { user, isLoading } = useAuth();
-  const [seasonStatus, setSeasonStatus] = useState<SeasonStatus | null>(null);
-  const [isCheckingSeason, setIsCheckingSeason] = useState(true);
-
-  // 获取赛季状态
-  useEffect(() => {
-    const fetchSeasonStatus = async () => {
-      try {
-        const response = await fetch('/api/seasons/status');
-        const result = await response.json();
-        if (result.code === 0 && result.data) {
-          setSeasonStatus(result.data);
-        }
-      } catch (error) {
-        console.error('[BottomNav] Failed to fetch season status:', error);
-      } finally {
-        setIsCheckingSeason(false);
-      }
-    };
-
-    // 只在客户端获取
-    if (typeof window !== 'undefined') {
-      fetchSeasonStatus();
-    }
-  }, []);
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { seasonStatus, isLoading: isSeasonLoading } = useSeasonContext();
 
   // 基础样式
   const baseClass = 'flex flex-col items-center px-4 py-1.5 rounded-lg transition-colors';
@@ -60,7 +27,7 @@ export function BottomNav() {
   // 渲染创作/观战按钮
   const renderCreateButton = () => {
     // 未登录时禁用
-    if (!user && !isLoading) {
+    if (!user && !isAuthLoading) {
       return (
         <div className={cn(baseClass, disabledClass)}>
           <PenTool className="w-6 h-6" aria-hidden="true" />
@@ -94,14 +61,14 @@ export function BottomNav() {
 
   // 渲染提示信息
   const renderSeasonTip = () => {
-    if (!seasonStatus?.isActive || isCheckingSeason) {
+    if (!seasonStatus?.isActive || isSeasonLoading) {
       return null;
     }
 
     return (
       <div className="fixed bottom-16 left-0 right-0 z-30 bg-gradient-to-r from-red-500 to-red-600 text-white text-center py-1.5 text-xs">
         <Info className="inline w-3.5 h-3.5 mr-1" aria-hidden="true" />
-        S{seasonStatus.seasonNumber} 赛季「{seasonStatus.themeKeyword}」进行中，人类仅供观战
+        S{seasonStatus?.seasonNumber} 赛季「{seasonStatus?.themeKeyword}」进行中，人类仅供观战
       </div>
     );
   };
@@ -135,10 +102,10 @@ export function BottomNav() {
             className={cn(
               baseClass,
               pathname === '/favorites' ? activeClass : inactiveClass,
-              (!user && !isLoading) && disabledClass
+              (!user && !isAuthLoading) && disabledClass
             )}
             onClick={(e) => {
-              if (!user && !isLoading) e.preventDefault();
+              if (!user && !isAuthLoading) e.preventDefault();
             }}
             aria-label="书架"
           >
@@ -152,10 +119,10 @@ export function BottomNav() {
             className={cn(
               baseClass,
               pathname === '/profile' ? activeClass : inactiveClass,
-              (!user && !isLoading) && disabledClass
+              (!user && !isAuthLoading) && disabledClass
             )}
             onClick={(e) => {
-              if (!user && !isLoading) e.preventDefault();
+              if (!user && !isAuthLoading) e.preventDefault();
             }}
             aria-label="我的"
           >

@@ -3,16 +3,19 @@
 import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 
 /**
  * 退出登录按钮组件
  */
 export function LogoutButton() {
   const router = useRouter();
+  const { success } = useToast();
 
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
+      success('已退出登录');
       router.push('/');
       router.refresh();
     } catch (error) {

@@ -11,6 +11,19 @@ import { Spinner } from '@/components/ui/spinner';
 import { Alert } from '@/components/ui/alert';
 import { UserPlus, Sparkles, Settings, Zap, ArrowRight, BookOpen } from 'lucide-react';
 
+/**
+ * 获取阶段显示名称
+ */
+function getPhaseDisplayName(phase: string): string {
+  const names: Record<string, string> = {
+    NONE: '准备中',
+    READING: '阅读窗口期',
+    OUTLINE: '大纲生成期',
+    WRITING: '章节创作期',
+  };
+  return names[phase] || phase;
+}
+
 interface Season {
   id: string;
   seasonNumber: number;
@@ -92,7 +105,23 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
     }
   }, [books]);
 
-  // 获取 S0 赛季状态
+  // 优化：直接从 props 中的 season 数据获取阶段状态，避免重复 API 调用
+  // season props 已经包含 currentRound 和 currentPhase
+  useEffect(() => {
+    if (season && user) {
+      const roundPhase = season.currentPhase || 'NONE';
+      const phaseDisplayName = getPhaseDisplayName(roundPhase);
+      setPhaseStatus({
+        currentRound: season.currentRound || 1,
+        currentPhase: roundPhase,
+        phaseDisplayName,
+      });
+    }
+  }, [season, user]);
+
+  // 获取 S0 赛季状态 - 注意：这个调用没有使用结果，是无用的，可以注释掉或删除
+  // 如果需要 S0 检测，应该在服务端判断后通过 props 传递
+  /*
   useEffect(() => {
     const fetchS0Status = async () => {
       try {
@@ -100,7 +129,6 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
         const result = await response.json();
         if (result.code === 0 && result.data) {
           // S0 赛季检测：seasonNumber 为 0
-          // 这里我们需要在服务器端判断是否是 S0
         }
       } catch (err) {
         console.error('Failed to fetch S0 status:', err);
@@ -111,6 +139,8 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
       fetchS0Status();
     }
   }, [user]);
+  */
+
   useEffect(() => {
     if (error) {
       const url = new URL(window.location.href);
@@ -224,29 +254,6 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
       setActionType(null);
     }
   };
-
-  // 获取阶段状态
-  useEffect(() => {
-    const fetchPhaseStatus = async () => {
-      try {
-        const response = await fetch('/api/seasons/current');
-        const result = await response.json();
-        if (result.code === 0 && result.data) {
-          setPhaseStatus({
-            currentRound: result.data.currentRound || 1,
-            currentPhase: result.data.roundPhase || 'NONE',
-            phaseDisplayName: result.data.phaseDisplayName || '准备中',
-          });
-        }
-      } catch (err) {
-        console.error('Failed to fetch phase status:', err);
-      }
-    };
-
-    if (user) {
-      fetchPhaseStatus();
-    }
-  }, [user]);
 
   if (isLoading) {
     return (
@@ -538,7 +545,7 @@ function PlatformStats({
 }) {
   const count = realParticipantCount ?? 0;
   return (
-    <div className="w-full">
+    <div className="w-full my-6">
       <div className="grid grid-cols-3 gap-3 text-center max-w-screen-md mx-auto">
         <div className="p-4 bg-white dark:bg-surface-800 rounded-lg shadow-sm border border-surface-100 dark:border-surface-700">
           <div className="text-2xl font-bold text-primary-600 dark:text-primary-400">

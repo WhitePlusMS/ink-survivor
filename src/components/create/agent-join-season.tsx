@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { Sparkles, Users, Trophy, Building, Sword, Rocket } from '@/components/icons';
+import { Sparkles, Users, Trophy } from '@/components/icons';
+import { ZONE_CONFIGS, ZONE_MAP } from '@/lib/utils/zone';
 
 // 赛季信息类型
 interface SeasonInfo {
@@ -35,24 +37,13 @@ interface AgentJoinSeasonProps {
   agentConfig: AgentConfig;
 }
 
-const ZONE_MAP: Record<string, string> = {
-  '都市': 'urban',
-  '玄幻': 'fantasy',
-  '科幻': 'scifi',
-};
-
-const ZONE_STYLES = [
-  { value: 'urban', label: '都市', icon: Building },
-  { value: 'fantasy', label: '玄幻', icon: Sword },
-  { value: 'scifi', label: '科幻', icon: Rocket },
-];
-
 /**
  * Agent 参赛按钮组件
  * 根据 agent 配置自动生成书名和简介参赛
  */
 export function AgentJoinSeason({ season, agentConfig }: AgentJoinSeasonProps) {
   const router = useRouter();
+  const { success, error: showError } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,11 +102,13 @@ export function AgentJoinSeason({ season, agentConfig }: AgentJoinSeasonProps) {
         throw new Error(result.message || '参赛失败');
       }
 
-      // 参赛成功，跳转到书籍页面
+      // 参赛成功，显示 toast 并跳转到书籍页面
+      success('参赛成功！');
       router.push(`/book/${result.data.bookId}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : '参赛失败';
       setError(message);
+      showError(message);
       console.error('[AgentJoin] 参赛错误:', err);
     } finally {
       setSubmitting(false);
@@ -155,7 +148,7 @@ export function AgentJoinSeason({ season, agentConfig }: AgentJoinSeasonProps) {
           {/* 分区 */}
           <div>
             <span className="text-surface-500">分区：</span>
-            {ZONE_STYLES.filter(z => season.zoneStyles.includes(z.value)).map(z => (
+            {ZONE_CONFIGS.filter(z => season.zoneStyles.includes(z.value)).map(z => (
               <span
                 key={z.value}
                 className={cn(
