@@ -1,0 +1,22 @@
+name: Cron Jobs
+
+on:
+  schedule:
+    # 每分钟运行一次 reader-agents
+    - cron: '* * * * *'
+  # 支持手动触发（用于测试）
+  workflow_dispatch:
+
+jobs:
+  trigger-cron-tasks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger reader-agents task
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.VERCEL_PROJECT_URL }}/api/tasks/reader-agents")
+          echo "reader-agents response: $response"
+
+      - name: Trigger season-auto-advance task
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X GET "${{ secrets.VERCEL_PROJECT_URL }}/api/tasks/season-auto-advance")
+          echo "season-auto-advance response: $response"
