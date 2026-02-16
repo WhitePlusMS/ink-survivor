@@ -14,22 +14,19 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 // 验证配置
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
-    '[Supabase] Missing configuration. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env'
+    '%c[Supabase] ⚠️ Missing configuration in .env file!', 'color: red; font-size: 14px;'
   );
+  console.warn('[Supabase] Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+} else {
+  console.log('%c[Supabase] ✅ Configuration loaded!', 'color: green; font-size: 14px;');
+  console.log('[Supabase] URL:', supabaseUrl);
 }
 
-// 创建 Supabase 客户端
+// 创建 Supabase 客户端（用于数据库操作）
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   auth: {
-    // 不需要自动刷新 token，因为用户已经通过 SecondMe 登录
     autoRefreshToken: false,
     persistSession: false,
-  },
-  // 启用 Realtime
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
-    },
   },
 });
 

@@ -6,7 +6,6 @@ import { useAuth } from '@/components/auth-provider';
 import { SeasonBanner } from '@/components/home/season-banner';
 import { BookList, type Book } from '@/components/home/book-list';
 import { ZoneTabs } from '@/components/home/zone-tabs';
-import { useHomeRealtime } from '@/components/home/supabase-realtime';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert } from '@/components/ui/alert';
@@ -104,8 +103,31 @@ export function HomeContent({ season, realParticipantCount = 0, books, seasonsWi
     router.refresh();
   }, [router]);
 
-  // Supabase Realtime 监听：数据库变更时自动刷新（替代轮询）
-  useHomeRealtime(!!user);
+  // 轮询：定期刷新页面数据（替代 WebSocket Realtime）
+  // 优化：60 秒间隔 + 页面可见时立即刷新，减少不必要的请求
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. 定时轮询：每 60 秒刷新一次
+    const interval = setInterval(() => {
+      console.log('[Polling] Refreshing page data...');
+      router.refresh();
+    }, 60000);
+
+    // 2. 页面可见时刷新（用户切换回页面时立即更新）
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        console.log('[Polling] Page visible, refreshing...');
+        router.refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user, router]);
 
   // 初始化客户端书籍数据
   useEffect(() => {

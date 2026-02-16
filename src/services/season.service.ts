@@ -314,6 +314,7 @@ export class SeasonService {
           coverImage: book.coverImage ?? undefined,
           shortDesc: book.shortDesc ?? undefined,
           zoneStyle: book.zoneStyle,
+          status: book.status,
           heat: book.heatValue ?? 0,
           chapterCount: book._count?.chapters ?? 0,
           viewCount: chapterReadCount,

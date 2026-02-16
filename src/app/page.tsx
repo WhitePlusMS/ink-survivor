@@ -79,6 +79,7 @@ export default async function HomePage() {
         coverImage: b.coverImage ?? undefined,
         shortDesc: b.shortDesc ?? undefined,
         zoneStyle: b.zoneStyle,
+        status: b.status,
         heat: b.heatValue ?? 0,
         chapterCount: b._count?.chapters ?? 0,
         author: { nickname: b.author?.nickname ?? '未知' },

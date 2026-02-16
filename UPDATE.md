@@ -872,3 +872,116 @@ Source: src\components\create\season-info.tsx (60:37)
 ### 修复原则
 - 遵循最简原则，添加防御性检查
 - 与项目中其他组件（如 season-banner.tsx, admin-season-client.tsx）保持一致的防御性写法
+
+---
+
+## 2026-02-16 - 修复主页书籍状态显示错误
+
+### 问题描述
+主页书籍卡片显示"连载中"，但点进去详情页显示"已完结"。主页显示的状态与详情页不一致。
+
+### 问题根源
+- `src/app/page.tsx` 在映射书籍数据时**没有包含 `status` 字段**
+- `src/components/home/book-card.tsx` 第 56 行使用默认值 `book.status || 'ACTIVE'`
+- 当 `status` 为 undefined 时，默认显示"连载中"
+- 而书籍详情页直接读取 `book.status`，能正确显示"已完结"
+
+### 修改的文件
+
+#### 1. src/app/page.tsx
+- **修改原因**: 映射书籍数据时缺少 status 字段
+- **修改内容**: 在书籍数据映射中添加 `status: b.status`
+- **修改前**:
+  ```typescript
+  books = (rawBooks || []).map((b) => ({
+    // ...其他字段
+    zoneStyle: b.zoneStyle,
+    heat: b.heatValue ?? 0,
+    // ...
+  }));
+  ```
+- **修改后**:
+  ```typescript
+  books = (rawBooks || []).map((b) => ({
+    // ...其他字段
+    zoneStyle: b.zoneStyle,
+    status: b.status,
+    heat: b.heatValue ?? 0,
+    // ...
+  }));
+  ```
+
+### 修复原则
+- 遵循最简原则，只添加缺失的字段
+- 与详情页保持数据一致性
+
+---
+
+## 2026-02-16 - 修复往届赛季书籍状态显示错误
+
+### 问题描述
+主页显示往届赛季作品时，即使书籍在数据库中是"已完结"状态，主页仍然显示"连载中"。
+
+### 问题根源
+- `src/app/page.tsx` 在映射当前赛季书籍数据时缺少 `status` 字段（已修复）
+- `src/services/season.service.ts` 的 `getAllSeasonsWithTopBooks` 方法在映射往届赛季书籍数据时缺少 `status` 字段
+- 当没有当前赛季时，主页显示往届赛季作品，这些作品没有 status 字段，BookCard 使用默认值 'ACTIVE'
+
+### 修改的文件
+
+#### 1. src/app/page.tsx
+- **修改内容**: 在当前赛季书籍映射中添加 `status: b.status`
+
+#### 2. src/services/season.service.ts
+- **修改原因**: 往届赛季书籍数据缺少 status 字段
+- **修改内容**: 在 getAllSeasonsWithTopBooks 方法的书籍映射中添加 `status: book.status`
+- **修改位置**: 第 311-328 行
+
+### 修复原则
+- 遵循最简原则，所有书籍数据映射都需要包含 status 字段
+- 确保主页、详情页、排行榜等所有展示书籍状态的地方数据一致
+
+---
+
+## 2026-02-16 - 启用 Supabase RLS (行级安全策略)
+
+### 问题描述
+Supabase Lint 报警告，提示 public schema 中的表没有启用 RLS (Row Level Security)：
+- `Book` 表 - RLS 未启用
+- `User` 表 - RLS 未启用
+- `Season` 表 - RLS 未启用
+- `Chapter` 表 - RLS 未启用
+- `Comment` 表 - RLS 未启用
+- `Reading` 表 - RLS 未启用
+- `Like` 表 - RLS 未启用
+- `SystemSettings` 表 - RLS 未启用
+
+### 修改内容
+通过 Supabase MCP 工具执行 SQL，为所有表启用 RLS 并创建访问策略。
+
+### RLS 启用状态
+| 表名 | RLS 状态 | 策略数量 |
+|------|---------|---------|
+| User | ✅ 启用 | 3 条 |
+| Season | ✅ 启用 | 1 条 |
+| SystemSettings | ✅ 启用 | 1 条 |
+| Book | ✅ 启用 | 3 条 |
+| Chapter | ✅ 启用 | 3 条 |
+| Comment | ✅ 启用 | 3 条 |
+| Reading | ✅ 启用 | 4 条 |
+| Like | ✅ 启用 | 3 条 |
+
+### 策略说明
+- **User**: 公开读取，用户可插入和更新自己的记录
+- **Season**: 公开读取（赛季信息）
+- **SystemSettings**: 公开读取（系统设置）
+- **Book**: 公开读取，用户可插入和更新自己的书籍
+- **Chapter**: 公开读取，用户可插入和更新自己书籍的章节
+- **Comment**: 公开读取，用户可插入和更新自己的评论
+- **Reading**: 用户只能读写自己的阅读记录
+- **Like**: 公开读取，用户只能操作自己的点赞
+
+### 注意事项
+- 由于数据库中 ID 字段使用 `text` 类型，而 `auth.uid()` 返回 `uuid` 类型，策略中使用 `auth.uid()::text` 进行类型转换
+- 未认证用户也可以读取公开数据
+- 认证用户只能操作自己的数据
