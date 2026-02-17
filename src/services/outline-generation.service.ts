@@ -23,6 +23,15 @@ interface AgentConfig {
   wordCountTarget: number;  // 每章目标字数
 }
 
+// 单章大纲数据结构
+interface ChapterOutline {
+  number: number;
+  title: string;
+  summary: string;
+  key_events: string[];
+  word_count_target: number;
+}
+
 // 大纲数据结构（整本书的大纲）
 interface BookOutline {
   title: string;
@@ -33,24 +42,16 @@ interface BookOutline {
     description: string;
     motivation: string;
   }>;
-  chapters: Array<{
-    number: number;
-    title: string;
-    summary: string;
-    key_events: string[];
-    word_count_target: number;
-  }>;
+  chapters: ChapterOutline[];
   themes: string[];
   tone: string;
 }
 
-// 单章大纲数据结构
-interface ChapterOutline {
-  number: number;
-  title: string;
-  summary: string;
-  key_events: string[];
-  word_count_target: number;
+// 大纲修改判断结果
+interface OutlineModificationDecision {
+  shouldModify: boolean;
+  reason: string;
+  changes: string[];
 }
 
 export class OutlineGenerationService {
@@ -150,10 +151,13 @@ export class OutlineGenerationService {
       where: { id: book.id },
       data: {
         originalIntent: outlineData.summary,
-        chaptersPlan: outlineData.chapters,
-        characters: outlineData.characters,
+        chaptersPlan: toJsonValue(outlineData.chapters),
+        characters: toJsonValue(outlineData.characters),
       },
     });
+
+    // 9. 保存初始大纲版本
+    await this.saveOutlineVersion(book.id, 1, '初始版本');
 
     console.log(`[Outline] 书籍《${book.title}》大纲生成完成 - ${outlineData.chapters.length} 章`);
     console.log(`[Outline] 大纲章节列表:`, outlineData.chapters.map(c => c.number));
@@ -162,6 +166,13 @@ export class OutlineGenerationService {
   /**
    * 为单本书生成或优化特定章节的大纲
    * 每次 OUTLINE 阶段只处理一本书的下一章
+   *
+   * 新逻辑（第2轮及以后）：
+   * 1. 获取上一章的读者评论（Top 3 AI + 人类评论）
+   * 2. 调用 LLM 判断"是否根据反馈修改大纲"
+   * 3. 结合 adaptability（听劝程度）决定
+   * 4. 如果改 → 修改大纲 → 保存新版本 → 生成第 N 章大纲
+   * 5. 如果不改 → 直接生成第 N 章大纲
    */
   async generateNextChapterOutline(bookId: string): Promise<void> {
     console.log(`[Outline] 开始为书籍 ${bookId} 生成下一章大纲`);
@@ -192,7 +203,7 @@ export class OutlineGenerationService {
     // 2. 获取现有大纲 - 从 Book 表获取
     const existingBook = await prisma.book.findUnique({
       where: { id: bookId },
-      select: { chaptersPlan: true },
+      select: { chaptersPlan: true, originalIntent: true, characters: true },
     });
 
     if (!existingBook || !existingBook.chaptersPlan) {
@@ -201,7 +212,7 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 解析现有大纲 - Prisma JSONB 字段已自动解析，直接使用类型断言
+    // 解析现有大纲
     const chaptersPlan = existingBook.chaptersPlan as unknown as ChapterOutline[];
 
     // 检查该章节是否已有大纲
@@ -211,7 +222,7 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 3. 解析作者配置 - Prisma JSONB 字段已自动解析，直接使用类型断言
+    // 3. 解析作者配置
     const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
 
     // 4. 获取赛季信息
@@ -226,14 +237,88 @@ export class OutlineGenerationService {
 
     const seasonInfo = {
       themeKeyword: season.themeKeyword,
-      // Prisma JSONB 字段已自动解析，直接使用类型断言
       constraints: season.constraints as unknown as string[],
     };
 
-    // 5. 获取上一章的读者反馈
+    // ===== 新增逻辑：判断是否需要修改大纲 =====
+    // 获取之前所有章节的评论（用于判断是否修改大纲）
+    const allComments: Array<{ type: 'ai' | 'human'; content: string; rating?: number }> = [];
+    for (let ch = 1; ch <= currentChapterCount; ch++) {
+      const chapterComments = await this.getAllChapterComments(bookId, ch);
+      allComments.push(...chapterComments);
+    }
+
+    // 构建 BookOutline 对象用于判断
+    const bookOutline: BookOutline = {
+      title: book.title,
+      summary: existingBook.originalIntent || '',
+      characters: (existingBook.characters as unknown as Array<{
+        name: string;
+        role: string;
+        description: string;
+        motivation: string;
+      }>) || [],
+      chapters: chaptersPlan,
+      themes: [],
+      tone: '',
+    };
+
+    // 判断是否需要修改大纲
+    const currentRound = nextChapterNumber; // 当前是第几轮
+    const decision = await this.shouldModifyOutline(
+      bookId,
+      currentRound,
+      agentConfig.adaptability,
+      bookOutline,
+      allComments
+    );
+
+    let updatedChapters = chaptersPlan;
+
+    // 如果判断需要修改大纲
+    if (decision.shouldModify) {
+      console.log(`[Outline] 判断需要修改大纲，原因: ${decision.reason}`);
+
+      try {
+        // 修改大纲，获取第 currentRound 章及以后的新大纲
+        const modifiedChapters = await this.modifyOutline(
+          bookId,
+          currentRound,
+          agentConfig,
+          bookOutline,
+          decision
+        );
+
+        // 合并：保留 1 到 currentRound-1 的旧大纲，替换 currentRound 及以后的新大纲
+        const oldChapters = chaptersPlan.filter(c => c.number < currentRound);
+        updatedChapters = [...oldChapters, ...modifiedChapters].sort((a, b) => a.number - b.number);
+
+        // 保存新版本到数据库
+        const newVersion = await this.saveOutlineVersion(bookId, currentRound, decision.reason);
+
+        // 更新 Book 表的当前大纲
+        await prisma.book.update({
+          where: { id: bookId },
+          data: {
+            chaptersPlan: toJsonValue(updatedChapters),
+          },
+        });
+
+        console.log(`[Outline] 大纲已更新到版本 v${newVersion}`);
+      } catch (error) {
+        console.error(`[Outline] 大纲修改失败，继续使用原大纲:`, error);
+        // 出错时继续使用原大纲
+        updatedChapters = chaptersPlan;
+      }
+    } else {
+      console.log(`[Outline] 判断不需要修改大纲，原因: ${decision.reason}`);
+    }
+
+    // ===== 原有逻辑：生成新章节大纲 =====
+    // 5. 获取上一章的读者反馈（只用于生成大纲的参考）
     const recentFeedbacks = await this.getChapterFeedbacks(bookId, currentChapterCount);
 
-    // 6. 构建 System Prompt（包含性格 + 赛季约束）
+    // 6. 构建 System Prompt
     const systemPrompt = buildAuthorSystemPrompt({
       userName: agentConfig.description || '作家',
       writingStyle: agentConfig.writingStyle,
@@ -247,10 +332,10 @@ export class OutlineGenerationService {
       bookTitle: book.title,
       chapterNumber: nextChapterNumber,
       previousChapterSummary: currentChapterCount > 0
-        ? this.getChapterSummary(chaptersPlan, currentChapterCount)
+        ? this.getChapterSummary(updatedChapters, currentChapterCount)
         : '这是本书的第一章',
       feedbacks: recentFeedbacks,
-      isLastChapter: nextChapterNumber >= 5,
+      isLastChapter: nextChapterNumber >= (season.maxChapters || 5),
     });
 
     // 8. 调用 LLM 生成章节大纲
@@ -263,7 +348,7 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 9. 解析响应（使用统一的 JSON 解析器，带重试机制）
+    // 9. 解析响应
     let newChapterOutline: ChapterOutline;
     try {
       newChapterOutline = await parseLLMJsonWithRetry<ChapterOutline>(
@@ -278,15 +363,14 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 10. 更新大纲中的章节计划 - 使用 Book 的合并字段
-    const updatedChapters = [...chaptersPlan, newChapterOutline]
+    // 10. 更新大纲中的章节计划
+    const finalChapters = [...updatedChapters, newChapterOutline]
       .sort((a, b) => a.number - b.number);
 
-    // 转换为 Prisma JSON 类型
     await prisma.book.update({
       where: { id: bookId },
       data: {
-        chaptersPlan: toJsonValue(updatedChapters),
+        chaptersPlan: toJsonValue(finalChapters),
       },
     });
 
@@ -355,6 +439,326 @@ export class OutlineGenerationService {
 
     // 提取评论内容作为反馈
     return comments.map((c) => c.content).filter(Boolean);
+  }
+
+  /**
+   * 获取某章节的所有评论（AI + 人类）
+   * 返回格式：{ type: 'ai' | 'human', content: string, rating?: number }[]
+   */
+  private async getAllChapterComments(bookId: string, chapterNumber: number): Promise<Array<{ type: 'ai' | 'human'; content: string; rating?: number }>> {
+    if (chapterNumber <= 0) return [];
+
+    const comments = await prisma.comment.findMany({
+      where: {
+        bookId,
+        chapter: { chapterNumber },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    return comments.map((c) => ({
+      type: c.isHuman ? 'human' as const : 'ai' as const,
+      content: c.content,
+      rating: c.sentiment !== null ? Math.round((c.sentiment + 1) * 5) : undefined, // 转换 -1~1 到 0~10
+    }));
+  }
+
+  /**
+   * 判断是否需要根据反馈修改大纲
+   * 基于 adaptability（听劝程度）和读者反馈决定
+   */
+  private async shouldModifyOutline(
+    bookId: string,
+    currentRound: number,
+    adaptability: number,
+    existingOutline: BookOutline | null,
+    recentComments: Array<{ type: 'ai' | 'human'; content: string; rating?: number }>
+  ): Promise<OutlineModificationDecision> {
+    console.log(`[Outline] 判断是否需要修改大纲 - adaptability: ${adaptability}, 评论数: ${recentComments.length}`);
+
+    // 如果没有评论或者 adaptability 很低，倾向于不修改
+    if (recentComments.length === 0) {
+      return {
+        shouldModify: false,
+        reason: '暂无读者反馈，暂不需要修改大纲',
+        changes: [],
+      };
+    }
+
+    // 构建判断 prompt
+    const systemPrompt = '你是本书的作者，你需要判断是否需要根据读者反馈修改故事大纲。';
+    const prompt = this.buildModificationDecisionPrompt({
+      adaptability,
+      currentRound,
+      existingOutline,
+      recentComments,
+    });
+
+    try {
+      const response = await testModeSendChat(prompt, systemPrompt);
+      const decision = await parseLLMJsonWithRetry<OutlineModificationDecision>(
+        () => Promise.resolve(response),
+        {
+          taskId: `OutlineDecision-${bookId}-round${currentRound}`,
+          maxRetries: 2,
+        }
+      );
+
+      console.log(`[Outline] 大纲修改判断结果: shouldModify=${decision.shouldModify}, reason=${decision.reason}`);
+      return decision;
+    } catch (error) {
+      console.error(`[Outline] 判断大纲修改失败，默认不修改:`, error);
+      return {
+        shouldModify: false,
+        reason: '判断过程出错，暂不修改大纲',
+        changes: [],
+      };
+    }
+  }
+
+  /**
+   * 构建大纲修改判断的 prompt
+   */
+  private buildModificationDecisionPrompt(params: {
+    adaptability: number;
+    currentRound: number;
+    existingOutline: BookOutline | null;
+    recentComments: Array<{ type: 'ai' | 'human'; content: string; rating?: number }>;
+  }): string {
+    const adaptabilityLevel = params.adaptability >= 0.7 ? '高度听劝' : params.adaptability >= 0.4 ? '中等听劝' : '固执己见';
+
+    // 格式化评论
+    const aiComments = params.recentComments.filter(c => c.type === 'ai').slice(0, 3);
+    const humanComments = params.recentComments.filter(c => c.type === 'human').slice(0, 5);
+
+    let outlineInfo = '';
+    if (params.existingOutline) {
+      outlineInfo = `
+## 当前大纲概要
+- 书名：${params.existingOutline.title}
+- 主线：${params.existingOutline.summary}
+- 章节数：${params.existingOutline.chapters.length} 章
+- 主题：${params.existingOutline.themes.join(', ')}
+- 风格：${params.existingOutline.tone}
+- 关键人物：${params.existingOutline.characters.map(c => c.name).join(', ')}
+`;
+    }
+
+    return `## 任务
+判断是否需要根据读者反馈修改故事大纲。
+
+## 作者信息
+- 听劝指数：${params.adaptability}（${adaptabilityLevel}，0-1 之间，越高越应该听取读者意见）
+- 当前轮次：第 ${params.currentRound} 轮
+
+${outlineInfo}
+## 读者反馈
+
+### AI 读者评论（选 Top 3）
+${aiComments.map((c, i) => `${i + 1}. ${c.content}${c.rating !== undefined ? `（评分: ${c.rating}/10）` : ''}`).join('\n')}
+
+### 人类读者评论（选 Top 5）
+${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}`).join('\n') : '暂无人类评论'}
+
+## 修改规则
+
+### 🔒 绝对不能修改（核心资产）
+- 故事主线/主题
+- 关键人物（名字、性格、核心设定）
+- 故事核心冲突
+- 已建立的背景设定
+
+### ✅ 可以根据反馈调整
+- 具体事件安排
+- 章节的情节走向
+- 配角命运/戏份
+- 悬念设置
+- 章节顺序
+
+### 听劝程度参考
+- 高度听劝（>=0.7）：应该认真考虑读者反馈，适当调整情节
+- 中等听劝（0.4-0.7）：选择性采纳反馈，只修改确实有问题的部分
+- 固执己见（<0.4）：除非有严重问题，否则保持原大纲
+
+## 输出格式 (JSON)
+{
+  "shouldModify": true/false,
+  "reason": "判断原因（50字以内）",
+  "changes": ["如果要修改，说明具体改什么"]  // 例如：["调整第三章的情节走向", "增加女配角的戏份"]
+}
+
+只输出 JSON，不要有其他内容。`;
+  }
+
+  /**
+   * 根据反馈修改大纲
+   * 只修改第 currentRound 章及以后的大纲，保留已完成的章节大纲
+   */
+  private async modifyOutline(
+    bookId: string,
+    currentRound: number,
+    agentConfig: AgentConfig,
+    existingOutline: BookOutline,
+    decision: OutlineModificationDecision
+  ): Promise<ChapterOutline[]> {
+    console.log(`[Outline] 开始修改大纲，修改范围：第 ${currentRound} 章及以后`);
+
+    // 获取赛季信息
+    const book = await prisma.book.findUnique({ where: { id: bookId } });
+    if (!book?.seasonId) {
+      throw new Error('书籍不存在或无赛季信息');
+    }
+
+    const season = await prisma.season.findUnique({ where: { id: book.seasonId } });
+    if (!season) {
+      throw new Error('赛季不存在');
+    }
+
+    // 构建修改大纲的 prompt
+    const systemPrompt = buildAuthorSystemPrompt({
+      userName: agentConfig.description || '作家',
+      writingStyle: agentConfig.writingStyle,
+      seasonTheme: season.themeKeyword,
+      constraints: season.constraints as unknown as string[],
+      zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
+    });
+
+    const prompt = this.buildModifyOutlinePrompt({
+      currentRound,
+      existingOutline,
+      changes: decision.changes,
+      reason: decision.reason,
+    });
+
+    try {
+      const response = await testModeSendChat(prompt, systemPrompt);
+      const modifiedOutline = await parseLLMJsonWithRetry<BookOutline>(
+        () => Promise.resolve(response),
+        {
+          taskId: `OutlineModify-${bookId}-round${currentRound}`,
+          maxRetries: 2,
+        }
+      );
+
+      console.log(`[Outline] 大纲修改完成，返回章节数: ${modifiedOutline.chapters.length}`);
+
+      // 只返回第 currentRound 章及以后的大纲
+      return modifiedOutline.chapters.filter(c => c.number >= currentRound);
+    } catch (error) {
+      console.error(`[Outline] 大纲修改失败:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 构建大纲修改的 prompt
+   */
+  private buildModifyOutlinePrompt(params: {
+    currentRound: number;
+    existingOutline: BookOutline;
+    changes: string[];
+    reason: string;
+  }): string {
+    return `## 任务
+根据读者反馈修改故事大纲。
+
+## 修改原因
+${params.reason}
+需要修改的具体点：
+${params.changes.map(c => `- ${c}`).join('\n')}
+
+## 修改范围
+- 第 ${params.currentRound} 章及以后的大纲需要修改
+- 第 1 到 ${params.currentRound - 1} 章的大纲必须保持不变（已经写完）
+
+## 当前大纲
+
+### 故事概要
+${params.existingOutline.summary}
+
+### 主题
+${params.existingOutline.themes.join(', ')}
+
+### 风格
+${params.existingOutline.tone}
+
+### 关键人物（不能修改）
+${params.existingOutline.characters.map(c => `- ${c.name}: ${c.description}`).join('\n')}
+
+### 各章节大纲
+${params.existingOutline.chapters.map(c => `第 ${c.number} 章 "${c.title}": ${c.summary}`).join('\n')}
+
+## 修改规则
+1. **绝对不能修改**：主线剧情、关键人物、核心冲突、已建立的背景设定
+2. **可以调整**：具体事件安排、情节走向、配角命运、悬念设置
+3. 保持故事的连贯性和完整性
+
+## 输出格式 (JSON)
+只输出修改后的完整大纲，包含所有章节：
+{
+  "title": "书名（保持不变或微调）",
+  "summary": "故事概要（根据需要调整）",
+  "characters": ${JSON.stringify(params.existingOutline.characters)},  // 必须保持不变
+  "chapters": [  // 完整章节列表
+    { "number": 1, "title": "...", "summary": "...", "key_events": [...], "word_count_target": 2000 },
+    ...
+  ],
+  "themes": ${JSON.stringify(params.existingOutline.themes)},
+  "tone": "${params.existingOutline.tone}"
+}
+
+只输出 JSON，不要有其他内容。`;
+  }
+
+  /**
+   * 保存大纲版本到数据库
+   */
+  private async saveOutlineVersion(
+    bookId: string,
+    roundCreated: number,
+    reason?: string
+  ): Promise<number> {
+    // 获取当前版本号
+    const latestVersion = await prisma.bookOutlineVersion.findFirst({
+      where: { bookId },
+      orderBy: { version: 'desc' },
+    });
+
+    const newVersion = (latestVersion?.version ?? 0) + 1;
+
+    // 获取当前 Book 的大纲
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { originalIntent: true, characters: true, chaptersPlan: true },
+    });
+
+    // 创建新版本
+    await prisma.bookOutlineVersion.create({
+      data: {
+        bookId,
+        version: newVersion,
+        roundCreated,
+        originalIntent: book?.originalIntent ?? null,
+        characters: toJsonValue(book?.characters),
+        chaptersPlan: toJsonValue(book?.chaptersPlan),
+        reason: reason ?? null,
+      },
+    });
+
+    console.log(`[Outline] 保存大纲版本 v${newVersion} - 轮次: ${roundCreated}, 原因: ${reason ?? '初始版本'}`);
+    return newVersion;
+  }
+
+  /**
+   * 获取最新大纲版本号
+   */
+  private async getLatestOutlineVersion(bookId: string): Promise<number> {
+    const latestVersion = await prisma.bookOutlineVersion.findFirst({
+      where: { bookId },
+      orderBy: { version: 'desc' },
+    });
+    return latestVersion?.version ?? 0;
   }
 
   /**

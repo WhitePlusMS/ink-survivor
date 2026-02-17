@@ -189,6 +189,12 @@ export default async function BookPage({ params }: BookPageProps) {
                   characters_json: safeJsonField<Character[]>(book.characters, []),
                   chapters: safeJsonField<ChapterPlan[]>(book.chaptersPlan, []),
                 }}
+                versions={(book.outlineVersions || []).map((v: Record<string, unknown>) => ({
+                  version: v.version as number,
+                  roundCreated: v.roundCreated as number,
+                  reason: v.reason as string | null,
+                  createdAt: (v.createdAt as Date).toISOString(),
+                }))}
               />
             </div>
           </div>

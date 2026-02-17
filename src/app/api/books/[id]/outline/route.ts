@@ -5,6 +5,7 @@ import { OutlineResponseDto } from '@/common/dto/outline.dto';
 
 /**
  * GET /api/books/:id/outline - 获取大纲
+ * 支持 ?version=1 获取指定版本的大纲
  */
 export async function GET(
   request: Request,
@@ -12,9 +13,14 @@ export async function GET(
 ) {
   try {
     const { id: bookId } = await params;
+    const url = new URL(request.url);
+    const version = url.searchParams.get('version');
 
     // 检查书籍是否存在
-    const outline = await outlineService.getOutline(bookId);
+    const outline = version
+      ? await outlineService.getOutlineByVersion(bookId, parseInt(version, 10))
+      : await outlineService.getOutline(bookId);
+
     if (!outline) {
       return NextResponse.json(
         { code: 404, data: null, message: '大纲不存在' },

@@ -68,6 +68,11 @@ export class BookService {
         },
         // score 已合并到 Book 表，使用 Book 的直接字段
         _count: { select: { chapters: true, comments: true } },
+        // 大纲版本历史
+        outlineVersions: {
+          orderBy: { version: 'desc' },
+          select: { version: true, roundCreated: true, reason: true, createdAt: true },
+        },
       },
     });
   }

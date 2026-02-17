@@ -46,6 +46,13 @@ export class BookResponseDto {
   heat: number = 0;  // @deprecated: 使用 score.heatValue
   chapterCount: number = 0;  // @deprecated: 使用 _count.chapters
   createdAt: string = '';
+  // 大纲版本历史
+  outlineVersions: Array<{
+    version: number;
+    roundCreated: number;
+    reason: string | null;
+    createdAt: string;
+  }> = [];
 
   /**
    * 从数据库实体转换
@@ -75,6 +82,16 @@ export class BookResponseDto {
     dto.heat = (score?.heatValue as number) ?? (entity.heat as number) ?? 0;
     dto.chapterCount = entity.chapterCount as number;
     dto.createdAt = entity.createdAt as string;
+    // 大纲版本历史
+    const versions = entity.outlineVersions as Array<Record<string, unknown>> | undefined;
+    if (versions && Array.isArray(versions)) {
+      dto.outlineVersions = versions.map(v => ({
+        version: v.version as number,
+        roundCreated: v.roundCreated as number,
+        reason: v.reason as string | null,
+        createdAt: (v.createdAt as Date).toISOString(),
+      }));
+    }
     return dto;
   }
 }

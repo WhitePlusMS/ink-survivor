@@ -122,6 +122,25 @@ export class OutlineService {
   }
 
   /**
+   * 获取指定版本的大纲 - 从 BookOutlineVersion 表获取
+   */
+  async getOutlineByVersion(bookId: string, version: number) {
+    const outlineVersion = await prisma.bookOutlineVersion.findUnique({
+      where: {
+        bookId_version: { bookId, version },
+      },
+    });
+
+    if (!outlineVersion) return null;
+
+    return {
+      summary: outlineVersion.originalIntent || '',
+      characters: safeJsonField(outlineVersion.characters, []),
+      chapters: safeJsonField(outlineVersion.chaptersPlan, []),
+    };
+  }
+
+  /**
    * 获取解析后的大纲数据
    * JSONB 自动解析，无需 JSON.parse
    */

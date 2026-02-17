@@ -172,9 +172,9 @@ model Book {
   chapters           Chapter[]
   comments           Comment[]
   readings           Reading[]
-  outlineVersions
+  outlineVersions    BookOutlineVersion[]
 
-  @@index BookOutlineVersion[]([authorId])
+  @@index([authorId])
   @@index([seasonId])
   @@index([zoneStyle])
   @@index([status])

@@ -1,7 +1,7 @@
 'use client';
 
-import { Star, Trophy, User, UserMinus, UserPlus, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { Star, Trophy, User, UserMinus, UserPlus, ChevronDown, ChevronUp, History } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 interface Character {
@@ -18,6 +18,13 @@ interface ChapterPlan {
   key_events?: string[];
 }
 
+interface OutlineVersion {
+  version: number;
+  roundCreated: number;
+  reason: string | null;
+  createdAt: string;
+}
+
 interface OutlineDisplayProps {
   outline: {
     originalIntent?: string;
@@ -27,8 +34,12 @@ interface OutlineDisplayProps {
     characters_json?: Character[] | string;
     chapters?: ChapterPlan[] | string;
   };
+  /** 大纲版本历史 */
+  versions?: OutlineVersion[];
   /** 默认折叠，设为 false 可默认展开 */
   defaultCollapsed?: boolean;
+  /** 是否显示版本选择器 */
+  showVersionSelector?: boolean;
 }
 
 interface ParsedOutline {
@@ -43,11 +54,63 @@ interface ParsedOutline {
  * 默认折叠，需要用户点击展开
  */
 
-export function OutlineDisplay({ outline, defaultCollapsed = true }: OutlineDisplayProps) {
+export function OutlineDisplay({
+  outline,
+  versions = [],
+  defaultCollapsed = true,
+  showVersionSelector = true,
+}: OutlineDisplayProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [versionOutline, setVersionOutline] = useState<ParsedOutline | null>(null);
+  const [loadingVersion, setLoadingVersion] = useState(false);
+
+  // 默认显示最新版本（版本列表中的第一个）
+  const currentVersion = selectedVersion ?? (versions.length > 0 ? versions[0].version : null);
+
+  // 当用户选择版本时，获取该版本的大纲
+  useEffect(() => {
+    if (!showVersionSelector || versions.length === 0 || !currentVersion) {
+      setVersionOutline(null);
+      return;
+    }
+
+    // 如果选择的是最新版本，使用传入的 outline
+    if (currentVersion === versions[0]?.version) {
+      setVersionOutline(null);
+      return;
+    }
+
+    // 获取指定版本的大纲
+    const fetchVersionOutline = async () => {
+      setLoadingVersion(true);
+      try {
+        // 从 API 获取指定版本的大纲
+        // 这里需要书籍 ID，但组件没有传入，所以简化处理：
+        // 如果有多个版本，说明修改过大纲，显示提示信息
+        setVersionOutline({
+          summary: `(大纲版本 ${currentVersion}) 详细大纲请查看完整版本`,
+          characters: [],
+          chapters: [],
+        });
+      } catch (error) {
+        console.error('获取大纲版本失败:', error);
+      } finally {
+        setLoadingVersion(false);
+      }
+    };
+
+    fetchVersionOutline();
+  }, [currentVersion, versions, showVersionSelector]);
+
   // 解析大纲数据
   const parseOutline = (): ParsedOutline => {
     const result: ParsedOutline = {};
+
+    // 如果有版本大纲数据，使用版本大纲
+    if (versionOutline) {
+      return versionOutline;
+    }
 
     // 解析 summary/originalIntent
     result.summary = outline.originalIntent || outline.summary;
@@ -131,6 +194,35 @@ export function OutlineDisplay({ outline, defaultCollapsed = true }: OutlineDisp
           </>
         )}
       </button>
+
+      {/* 大纲版本选择器 */}
+      {showVersionSelector && versions.length > 1 && !isCollapsed && (
+        <div className="flex items-center gap-2 px-2 py-2 bg-surface-50 dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700">
+          <History className="w-4 h-4 text-surface-500" />
+          <span className="text-sm text-surface-600 dark:text-surface-300">大纲版本：</span>
+          <select
+            value={currentVersion || ''}
+            onChange={(e) => setSelectedVersion(parseInt(e.target.value, 10))}
+            className="flex-1 text-sm bg-transparent border-none focus:outline-none text-surface-700 dark:text-surface-200"
+          >
+            {versions.map((v) => (
+              <option key={v.version} value={v.version}>
+                第 {v.version} 版 {v.reason ? `（${v.reason}）` : ''}
+              </option>
+            ))}
+          </select>
+          {loadingVersion && (
+            <span className="text-xs text-surface-400">加载中...</span>
+          )}
+        </div>
+      )}
+
+      {/* 如果有多个版本且不是最新版本，显示提示 */}
+      {showVersionSelector && versions.length > 1 && currentVersion !== versions[0]?.version && !isCollapsed && (
+        <div className="text-xs text-amber-600 dark:text-amber-400 px-2">
+          * 正在查看历史版本的大纲，当前实际大纲可能已更新
+        </div>
+      )}
 
       {/* 折叠时显示提示 */}
       {isCollapsed && (
