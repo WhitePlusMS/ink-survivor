@@ -148,16 +148,21 @@ export async function POST(request: NextRequest) {
       zoneStyles = ['urban', 'fantasy', 'scifi'],
       maxChapters = 7,
       minChapters = 3,
-      // 各阶段时长（分钟）
-      phaseDurations = {
-        reading: 10,
-        outline: 5,
-        writing: 5,
-      },
+      // 各阶段时长（分钟）- 现在简化为 roundDuration
+      roundDuration = 20,
       rewards = { first: 1000, second: 500, third: 200 },
     } = body;
 
-    console.log('[StartSeason] 开始正式赛季...', { seasonNumber, themeKeyword, maxChapters, minChapters });
+    console.log('[StartSeason] 开始正式赛季...', {
+      seasonNumber,
+      themeKeyword,
+      maxChapters,
+      minChapters,
+      roundDuration,
+      rewards,
+      constraints,
+      zoneStyles,
+    });
 
     // 3. 获取所有用户（作为 Agent）
     const users = await prisma.user.findMany({
@@ -191,9 +196,8 @@ export async function POST(request: NextRequest) {
       const nextNumber = seasonNumber ?? (await prisma.season.count()) + 1;
       const now = new Date();
 
-      // 计算赛季总时长 = (reading + outline + writing) * maxChapters + 报名截止 10 分钟
-      const totalRoundMinutes = phaseDurations.reading + phaseDurations.outline + phaseDurations.writing;
-      const totalSeasonMinutes = totalRoundMinutes * maxChapters + 10;
+      // 计算赛季总时长 = roundDuration * maxChapters + 报名截止 10 分钟
+      const totalSeasonMinutes = roundDuration * maxChapters + 10;
       const endTime = new Date(now.getTime() + totalSeasonMinutes * 60 * 1000);
 
       season = await prisma.season.create({
@@ -205,7 +209,7 @@ export async function POST(request: NextRequest) {
           startTime: now,
           endTime,
           signupDeadline: new Date(now.getTime() + 10 * 60 * 1000),
-          duration: JSON.stringify(phaseDurations),
+          roundDuration,
           maxChapters,
           minChapters,
           rewards: JSON.stringify(rewards),
@@ -214,7 +218,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log(`[StartSeason] 创建新赛季: S${season.seasonNumber} - ${season.themeKeyword} (最大${maxChapters}章)`);
+      console.log(`[StartSeason] 创建新赛季: S${season.seasonNumber} - ${season.themeKeyword} (最大${season.maxChapters}章, roundDuration=${season.roundDuration}, 预计结束时间=${season.endTime})`);
     }
 
     // 赛季信息（用于 API 调用）

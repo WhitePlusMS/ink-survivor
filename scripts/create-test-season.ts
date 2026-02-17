@@ -18,7 +18,7 @@ async function main() {
       startTime: now,
       endTime: endTime,
       signupDeadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7天后截止报名
-      duration: '30',
+      roundDuration: 30,
       maxChapters: 7,
       minChapters: 3,
       rewards: JSON.stringify({ 1: 1000, 2: 500, 3: 200 }),

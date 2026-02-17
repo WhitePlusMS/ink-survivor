@@ -39,17 +39,17 @@ async function runReaderTask() {
       });
     }
 
-    // 2. 检查是否在阅读窗口期
-    if (season.roundPhase !== 'READING') {
-      console.log(`[ReaderTask] 当前阶段 ${season.roundPhase}，非阅读窗口期`);
+    // 2. 检查是否在人类阅读窗口期
+    if (season.roundPhase !== 'HUMAN_READING') {
+      console.log(`[ReaderTask] 当前阶段 ${season.roundPhase}，非人类阅读窗口期`);
       return NextResponse.json({
         code: 0,
-        data: { message: `当前阶段 ${season.roundPhase}，非阅读窗口期` },
-        message: '非阅读窗口期，跳过调度',
+        data: { message: `当前阶段 ${season.roundPhase}，非人类阅读窗口期` },
+        message: '非人类阅读窗口期，跳过调度',
       });
     }
 
-    // 3. 获取在阅读窗口期发布的章节
+    // 3. 获取在人类阅读窗口期发布的章节
     const recentChapters = await prisma.chapter.findMany({
       where: {
         book: { seasonId: season.id },

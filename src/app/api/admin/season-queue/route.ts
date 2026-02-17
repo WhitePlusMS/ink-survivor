@@ -34,9 +34,20 @@ export async function POST(request: NextRequest) {
 
     // 计算开始和结束时间
     const startTime = body.startTime ? new Date(body.startTime) : new Date();
-    const duration = body.duration || { reading: 10, outline: 5, writing: 5 };
-    const totalDays = (duration.reading + duration.outline + duration.writing) / 24; // 转换为天
-    const endTime = body.endTime ? new Date(body.endTime) : new Date(startTime.getTime() + totalDays * 24 * 60 * 60 * 1000);
+    const maxChapters = body.maxChapters || 7;
+    const roundDuration = body.roundDuration || 20;
+    // 赛季总时长 = 每轮时长 * 最大章节数 + 报名截止时间
+    const totalMinutes = roundDuration * maxChapters + 10;
+    const endTime = body.endTime ? new Date(body.endTime) : new Date(startTime.getTime() + totalMinutes * 60 * 1000);
+
+    console.log('[SeasonQueue] 创建赛季配置:', {
+      seasonNumber: body.seasonNumber,
+      themeKeyword: body.themeKeyword,
+      maxChapters,
+      minChapters: body.minChapters,
+      roundDuration,
+      rewards: body.rewards,
+    });
 
     const dto: CreateSeasonDto = {
       seasonNumber: body.seasonNumber,
@@ -45,7 +56,7 @@ export async function POST(request: NextRequest) {
       zoneStyles: body.zoneStyles || [],
       maxChapters: body.maxChapters || 7,
       minChapters: body.minChapters || 3,
-      duration,
+      roundDuration,
       rewards: body.rewards || { first: 1000, second: 500, third: 200 },
       startTime,
       endTime,

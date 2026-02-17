@@ -5,7 +5,7 @@
  * 支持多种任务类型：OUTLINE, WRITE_CHAPTER, READER_AGENT 等
  */
 
-import { taskQueueService } from './task-queue.service';
+import { taskQueueService, TaskPayload } from './task-queue.service';
 import { prisma } from '@/lib/prisma';
 
 // 任务处理器映射
@@ -13,47 +13,79 @@ type TaskHandler = (payload: Record<string, unknown>) => Promise<void>;
 
 const taskHandlers: Record<string, TaskHandler> = {
   /**
-   * 大纲生成 - 第1轮
+   * 轮次完整流程：大纲 → 章节 → AI评论
+   * 连续执行，中间不等待
    */
-  OUTLINE: async (payload) => {
-    const { seasonId } = payload;
-    if (!seasonId) throw new Error('seasonId is required');
+  ROUND_CYCLE: async (payload) => {
+    const { seasonId, round } = payload;
+    console.log(`[TaskWorker] 🚀 ROUND_CYCLE 开始: seasonId=${seasonId}, round=${round}`);
 
-    const { outlineGenerationService } = await import('./outline-generation.service');
-    console.log(`[TaskWorker] 执行大纲生成任务 - Season ${seasonId}`);
-    await outlineGenerationService.generateOutlinesForSeason(seasonId as string);
-  },
+    if (!seasonId || !round) throw new Error('seasonId and round are required');
 
-  /**
-   * 下一章大纲生成
-   */
-  NEXT_OUTLINE: async (payload) => {
-    const { seasonId } = payload;
-    if (!seasonId) throw new Error('seasonId is required');
-
-    const { outlineGenerationService } = await import('./outline-generation.service');
-    console.log(`[TaskWorker] 执行下一章大纲任务 - Season ${seasonId}`);
-
+    // 查询当前赛季的所有书籍
     const books = await prisma.book.findMany({
       where: { seasonId: seasonId as string, status: 'ACTIVE' },
       select: { id: true },
     });
+    console.log(`[TaskWorker] 找到 ${books.length} 本活跃书籍`);
 
-    await Promise.all(
-      books.map((book) => outlineGenerationService.generateNextChapterOutline(book.id))
-    );
-  },
+    // 1. 大纲生成（第1轮生成整本，后续轮优化单章）
+    console.log(`[TaskWorker] 📝 步骤1: 生成大纲`);
+    if (round === 1) {
+      console.log(`[TaskWorker] 第1轮：生成整本书大纲`);
+      const { outlineGenerationService } = await import('./outline-generation.service');
+      await outlineGenerationService.generateOutlinesForSeason(seasonId as string);
+    } else {
+      console.log(`[TaskWorker] 后续轮次：为 ${books.length} 本书生成下一章大纲`);
+      const { outlineGenerationService } = await import('./outline-generation.service');
+      for (const book of books) {
+        await outlineGenerationService.generateNextChapterOutline(book.id);
+      }
+    }
+    console.log(`[TaskWorker] ✅ 大纲生成完成`);
 
-  /**
-   * 章节创作
-   */
-  WRITE_CHAPTER: async (payload) => {
-    const { seasonId, round } = payload;
-    if (!seasonId || !round) throw new Error('seasonId and round are required');
-
+    // 2. 章节生成（并发处理所有书籍）
+    console.log(`[TaskWorker] ✍️ 步骤2: 生成章节内容`);
     const { chapterWritingService } = await import('./chapter-writing.service');
-    console.log(`[TaskWorker] 执行章节创作任务 - Season ${seasonId}, Round ${round}`);
     await chapterWritingService.writeChaptersForSeason(seasonId as string, round as number);
+    console.log(`[TaskWorker] ✅ 章节生成完成`);
+
+    // 3. AI 评论
+    // 注意：chapterWritingService.writeChapter 内部已通过 setTimeout 调用 readerAgentService
+    console.log(`[TaskWorker] 🤖 步骤3: AI评论 (由 writeChapter 内部触发)`);
+
+    // 4. 落后检测
+    console.log(`[TaskWorker] 🔍 步骤4: 落后检测`);
+    const allBooks = await prisma.book.findMany({
+      where: { seasonId: seasonId as string, status: 'ACTIVE' },
+      include: { _count: { select: { chapters: true } } },
+    });
+    const behindBooks = allBooks.filter(book => (book._count.chapters as number) < (round as number));
+    console.log(`[TaskWorker] 落后书籍数量: ${behindBooks.length}`);
+
+    if (behindBooks.length > 0) {
+      // 有落后：创建 CATCH_UP 任务
+      console.log(`[TaskWorker] ⚠️ 有 ${behindBooks.length} 本书落后，创建 CATCH_UP 任务`);
+      const payload: TaskPayload = {
+        seasonId: String(seasonId),
+        round: Number(round),
+        bookIds: behindBooks.map((b: { id: string }) => b.id),
+      };
+      await taskQueueService.create({
+        taskType: 'CATCH_UP',
+        payload,
+        priority: 5,
+      });
+      console.log(`[TaskWorker] CATCH_UP 任务已创建`);
+    } else {
+      // 无落后：直接进入 HUMAN_READING
+      console.log(`[TaskWorker] ✅ 无落后书籍，准备调用 advanceToNextRound 切换到 HUMAN_READING`);
+      const { seasonAutoAdvanceService } = await import('./season-auto-advance.service');
+      await seasonAutoAdvanceService.advanceToNextRound(seasonId as string, round as number);
+      console.log(`[TaskWorker] ✅ advanceToNextRound 调用完成`);
+    }
+
+    console.log(`[TaskWorker] 🎉 ROUND_CYCLE 任务完成: round=${round}`);
   },
 
   /**
@@ -68,6 +100,10 @@ const taskHandlers: Record<string, TaskHandler> = {
 
     // 追赶所有落后书籍
     await chapterWritingService.catchUpBooks(seasonId as string, round as number);
+
+    // 追赶完成后切换阶段
+    const { seasonAutoAdvanceService } = await import('./season-auto-advance.service');
+    await seasonAutoAdvanceService.advanceToNextRound(seasonId as string, round as number);
   },
 
   /**

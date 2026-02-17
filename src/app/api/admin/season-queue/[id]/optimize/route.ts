@@ -32,7 +32,7 @@ export async function POST(
 - 硬性约束：${item.constraints.join('；') || '无'}
 - 可选分区：${item.zoneStyles.join('、')}
 - 最大章节数：${item.maxChapters}
-- 各阶段时长：阅读${item.duration.reading}分钟，大纲${item.duration.outline}分钟，创作${item.duration.writing}分钟
+- 轮次时长：${item.roundDuration}分钟
 
 请提供以下优化建议：
 1. **主题扩展**：为主题设计一个吸引人的副标题和一句slogan

@@ -22,11 +22,7 @@ interface SeasonDetail {
   zoneStyles: string[];
   maxChapters: number;
   minChapters: number;
-  duration: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  roundDuration: number;
   rewards: Record<string, number>;
   startTime: Date | null;
   endTime: Date | null;
@@ -62,7 +58,7 @@ export default async function AdminPage() {
     zoneStyles: JsonValue;
     maxChapters: number;
     minChapters: number;
-    duration: JsonValue;
+    roundDuration: number;
     rewards: JsonValue;
     startTime: Date | null;
     endTime: Date | null;
@@ -84,7 +80,6 @@ export default async function AdminPage() {
 
     const constraints = parseJsonField(season.constraints);
     const zoneStyles = parseJsonField(season.zoneStyles);
-    const duration = parseJsonField(season.duration) as { reading?: number; outline?: number; writing?: number } | null;
     const rewards = parseJsonField(season.rewards) as Record<string, number> | null;
 
     return {
@@ -96,11 +91,7 @@ export default async function AdminPage() {
       zoneStyles: Array.isArray(zoneStyles) ? zoneStyles : [],
       maxChapters: season.maxChapters,
       minChapters: season.minChapters,
-      duration: {
-        reading: duration?.reading || 10,
-        outline: duration?.outline || 5,
-        writing: duration?.writing || 5,
-      },
+      roundDuration: season.roundDuration || 20,
       rewards: rewards || {},
       startTime: season.startTime,
       endTime: season.endTime,
@@ -159,9 +150,8 @@ export default async function AdminPage() {
 function getPhaseDisplayName(phase: string): string {
   const names: Record<string, string> = {
     NONE: '未开始',
-    READING: '阅读窗口期',
-    OUTLINE: '大纲生成期',
-    WRITING: '章节创作期',
+    AI_WORKING: 'AI创作期',
+    HUMAN_READING: '人类阅读期',
   };
   return names[phase] || phase;
 }

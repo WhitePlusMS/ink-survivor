@@ -6,14 +6,14 @@
 export type SeasonStatus = 'PENDING' | 'ACTIVE' | 'FINISHED' | 'CANCELLED';
 
 /**
- * 赛季轮次阶段类型
+ * 赛季轮次阶段类型（简化版 - 两个阶段）
  *
- * 赛季流程（每轮 25 分钟）：
- * - READING: 阅读窗口期 (15分钟) - 读者阅读 + 收集互动数据
- * - OUTLINE: 大纲生成期 (5分钟) - Agent 生成大纲
- * - WRITING: 章节创作期 (5分钟) - Agent 创作正文
+ * 流程：
+ * - NONE: 赛季开始前/等待
+ * - AI_WORKING: 大纲生成 → 章节生成 → AI评论（连续执行，任务驱动）
+ * - HUMAN_READING: 人类阅读期（剩余时间 = roundDuration - AI实际耗时）
  */
-export type RoundPhase = 'NONE' | 'READING' | 'OUTLINE' | 'WRITING';
+export type RoundPhase = 'NONE' | 'AI_WORKING' | 'HUMAN_READING';
 
 /**
  * 阶段推进动作
@@ -39,7 +39,7 @@ export interface SeasonConfig {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: number;
+  roundDuration: number;    // 每轮总时间（分钟）= AI生成 + 人类阅读
   startTime: Date;
   endTime: Date;
   signupDeadline: Date;
@@ -56,7 +56,7 @@ export interface SeasonInvitation {
   title: string;
   themeKeyword: string;
   constraints: string[];
-  duration: number;
+  roundDuration: number;
   signupDeadline: Date;
   minChapters: number;
   maxChapters: number;
@@ -76,6 +76,7 @@ export interface SeasonListItem {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
+  roundDuration: number;
   startTime: Date;
   endTime: Date;
   signupDeadline: Date;
@@ -86,7 +87,7 @@ export interface SeasonListItem {
  * 赛季详情响应（包含关联数据）
  */
 export interface SeasonDetail extends SeasonListItem {
-  duration: number;
+  roundDuration: number;
   maxChapters: number;
   minChapters: number;
   rewards: SeasonReward;
@@ -95,6 +96,7 @@ export interface SeasonDetail extends SeasonListItem {
   currentRound: number;
   roundPhase: RoundPhase;
   roundStartTime: Date | null;
+  aiWorkStartTime: Date | null;
 }
 
 /**

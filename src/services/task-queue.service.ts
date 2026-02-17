@@ -10,6 +10,7 @@ import { now } from '@/lib/timezone';
 import { Prisma } from '@prisma/client';
 
 export type TaskType =
+  | 'ROUND_CYCLE'       // 轮次完整流程：大纲→章节→AI评论（合并任务）
   | 'OUTLINE'           // 大纲生成
   | 'NEXT_OUTLINE'     // 下一章大纲
   | 'WRITE_CHAPTER'    // 章节创作

@@ -49,7 +49,7 @@ export async function PUT(
     if (body.zoneStyles !== undefined) dto.zoneStyles = body.zoneStyles;
     if (body.maxChapters !== undefined) dto.maxChapters = body.maxChapters;
     if (body.minChapters !== undefined) dto.minChapters = body.minChapters;
-    if (body.duration !== undefined) dto.duration = body.duration;
+    if (body.roundDuration !== undefined) dto.roundDuration = body.roundDuration;
     if (body.rewards !== undefined) dto.rewards = body.rewards;
     if (body.plannedStartTime !== undefined) dto.plannedStartTime = new Date(body.plannedStartTime);
     if (body.intervalHours !== undefined) dto.intervalHours = body.intervalHours;

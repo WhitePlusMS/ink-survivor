@@ -75,17 +75,21 @@ model Season {
   startTime       DateTime
   endTime         DateTime
 
-  duration        Json      @default("{\"reading\": 10, \"outline\": 5, \"writing\": 5}")
-  maxChapters     Int       @default(10)
-  minChapters     Int       @default(3)
+  // 轮次配置（简化版）
+  roundDuration   Int       @default(20)    // 每轮总时间（分钟）= AI生成时间 + 人类阅读时间
+  maxChapters    Int       @default(10)
+  minChapters    Int       @default(3)
 
   rewards         Json
   participantCount Int      @default(0)
 
-  // 赛季轮次状态
+  // 赛季轮次状态（两个阶段：AI_WORKING + HUMAN_READING）
   currentRound    Int       @default(0)
-  roundPhase      String    @default("NONE") // NONE, READING, OUTLINE, WRITING
+  roundPhase      String    @default("NONE") // NONE, AI_WORKING, HUMAN_READING
   roundStartTime  DateTime?
+
+  // AI 工作开始时间（用于计算人类阅读剩余时间）
+  aiWorkStartTime DateTime?
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

@@ -6,13 +6,12 @@ import { RoundPhase } from '@/types/season';
 // 阶段中文名称映射
 const PHASE_NAMES: Record<RoundPhase, string> = {
   NONE: '未开始',
-  READING: '阅读窗口期',
-  OUTLINE: '大纲生成期',
-  WRITING: '章节创作期',
+  AI_WORKING: 'AI创作期',
+  HUMAN_READING: '人类阅读期',
 };
 
 // 阶段顺序（用于计算上一阶段和下一阶段）
-const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
+const PHASE_ORDER: RoundPhase[] = ['AI_WORKING', 'HUMAN_READING'];
 
 /**
  * 获取指定阶段的上一阶段
@@ -28,7 +27,7 @@ function getPreviousPhase(currentPhase: RoundPhase): RoundPhase | null {
  * 获取指定阶段的下一阶段
  */
 function getNextPhase(currentPhase: RoundPhase): RoundPhase | null {
-  if (currentPhase === 'NONE') return 'OUTLINE';
+  if (currentPhase === 'NONE') return 'AI_WORKING';
   const index = PHASE_ORDER.indexOf(currentPhase);
   if (index === -1 || index >= PHASE_ORDER.length - 1) return null;
   return PHASE_ORDER[index + 1];
@@ -39,15 +38,13 @@ function getNextPhase(currentPhase: RoundPhase): RoundPhase | null {
  */
 function calculateRemainingTime(
   roundStartTime: string | null,
-  phaseDurations: { reading: number; outline: number; writing: number },
-  currentPhase: RoundPhase
+  roundDuration: number
 ): string {
   if (!roundStartTime) return '--';
 
   const startTime = new Date(roundStartTime).getTime();
   const now = Date.now();
-  const duration = phaseDurations[currentPhase.toLowerCase() as keyof typeof phaseDurations] || 5;
-  const durationMs = duration * 60 * 1000; // 转换为毫秒
+  const durationMs = roundDuration * 60 * 1000; // 转换为毫秒
   const endTime = startTime + durationMs;
   const remaining = endTime - now;
 
@@ -65,11 +62,7 @@ interface PhaseProgressBarProps {
   currentRound: number;
   currentPhase: RoundPhase;
   roundStartTime: string | null;
-  phaseDurations: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  roundDuration: number;
   seasonStatus: string;
 }
 
@@ -82,7 +75,7 @@ export function PhaseProgressBar({
   currentRound,
   currentPhase,
   roundStartTime,
-  phaseDurations,
+  roundDuration,
   seasonStatus,
 }: PhaseProgressBarProps) {
   // 客户端状态：剩余时间（用于实时更新）
@@ -91,15 +84,15 @@ export function PhaseProgressBar({
   // 初始化和每秒更新倒计时
   useEffect(() => {
     // 初始计算
-    setRemainingTime(calculateRemainingTime(roundStartTime, phaseDurations, currentPhase));
+    setRemainingTime(calculateRemainingTime(roundStartTime, roundDuration));
 
     // 每秒更新
     const interval = setInterval(() => {
-      setRemainingTime(calculateRemainingTime(roundStartTime, phaseDurations, currentPhase));
+      setRemainingTime(calculateRemainingTime(roundStartTime, roundDuration));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [roundStartTime, phaseDurations, currentPhase]);
+  }, [roundStartTime, roundDuration, currentPhase]);
 
   // 赛季未开始或已结束时显示特殊状态
   if (seasonStatus === 'PENDING') {
@@ -162,11 +155,11 @@ export function PhaseProgressBar({
             width:
               currentPhase === 'NONE'
                 ? '0%'
-                : currentPhase === 'OUTLINE'
+                : currentPhase === 'AI_WORKING'
                 ? '50%'
-                : currentPhase === 'WRITING'
-                ? '50%'
-                : '100%',
+                : currentPhase === 'HUMAN_READING'
+                ? '100%'
+                : '0%',
           }}
         />
 

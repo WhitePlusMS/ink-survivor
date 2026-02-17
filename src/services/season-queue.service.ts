@@ -17,11 +17,7 @@ export interface SeasonItem {
   zoneStyles: string[];
   maxChapters: number;
   minChapters: number;
-  duration: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  roundDuration: number;
   rewards: Record<string, number>;
   startTime: Date;
   endTime: Date;
@@ -40,11 +36,7 @@ export interface CreateSeasonDto {
   zoneStyles: string[];
   maxChapters: number;
   minChapters?: number;
-  duration: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  roundDuration: number;
   rewards: Record<string, number>;
   startTime: Date;
   endTime: Date;
@@ -75,7 +67,7 @@ export class SeasonQueueService {
         zoneStyles: toJsonValue(data.zoneStyles),
         maxChapters: data.maxChapters,
         minChapters: data.minChapters ?? 3,
-        duration: toJsonValue(data.duration),
+        roundDuration: data.roundDuration,
         rewards: toJsonValue(data.rewards),
         startTime: data.startTime,
         endTime: data.endTime,
@@ -137,7 +129,7 @@ export class SeasonQueueService {
     if (data.zoneStyles !== undefined) updateData.zoneStyles = toJsonValue(data.zoneStyles);
     if (data.maxChapters !== undefined) updateData.maxChapters = data.maxChapters;
     if (data.minChapters !== undefined) updateData.minChapters = data.minChapters;
-    if (data.duration !== undefined) updateData.duration = toJsonValue(data.duration);
+    if (data.roundDuration !== undefined) updateData.roundDuration = data.roundDuration;
     if (data.rewards !== undefined) updateData.rewards = toJsonValue(data.rewards);
     if (data.startTime !== undefined) updateData.startTime = data.startTime;
     if (data.endTime !== undefined) updateData.endTime = data.endTime;
@@ -200,10 +192,10 @@ export class SeasonQueueService {
     for (let i = 0; i < toPublish.length; i++) {
       try {
         const seasonItem = toPublish[i];
-        const duration = seasonItem.duration as { reading?: number; outline?: number; writing?: number };
         const intervalHours = 2;
         const startTime = new Date(baseStartTime.getTime() + (intervalHours * i) * 60 * 60 * 1000);
-        const endTime = new Date(startTime.getTime() + ((duration.reading || 10) + (duration.outline || 5) + (duration.writing || 5)) * 60 * 1000);
+        // 使用 roundDuration 计算赛季结束时间
+        const endTime = new Date(startTime.getTime() + (seasonItem.roundDuration || 20) * 60 * 1000);
 
         // 更新赛季状态为 ACTIVE
         const season = await prisma.season.update({
@@ -239,7 +231,6 @@ export class SeasonQueueService {
       throw new Error(`Season ${newSeasonNumber} already exists`);
     }
 
-    const duration = season.duration as { reading?: number; outline?: number; writing?: number };
     return this.create({
       seasonNumber: newSeasonNumber,
       themeKeyword: season.themeKeyword,
@@ -247,11 +238,7 @@ export class SeasonQueueService {
       zoneStyles: (season.zoneStyles as string[]) || [],
       maxChapters: season.maxChapters,
       minChapters: season.minChapters,
-      duration: {
-        reading: duration?.reading ?? 10,
-        outline: duration?.outline ?? 5,
-        writing: duration?.writing ?? 5,
-      },
+      roundDuration: season.roundDuration ?? 20,
       rewards: (season.rewards as Record<string, number>) || {},
       startTime: new Date(),
       endTime: new Date(),
@@ -270,7 +257,7 @@ export class SeasonQueueService {
       zoneStyles: (item.zoneStyles as string[]) || [],
       maxChapters: item.maxChapters,
       minChapters: item.minChapters,
-      duration: (item.duration as { reading: number; outline: number; writing: number }) || { reading: 10, outline: 5, writing: 5 },
+      roundDuration: item.roundDuration ?? 20,
       rewards: (item.rewards as Record<string, number>) || {},
       startTime: item.startTime,
       endTime: item.endTime,

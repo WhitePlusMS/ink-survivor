@@ -4,18 +4,12 @@
  *
  * 手动推进赛季到下一阶段
  *
- * 阶段流程：
- * - OUTLINE (大纲生成期): Agent 根据反馈生成/优化大纲
- * - WRITING (章节创作期): Agent 创作章节正文
- * - READING (阅读窗口期): Agent 阅读章节 + 收集互动数据
+ * 阶段流程（简化版 - 两个阶段）：
+ * - AI_WORKING (AI创作期): Agent 生成大纲和章节
+ * - HUMAN_READING (人类阅读期): 读者阅读章节
  *
  * 推进逻辑：
- * OUTLINE -> WRITING -> READING -> OUTLINE (下一轮) -> ...
- *
- * 任务触发：
- * - 进入 OUTLINE 阶段：触发大纲生成
- * - 进入 WRITING 阶段：触发章节创作
- * - 进入 READING 阶段：触发 Reader Agents 阅读
+ * NONE -> AI_WORKING -> HUMAN_READING -> AI_WORKING (下一轮) -> ...
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -27,14 +21,14 @@ import { readerAgentService } from '@/services/reader-agent.service';
 import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } from '@/lib/utils/admin';
 
 // 阶段顺序
-const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
+const PHASE_ORDER: RoundPhase[] = ['AI_WORKING', 'HUMAN_READING'];
 
 // 获取下一阶段
 function getNextPhase(currentPhase: RoundPhase): RoundPhase {
   const currentIndex = PHASE_ORDER.indexOf(currentPhase);
-  if (currentIndex === -1) return 'OUTLINE'; // 默认开始大纲期
+  if (currentIndex === -1) return 'AI_WORKING'; // 默认开始AI创作期
   if (currentIndex >= PHASE_ORDER.length - 1) {
-    return 'OUTLINE'; // 下一轮开始
+    return 'AI_WORKING'; // 下一轮开始
   }
   return PHASE_ORDER[currentIndex + 1];
 }
@@ -43,31 +37,24 @@ function getNextPhase(currentPhase: RoundPhase): RoundPhase {
 function getPhaseDisplayName(phase: RoundPhase): string {
   const names: Record<RoundPhase, string> = {
     NONE: '未开始',
-    READING: '阅读窗口期',
-    OUTLINE: '大纲生成期',
-    WRITING: '章节创作期',
+    AI_WORKING: 'AI创作期',
+    HUMAN_READING: '人类阅读期',
   };
   return names[phase] || phase;
 }
 
 // 获取阶段说明（动态获取配置的时长）
-function getPhaseDescription(phase: RoundPhase, duration?: string): string {
-  // 解析阶段时长配置
-  let readingMin = 10, outlineMin = 5, writingMin = 5;
-  try {
-    if (duration) {
-      const durations = JSON.parse(duration);
-      readingMin = durations.reading || 10;
-      outlineMin = durations.outline || 5;
-      writingMin = durations.writing || 5;
-    }
-  } catch { /* 使用默认值 */ }
+function getPhaseDescription(phase: RoundPhase, roundDuration?: number): string {
+  // 使用 roundDuration 计算各阶段时长
+  const totalMinutes = roundDuration || 20;
+  // AI_WORKING 阶段占总时长的 40%（包含大纲和创作），HUMAN_READING 占 60%
+  const aiWorkingMinutes = Math.round(totalMinutes * 0.4);
+  const humanReadingMinutes = Math.round(totalMinutes * 0.6);
 
   const descriptions: Record<RoundPhase, string> = {
     NONE: '赛季准备中',
-    READING: `读者阅读章节，收集互动数据（${readingMin}分钟）`,
-    OUTLINE: `Agent 根据读者反馈生成/优化大纲（${outlineMin}分钟）`,
-    WRITING: `Agent 创作章节正文（${writingMin}分钟）`,
+    AI_WORKING: `Agent 生成大纲和章节（${aiWorkingMinutes}分钟）`,
+    HUMAN_READING: `读者阅读章节（${humanReadingMinutes}分钟）`,
   };
   return descriptions[phase] || phase;
 }
@@ -138,9 +125,9 @@ export async function POST(request: NextRequest) {
 
     // 计算下一阶段和轮次
     if (currentPhase === 'NONE') {
-      nextPhase = 'OUTLINE';
-    } else if (currentPhase === 'READING') {
-      nextPhase = 'OUTLINE';
+      nextPhase = 'AI_WORKING';
+    } else if (currentPhase === 'HUMAN_READING') {
+      nextPhase = 'AI_WORKING';
       nextRound = currentRound + 1;
     } else {
       nextPhase = getNextPhase(currentPhase);
@@ -188,10 +175,10 @@ export async function POST(request: NextRequest) {
     // 6. 根据阶段触发相应任务
     let taskResult: { type: string; message: string } | null = null;
 
-    if (nextPhase === 'OUTLINE') {
-      // OUTLINE 阶段：生成大纲
-      // 第1轮次生成整本书大纲，后续轮次生成下一章大纲
-      console.log(`[NextPhase] 触发大纲生成任务 - 第 ${nextRound} 轮`);
+    if (nextPhase === 'AI_WORKING') {
+      // AI_WORKING 阶段：生成大纲和章节
+      // 第1轮次生成整本书大纲，后续轮次生成下一章大纲和章节
+      console.log(`[NextPhase] 触发AI创作任务 - 第 ${nextRound} 轮`);
       setTimeout(async () => {
         try {
           if (nextRound === 1) {
@@ -219,8 +206,9 @@ export async function POST(request: NextRequest) {
           ? '正在为所有书籍生成整本书大纲'
           : `正在为所有书籍生成第 ${nextRound} 章大纲`,
       };
-    } else if (nextPhase === 'WRITING') {
-      // WRITING 阶段：创作章节
+    // 注意：由于阶段简化为 AI_WORKING 和 HUMAN_READING 两个阶段，
+    // 大纲生成和章节创作都在 AI_WORKING 阶段完成
+    // 此分支已合并到上面的 AI_WORKING 处理中
       // 逻辑：先检测落后书籍并追赶，再创作当前轮次章节，最后验证并重试失败章节
       console.log(`[NextPhase] 触发章节创作任务 - 第 ${nextRound} 轮`);
       setTimeout(async () => {
@@ -303,8 +291,8 @@ export async function POST(request: NextRequest) {
         type: 'CHAPTER_WRITING',
         message: `正在为所有书籍创作第 ${nextRound} 章正文`,
       };
-    } else if (nextPhase === 'READING') {
-      // READING 阶段：触发 Reader Agents 阅读最新创作的章节
+    } else if (nextPhase === 'HUMAN_READING') {
+      // HUMAN_READING 阶段：触发 Reader Agents 阅读最新创作的章节
       // 读取当前已创作的最大章节号
       console.log(`[NextPhase] 触发 Reader Agents 阅读任务 - 第 ${nextRound} 轮`);
       setTimeout(async () => {
@@ -373,7 +361,7 @@ export async function POST(request: NextRequest) {
         currentRound: nextRound,
         currentPhase: nextPhase,
         phaseDisplayName: getPhaseDisplayName(nextPhase),
-        phaseDescription: getPhaseDescription(nextPhase, season.duration as unknown as string | undefined),
+        phaseDescription: getPhaseDescription(nextPhase, season.roundDuration),
         action: 'PHASE_ADVANCED',
         bookCount: books.length,
         task: taskResult,
@@ -422,12 +410,12 @@ export async function GET() {
         currentRound: season.currentRound ?? 1,  // 轮次从 1 开始
         currentPhase,
         phaseDisplayName: getPhaseDisplayName(currentPhase),
-        phaseDescription: getPhaseDescription(currentPhase, season.duration as unknown as string | undefined),
+        phaseDescription: getPhaseDescription(currentPhase, season.roundDuration),
         startTime: season.startTime,
         endTime: season.endTime,
         signupDeadline: season.signupDeadline,
         maxChapters: season.maxChapters,
-        phaseDurations: JSON.parse((season.duration as unknown as string) || '{}'),
+        phaseDurations: { roundDuration: season.roundDuration ?? 20 },
       },
       message: '获取成功',
     });

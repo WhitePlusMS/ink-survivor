@@ -37,11 +37,7 @@ interface SeasonQueueItem {
   zoneStyles: string[];
   maxChapters: number;
   minChapters: number;
-  duration: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  roundDuration: number;
   rewards: Record<string, number>;
   plannedStartTime: string | null;
   intervalHours: number;
@@ -59,12 +55,10 @@ interface SeasonConfigForm {
   zoneStyles: string[];
   maxChapters: number;
   minChapters: number;
-  phaseDurations: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
-  rewards: string;
+  roundDuration: number;  // 每轮总时长（分钟）
+  rewardFirst: number;    // 一等奖奖励
+  rewardSecond: number;  // 二等奖奖励
+  rewardThird: number;   // 三等奖奖励
   plannedStartTime: string;
   intervalHours: number;
 }
@@ -92,11 +86,7 @@ interface SeasonDetail {
   zoneStyles: string[];
   maxChapters: number;
   minChapters: number;
-  duration: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  roundDuration: number;
   rewards: Record<string, number>;
   startTime: Date | string | null;
   endTime: Date | string | null;
@@ -110,9 +100,8 @@ interface SeasonDetail {
 function getPhaseDisplayName(phase: string): string {
   const names: Record<string, string> = {
     NONE: '未开始',
-    READING: '阅读窗口期',
-    OUTLINE: '大纲生成期',
-    WRITING: '章节创作期',
+    AI_WORKING: 'AI创作期',
+    HUMAN_READING: '人类阅读期',
   };
   return names[phase] || phase;
 }
@@ -173,16 +162,14 @@ export function AdminSeasonClient({
   const [configForm, setConfigForm] = useState<SeasonConfigForm>({
     seasonNumber: 1,
     themeKeyword: '',
-    constraints: '',
+    constraints: '不能出现真实地名\n主角必须有成长弧线',
     zoneStyles: ZONE_VALUES,
     maxChapters: 7,
     minChapters: 3,
-    phaseDurations: {
-      reading: 10,
-      outline: 5,
-      writing: 5,
-    },
-    rewards: '{"first": 1000, "second": 500, "third": 200}',
+    roundDuration: 20,     // 每轮20分钟
+    rewardFirst: 1000,    // 一等奖
+    rewardSecond: 500,    // 二等奖
+    rewardThird: 200,     // 三等奖
     plannedStartTime: '',
     intervalHours: 2,
   });
@@ -296,12 +283,14 @@ export function AdminSeasonClient({
     setConfigForm({
       seasonNumber: getNextSeasonNumber(),
       themeKeyword: '',
-      constraints: '',
+      constraints: '不能出现真实地名\n主角必须有成长弧线',
       zoneStyles: ZONE_VALUES,
       maxChapters: 7,
       minChapters: 3,
-      phaseDurations: { reading: 10, outline: 5, writing: 5 },
-      rewards: '{"first": 1000, "second": 500, "third": 200}',
+      roundDuration: 20,
+      rewardFirst: 1000,
+      rewardSecond: 500,
+      rewardThird: 200,
       plannedStartTime: '',
       intervalHours: 2,
     });
@@ -324,8 +313,12 @@ export function AdminSeasonClient({
         zoneStyles: configForm.zoneStyles,
         maxChapters: configForm.maxChapters,
         minChapters: configForm.minChapters,
-        duration: configForm.phaseDurations,
-        rewards: JSON.parse(configForm.rewards || '{}'),
+        roundDuration: configForm.roundDuration,
+        rewards: {
+          first: configForm.rewardFirst,
+          second: configForm.rewardSecond,
+          third: configForm.rewardThird,
+        },
         plannedStartTime: configForm.plannedStartTime || null,
         intervalHours: configForm.intervalHours,
       };
@@ -382,8 +375,12 @@ export function AdminSeasonClient({
           zoneStyles: configForm.zoneStyles,
           maxChapters: configForm.maxChapters,
           minChapters: configForm.minChapters,
-          phaseDurations: configForm.phaseDurations,
-          rewards: JSON.parse(configForm.rewards || '{}'),
+          roundDuration: configForm.roundDuration,
+          rewards: {
+            first: configForm.rewardFirst,
+            second: configForm.rewardSecond,
+            third: configForm.rewardThird,
+          },
         }),
       });
       const result = await response.json();
@@ -403,6 +400,8 @@ export function AdminSeasonClient({
 
   // 编辑队列中的赛季
   const handleEdit = (item: SeasonQueueItem) => {
+    const rewards = item.rewards || { first: 1000, second: 500, third: 200 };
+
     setConfigForm({
       seasonNumber: item.seasonNumber,
       themeKeyword: item.themeKeyword,
@@ -410,8 +409,10 @@ export function AdminSeasonClient({
       zoneStyles: item.zoneStyles,
       maxChapters: item.maxChapters,
       minChapters: item.minChapters,
-      phaseDurations: item.duration,
-      rewards: JSON.stringify(item.rewards),
+      roundDuration: item.roundDuration || 20,
+      rewardFirst: rewards.first || 1000,
+      rewardSecond: rewards.second || 500,
+      rewardThird: rewards.third || 200,
       plannedStartTime: item.plannedStartTime ? new Date(item.plannedStartTime).toISOString().slice(0, 16) : '',
       intervalHours: item.intervalHours,
     });
@@ -605,12 +606,16 @@ export function AdminSeasonClient({
     setConfigForm(prev => ({ ...prev, [field]: value }));
   };
 
-  // 阶段时长变更处理
-  const handlePhaseDurationChange = (phase: keyof SeasonConfigForm['phaseDurations'], value: number) => {
-    setConfigForm(prev => ({
-      ...prev,
-      phaseDurations: { ...prev.phaseDurations, [phase]: value },
-    }));
+  // 轮次时长变更处理
+  const handleRoundDurationChange = (value: number) => {
+    // 最小值限制为 6 分钟
+    const validatedValue = Math.max(6, value);
+    setConfigForm(prev => ({ ...prev, roundDuration: validatedValue }));
+  };
+
+  // 奖励字段变更处理
+  const handleRewardChange = (field: 'rewardFirst' | 'rewardSecond' | 'rewardThird', value: number) => {
+    setConfigForm(prev => ({ ...prev, [field]: value }));
   };
 
 
@@ -762,7 +767,7 @@ export function AdminSeasonClient({
               {/* 硬性约束 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  硬性约束 (每行一条)
+                  硬性约束
                 </label>
                 <Textarea
                   value={configForm.constraints}
@@ -781,8 +786,8 @@ export function AdminSeasonClient({
                 </div>
               </div>
 
-              {/* 最大章节数、最小章节数和阶段时长 */}
-              <div className="grid grid-cols-5 gap-4">
+              {/* 最大章节数、最小章节数和轮次时长 */}
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     最小章节
@@ -811,65 +816,77 @@ export function AdminSeasonClient({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    阅读期(分)
+                    轮次时长(分)
                   </label>
                   <Input
                     type="number"
-                    value={configForm.phaseDurations.reading}
-                    onChange={(e) => handlePhaseDurationChange('reading', parseInt(e.target.value) || 10)}
-                    min={1}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    大纲期(分)
-                  </label>
-                  <Input
-                    type="number"
-                    value={configForm.phaseDurations.outline}
-                    onChange={(e) => handlePhaseDurationChange('outline', parseInt(e.target.value) || 5)}
-                    min={1}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    创作期(分)
-                  </label>
-                  <Input
-                    type="number"
-                    value={configForm.phaseDurations.writing}
-                    onChange={(e) => handlePhaseDurationChange('writing', parseInt(e.target.value) || 5)}
-                    min={1}
+                    value={configForm.roundDuration}
+                    onChange={(e) => handleRoundDurationChange(parseInt(e.target.value) || 20)}
+                    min={6}
                     className="w-full"
                   />
                 </div>
               </div>
 
-              {/* 计划开始时间和奖励 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    计划开始时间
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    value={configForm.plannedStartTime}
-                    onChange={(e) => handleConfigChange('plannedStartTime', e.target.value)}
-                    className="w-full"
-                  />
+              {/* 奖励配置 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  奖励配置 (Ink)
+                </label>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <div className="flex items-center gap-1 text-sm text-yellow-600 mb-1">
+                      🥇 一等奖
+                    </div>
+                    <Input
+                      type="number"
+                      value={configForm.rewardFirst}
+                      onChange={(e) => handleRewardChange('rewardFirst', parseInt(e.target.value) || 0)}
+                      min={0}
+                      className="w-full"
+                      placeholder="1000"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                      🥈 二等奖
+                    </div>
+                    <Input
+                      type="number"
+                      value={configForm.rewardSecond}
+                      onChange={(e) => handleRewardChange('rewardSecond', parseInt(e.target.value) || 0)}
+                      min={0}
+                      className="w-full"
+                      placeholder="500"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1 text-sm text-amber-700 mb-1">
+                      🥉 三等奖
+                    </div>
+                    <Input
+                      type="number"
+                      value={configForm.rewardThird}
+                      onChange={(e) => handleRewardChange('rewardThird', parseInt(e.target.value) || 0)}
+                      min={0}
+                      className="w-full"
+                      placeholder="200"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    奖励 (JSON)
-                  </label>
-                  <Input
-                    value={configForm.rewards}
-                    onChange={(e) => handleConfigChange('rewards', e.target.value)}
-                    className="w-full font-mono text-sm"
-                  />
-                </div>
+              </div>
+
+              {/* 计划开始时间 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  计划开始时间
+                </label>
+                <Input
+                  type="datetime-local"
+                  value={configForm.plannedStartTime}
+                  onChange={(e) => handleConfigChange('plannedStartTime', e.target.value)}
+                  className="w-full"
+                />
               </div>
 
               {/* 保存按钮 */}
@@ -950,8 +967,7 @@ export function AdminSeasonClient({
                             <span>分区：{Array.isArray(item.zoneStyles) ? item.zoneStyles.map(z => ZONE_LABELS[z] || z).join('、') : '无'}</span>
                             <span>章节：{item.minChapters}-{item.maxChapters} 章</span>
                             <span>
-                              时长：
-                              {item.duration?.reading + item.duration?.outline + item.duration?.writing || 0}分钟/轮
+                              时长：{item.roundDuration}分钟/轮
                             </span>
                           </div>
                           {item.plannedStartTime && (
@@ -1036,7 +1052,7 @@ export function AdminSeasonClient({
           </h3>
 
           <div className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   赛季编号
@@ -1051,7 +1067,20 @@ export function AdminSeasonClient({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  最大章节数
+                  最小章节
+                </label>
+                <Input
+                  type="number"
+                  value={configForm.minChapters}
+                  onChange={(e) => handleConfigChange('minChapters', parseInt(e.target.value) || 3)}
+                  min={1}
+                  max={20}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  最大章节
                 </label>
                 <Input
                   type="number"
@@ -1078,7 +1107,7 @@ export function AdminSeasonClient({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                硬性约束 (每行一条)
+                硬性约束
               </label>
               <Textarea
                 value={configForm.constraints}
@@ -1100,51 +1129,64 @@ export function AdminSeasonClient({
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  阅读期(分钟)
+                  轮次时长(分钟)
                 </label>
                 <Input
                   type="number"
-                  value={configForm.phaseDurations.reading}
-                  onChange={(e) => handlePhaseDurationChange('reading', parseInt(e.target.value) || 10)}
-                  min={1}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  大纲期(分钟)
-                </label>
-                <Input
-                  type="number"
-                  value={configForm.phaseDurations.outline}
-                  onChange={(e) => handlePhaseDurationChange('outline', parseInt(e.target.value) || 5)}
-                  min={1}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  创作期(分钟)
-                </label>
-                <Input
-                  type="number"
-                  value={configForm.phaseDurations.writing}
-                  onChange={(e) => handlePhaseDurationChange('writing', parseInt(e.target.value) || 5)}
-                  min={1}
+                  value={configForm.roundDuration}
+                  onChange={(e) => handleRoundDurationChange(parseInt(e.target.value) || 20)}
+                  min={6}
                   className="w-full"
                 />
               </div>
             </div>
 
+            {/* 奖励配置 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                奖励配置 (JSON)
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                奖励配置 (Ink)
               </label>
-              <Input
-                value={configForm.rewards}
-                onChange={(e) => handleConfigChange('rewards', e.target.value)}
-                className="w-full font-mono text-sm"
-              />
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="flex items-center gap-1 text-sm text-yellow-600 mb-1">
+                    🥇 一等奖
+                  </div>
+                  <Input
+                    type="number"
+                    value={configForm.rewardFirst}
+                    onChange={(e) => handleRewardChange('rewardFirst', parseInt(e.target.value) || 0)}
+                    min={0}
+                    className="w-full"
+                    placeholder="1000"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 text-sm text-gray-500 mb-1">
+                    🥈 二等奖
+                  </div>
+                  <Input
+                    type="number"
+                    value={configForm.rewardSecond}
+                    onChange={(e) => handleRewardChange('rewardSecond', parseInt(e.target.value) || 0)}
+                    min={0}
+                    className="w-full"
+                    placeholder="500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 text-sm text-amber-700 mb-1">
+                    🥉 三等奖
+                  </div>
+                  <Input
+                    type="number"
+                    value={configForm.rewardThird}
+                    onChange={(e) => handleRewardChange('rewardThird', parseInt(e.target.value) || 0)}
+                    min={0}
+                    className="w-full"
+                    placeholder="200"
+                  />
+                </div>
+              </div>
             </div>
 
             <Button
@@ -1211,16 +1253,8 @@ export function AdminSeasonClient({
 
                   <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                      <div className="text-surface-500 dark:text-surface-400">阅读期</div>
-                      <div className="font-medium">{s.duration?.reading || 10} 分钟</div>
-                    </div>
-                    <div>
-                      <div className="text-surface-500 dark:text-surface-400">大纲期</div>
-                      <div className="font-medium">{s.duration?.outline || 5} 分钟</div>
-                    </div>
-                    <div>
-                      <div className="text-surface-500 dark:text-surface-400">创作期</div>
-                      <div className="font-medium">{s.duration?.writing || 5} 分钟</div>
+                      <div className="text-surface-500 dark:text-surface-400">轮次时长</div>
+                      <div className="font-medium">{s.roundDuration || 20} 分钟</div>
                     </div>
                     <div>
                       <div className="text-surface-500 dark:text-surface-400">当前状态</div>

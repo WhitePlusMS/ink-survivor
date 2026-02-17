@@ -6,46 +6,51 @@
  * - 根据配置的阶段时长自动推进
  * - 支持手动/自动两种模式
  *
- * 阶段顺序：
- * OUTLINE (大纲生成期) -> WRITING (章节创作期) -> READING (阅读窗口期) -> OUTLINE (下一轮)
+ * 阶段顺序（简化版）：
+ * AI_WORKING (任务驱动) -> HUMAN_READING (剩余时间) -> AI_WORKING (下一轮)
  *
  * 注意：AI 任务通过 TaskQueue 异步执行，不阻塞 API 响应
+ * AI_WORKING 阶段由 ROUND_CYCLE 任务完成后自动切换，不依赖定时器
  */
 
 import { prisma } from '@/lib/prisma';
 import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
-import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now } from '@/lib/timezone';
+import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now, toBeijingTime, nowMs, getBeijingTimeMs } from '@/lib/timezone';
 import { taskQueueService } from './task-queue.service';
 
-// 阶段顺序
-const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
+// 阶段顺序（简化版：AI_WORKING -> HUMAN_READING）
+const PHASE_ORDER: RoundPhase[] = ['AI_WORKING', 'HUMAN_READING'];
 
 // 检查间隔（毫秒）
 const CHECK_INTERVAL = 60 * 1000; // 每 60 秒检查一次
 
 function getPhaseDurationMs(season: Season, phase: RoundPhase): number {
-  let phaseDurationMs = 10 * 60 * 1000;
-  try {
-    // JSONB 字段可能是字符串，需要解析
-    let durations: { reading?: number; outline?: number; writing?: number } | null = null;
-    const rawDuration = season.duration;
-    if (typeof rawDuration === 'string') {
-      durations = JSON.parse(rawDuration);
-    } else if (typeof rawDuration === 'object' && rawDuration !== null) {
-      durations = rawDuration as { reading?: number; outline?: number; writing?: number };
+  const roundDurationMs = (season.roundDuration || 20) * 60 * 1000;
+  const minReadingTimeMs = 5 * 60 * 1000; // 最少人类阅读时间 5 分钟
+
+  // AI_WORKING 阶段：最大时间 = roundDuration - 最少人类阅读时间
+  if (phase === 'AI_WORKING') {
+    return Math.max(roundDurationMs - minReadingTimeMs, 5 * 60 * 1000); // 最少 5 分钟
+  }
+
+  // HUMAN_READING 阶段：使用剩余时间 = roundDuration - AI实际耗时
+  if (phase === 'HUMAN_READING') {
+    const aiWorkStartTime = season.aiWorkStartTime;
+
+    // aiWorkStartTime 记录的是 AI_WORKING 阶段的开始时间
+    // roundStartTime 记录的是当前阶段的开始时间
+    if (aiWorkStartTime && season.roundStartTime) {
+      const aiWorkMs = new Date(season.roundStartTime).getTime() - new Date(aiWorkStartTime).getTime();
+      const readingMs = roundDurationMs - aiWorkMs;
+      return Math.max(readingMs, minReadingTimeMs); // 确保最少 5 分钟
     }
 
-    if (durations) {
-      const phaseKey = phase.toLowerCase() as 'reading' | 'outline' | 'writing';
-      const minutes = durations[phaseKey];
-      phaseDurationMs = (minutes || 10) * 60 * 1000;
-    }
-  } catch (e) {
-    console.error('[SeasonAutoAdvance] duration 解析错误:', e);
-    phaseDurationMs = 10 * 60 * 1000;
+    // 如果没有记录 AI 工作时间，默认使用 roundDuration - 5分钟
+    return roundDurationMs - minReadingTimeMs;
   }
-  return phaseDurationMs;
+
+  return roundDurationMs;
 }
 
 function getPhaseRemainingTime(season: Season, currentPhase: RoundPhase): number {
@@ -61,10 +66,11 @@ function getPhaseRemainingTime(season: Season, currentPhase: RoundPhase): number
 function getNextPhase(currentPhase: RoundPhase): RoundPhase {
   const currentIndex = PHASE_ORDER.indexOf(currentPhase);
   if (currentIndex === -1) {
-    return 'OUTLINE';
+    return 'AI_WORKING';
   }
   if (currentIndex >= PHASE_ORDER.length - 1) {
-    return 'OUTLINE';
+    // HUMAN_READING 结束后回到 AI_WORKING（下一轮）
+    return 'AI_WORKING';
   }
   return PHASE_ORDER[currentIndex + 1];
 }
@@ -74,10 +80,9 @@ function getNextPhase(currentPhase: RoundPhase): RoundPhase {
  */
 function getPhaseDisplayName(phase: RoundPhase): string {
   const names: Record<RoundPhase, string> = {
-    NONE: '未开始',
-    READING: '阅读窗口期',
-    OUTLINE: '大纲生成期',
-    WRITING: '章节创作期',
+    NONE: '等待开始',
+    AI_WORKING: 'AI工作中',
+    HUMAN_READING: '人类阅读期',
   };
   return names[phase] || phase;
 }
@@ -146,15 +151,17 @@ export class SeasonAutoAdvanceService {
 
       let currentPhase = (season.roundPhase as RoundPhase) || 'NONE';
       let currentRound = season.currentRound || 1;
+      // 转换为北京时间
+      const seasonStartTimeBeijing = toBeijingTime(season.startTime || now());
       let phaseStartTime = season.roundStartTime
-        ? new Date(season.roundStartTime)
-        : new Date(season.startTime || now());
+        ? toBeijingTime(season.roundStartTime)
+        : seasonStartTimeBeijing;
 
       const transitions: Array<{ round: number; phase: RoundPhase; startTime: Date }> = [];
 
       if (currentPhase === 'NONE') {
-        console.log('[SeasonAutoAdvance] 赛季未开始，进入第一轮 OUTLINE');
-        currentPhase = 'OUTLINE';
+        console.log('[SeasonAutoAdvance] 赛季未开始，进入第一轮 AI_WORKING');
+        currentPhase = 'AI_WORKING';
         currentRound = 1;
         transitions.push({ round: currentRound, phase: currentPhase, startTime: phaseStartTime });
       }
@@ -162,21 +169,36 @@ export class SeasonAutoAdvanceService {
       const maxRounds = season.maxChapters || 7;
       const maxTransitions = maxRounds * PHASE_ORDER.length + 2;
       let safety = 0;
-      const nowBeijing = now();
+      const nowBeijingMs = nowMs(); // 使用北京时间毫秒数
 
       while (safety < maxTransitions) {
         const durationMs = getPhaseDurationMs(season, currentPhase);
-        const phaseEndTime = phaseStartTime.getTime() + durationMs;
-        const timeLeft = phaseEndTime - nowBeijing.getTime();
+        // 使用 getBeijingTimeMs 获取阶段的北京时间毫秒数
+        const phaseStartTimeMs = getBeijingTimeMs(phaseStartTime);
+        const phaseEndTimeMs = phaseStartTimeMs + durationMs;
+        const timeLeft = phaseEndTimeMs - nowBeijingMs;
+        console.log(`[SeasonAutoAdvance] Loop: phase=${currentPhase}, round=${currentRound}, durationMs=${durationMs}, phaseStartTimeMs=${phaseStartTimeMs}, nowBeijingMs=${nowBeijingMs}, timeLeft=${timeLeft}`);
+
         if (timeLeft > 5000) {
+          console.log('[SeasonAutoAdvance] Time left > 5s, breaking loop');
           break;
         }
 
         let nextRound = currentRound;
-        if (currentPhase === 'READING') {
+        if (currentPhase === 'HUMAN_READING') {
+          // HUMAN_READING 阶段结束后，进入下一轮的 AI_WORKING
           nextRound = currentRound + 1;
         }
 
+        // 关键修改：当 AI_WORKING 阶段结束后，如果已达最大轮次，则结束赛季
+        // 而不是等到 HUMAN_READING 结束后才结束
+        if (currentPhase === 'AI_WORKING' && nextRound > maxRounds) {
+          console.log(`[SeasonAutoAdvance] 第 ${currentRound} 轮 AI工作已完成，已达最大轮次（第 ${maxRounds} 轮），自动结束赛季`);
+          await this.endSeason(season.id);
+          return;
+        }
+
+        // 如果是 HUMAN_READING 阶段结束后已达最大轮次，也结束
         if (nextRound > maxRounds) {
           console.log(`[SeasonAutoAdvance] 已达最大轮次（第 ${maxRounds} 轮），自动结束赛季`);
           await this.endSeason(season.id);
@@ -184,7 +206,7 @@ export class SeasonAutoAdvanceService {
         }
 
         const nextPhase = getNextPhase(currentPhase);
-        phaseStartTime = new Date(phaseEndTime);
+        phaseStartTime = new Date(phaseEndTimeMs);
         currentPhase = nextPhase;
         currentRound = nextRound;
         transitions.push({ round: currentRound, phase: currentPhase, startTime: phaseStartTime });
@@ -242,84 +264,77 @@ export class SeasonAutoAdvanceService {
   /**
    * 触发阶段任务（异步，不阻塞）
    * 将任务添加到队列，由 Worker 异步执行
+   *
+   * 简化版：只有 AI_WORKING 和 HUMAN_READING 两个阶段
+   * - AI_WORKING: 创建 ROUND_CYCLE 任务，任务完成后自动调用 advanceToNextRound
+   * - HUMAN_READING: 不需要触发任务，等待人类阅读
    */
   private async triggerPhaseTask(seasonId: string, round: number, phase: RoundPhase): Promise<void> {
-    if (phase === 'OUTLINE') {
-      console.log(`[SeasonAutoAdvance] 创建大纲生成任务 - 第 ${round} 轮`);
+    console.log(`[SeasonAutoAdvance] triggerPhaseTask: seasonId=${seasonId}, round=${round}, phase=${phase}`);
 
-      // 第1轮生成整本书大纲，后续轮次生成下一章大纲
-      if (round === 1) {
-        await taskQueueService.create({
-          taskType: 'OUTLINE',
-          payload: { seasonId, round },
-          priority: 10,
-        });
-      } else {
-        await taskQueueService.create({
-          taskType: 'NEXT_OUTLINE',
-          payload: { seasonId, round },
-          priority: 10,
-        });
-      }
-    } else if (phase === 'WRITING') {
-      console.log(`[SeasonAutoAdvance] 创建章节创作任务 - 第 ${round} 轮`);
+    if (phase === 'AI_WORKING') {
+      console.log(`[SeasonAutoAdvance] 🎯 进入 AI_WORKING 阶段，创建 ROUND_CYCLE 任务 - 第 ${round} 轮`);
 
-      // 检测落后书籍
-      const allBooks = await prisma.book.findMany({
-        where: {
-          seasonId,
-          status: 'ACTIVE',
-        },
-        include: {
-          _count: { select: { chapters: true } },
+      // 进入 AI_WORKING 阶段时，记录开始时间
+      const now = new Date();
+      console.log(`[SeasonAutoAdvance] 📝 记录 aiWorkStartTime: ${now.toISOString()}`);
+      await prisma.season.update({
+        where: { id: seasonId },
+        data: {
+          aiWorkStartTime: now,
         },
       });
 
-      const behindBooks = allBooks.filter(book => book._count.chapters < round);
-
-      if (behindBooks.length > 0) {
-        // 创建追赶任务
-        await taskQueueService.create({
-          taskType: 'CATCH_UP',
-          payload: { seasonId, round, bookIds: behindBooks.map(b => b.id) },
-          priority: 5,
-        });
-      } else {
-        // 创建正常写作任务
-        await taskQueueService.create({
-          taskType: 'WRITE_CHAPTER',
-          payload: { seasonId, round },
-          priority: 5,
-        });
-      }
-    } else if (phase === 'READING') {
-      console.log(`[SeasonAutoAdvance] 创建 Reader Agents 阅读任务 - 第 ${round} 轮`);
-
-      // 获取最新章节
-      const recentChapters = await prisma.chapter.findMany({
-        where: {
-          book: { seasonId },
-          status: 'PUBLISHED',
-        },
-        select: { id: true, bookId: true, chapterNumber: true },
+      // 创建轮次完整流程任务（大纲→章节→评论）
+      // 任务完成后会自动调用 advanceToNextRound 切换到 HUMAN_READING
+      await taskQueueService.create({
+        taskType: 'ROUND_CYCLE',
+        payload: { seasonId, round },
+        priority: 10,
       });
-
-      if (recentChapters.length === 0) {
-        return;
-      }
-
-      const maxChapterNumber = Math.max(...recentChapters.map((c) => c.chapterNumber));
-      const latestChapters = recentChapters.filter((c) => c.chapterNumber === maxChapterNumber);
-
-      // 为每个章节创建 Reader Agent 任务
-      for (const chapter of latestChapters) {
-        await taskQueueService.create({
-          taskType: 'READER_AGENT',
-          payload: { chapterId: chapter.id, bookId: chapter.bookId, round },
-          priority: 3,
-        });
-      }
+      console.log(`[SeasonAutoAdvance] ✅ ROUND_CYCLE 任务已创建`);
+    } else if (phase === 'HUMAN_READING') {
+      console.log(`[SeasonAutoAdvance] 📖 进入 HUMAN_READING 阶段，不需要触发任务，等待人类阅读超时后自动推进`);
+    } else {
+      console.log(`[SeasonAutoAdvance] ⚠️ 未知阶段: ${phase}`);
     }
+  }
+
+  /**
+   * 推进到下一阶段（AI_WORKING -> HUMAN_READING）
+   * 由 ROUND_CYCLE 任务完成后调用
+   */
+  public async advanceToNextRound(seasonId: string, round: number): Promise<void> {
+    console.log(`[SeasonAutoAdvance] advanceToNextRound called: seasonId=${seasonId}, round=${round}`);
+
+    const season = await prisma.season.findUnique({ where: { id: seasonId } });
+    console.log(`[SeasonAutoAdvance] 当前赛季状态: phase=${season?.roundPhase}, currentRound=${season?.currentRound}`);
+
+    if (!season || season.roundPhase !== 'AI_WORKING') {
+      console.log(`[SeasonAutoAdvance] 跳过：当前阶段不是 AI_WORKING`);
+      return;
+    }
+
+    // 计算阅读时长 = roundDuration - AI工作时长
+    const roundDurationMs = (season.roundDuration || 20) * 60 * 1000;
+    const aiWorkMs = season.aiWorkStartTime
+      ? new Date().getTime() - new Date(season.aiWorkStartTime).getTime()
+      : 0;
+    const readingDurationMs = Math.max(roundDurationMs - aiWorkMs, 0);
+
+    console.log(`[SeasonAutoAdvance] 时间计算: roundDuration=${roundDurationMs}ms, aiWorkMs=${aiWorkMs}ms, readingDurationMs=${readingDurationMs}ms`);
+
+    // 更新阶段为 HUMAN_READING，设置阅读开始时间
+    await prisma.season.update({
+      where: { id: seasonId },
+      data: {
+        roundPhase: 'HUMAN_READING',
+        roundStartTime: new Date(), // 阅读开始时间（即 AI 工作结束时间）
+        // 注意：currentRound 在 HUMAN_READING 阶段结束后才增加
+      },
+    });
+
+    console.log(`[SeasonAutoAdvance] ✅ 第 ${round} 轮 AI工作完成，已切换到 HUMAN_READING 阶段（阅读时长: ${readingDurationMs / 60000}分钟）`);
   }
 
   /**

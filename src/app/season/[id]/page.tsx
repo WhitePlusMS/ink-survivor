@@ -63,9 +63,9 @@ export default async function SeasonPage({ params, searchParams }: SeasonPagePro
         {/* 阶段进度条 - 地铁线路风格 */}
         <PhaseProgressBar
           currentRound={season.currentRound}
-          currentPhase={season.currentPhase as 'NONE' | 'READING' | 'OUTLINE' | 'WRITING'}
+          currentPhase={season.currentPhase as 'NONE' | 'AI_WORKING' | 'HUMAN_READING'}
           roundStartTime={season.roundStartTime ? new Date(season.roundStartTime).toISOString() : null}
-          phaseDurations={season.phaseDurations || { reading: 10, outline: 5, writing: 5 }}
+          roundDuration={season.roundDuration || 20}
           seasonStatus={season.status}
         />
 

@@ -172,7 +172,7 @@ export async function POST() {
           startTime: now,
           endTime,
           signupDeadline,
-          duration: '600',
+          roundDuration: 600,
           maxChapters: 7,
           minChapters: 3,
           rewards: JSON.stringify({ first: 1000, second: 500, third: 200, completionPerChapter: 50 }),

@@ -53,7 +53,7 @@ interface SeasonWithBooks {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: unknown;  // JSONB 类型
+  roundDuration: number;
   startTime: Date | string;
   endTime: Date | string;
   signupDeadline: Date | string;

@@ -18,7 +18,7 @@ export interface SeasonResponse {
   themeKeyword: string;
   constraints: string[];
   zoneStyles: string[];
-  duration: Prisma.JsonValue;  // JSONB 类型，Prisma 自动解析
+  roundDuration: number;
   startTime: Date;
   endTime: Date;
   signupDeadline: Date;
@@ -30,12 +30,8 @@ export interface SeasonResponse {
   currentRound: number;
   currentPhase: string;
   roundStartTime: Date | null;
-  // 阶段时长配置
-  phaseDurations?: {
-    reading: number;
-    outline: number;
-    writing: number;
-  };
+  // AI 工作开始时间
+  aiWorkStartTime: Date | null;
 }
 
 export class SeasonService {
@@ -134,7 +130,7 @@ export class SeasonService {
     zoneStyles: string[];
     startTime: Date;
     endTime: Date;
-    duration: Prisma.JsonValue;  // JSONB
+    roundDuration: number;
     maxChapters: number;
     minChapters: number;
     rewards: Prisma.JsonValue;
@@ -151,7 +147,7 @@ export class SeasonService {
         startTime: data.startTime,
         endTime: data.endTime,
         signupDeadline,
-        duration: toJsonValue(data.duration),
+        roundDuration: data.roundDuration,
         maxChapters: data.maxChapters,
         minChapters: data.minChapters,
         rewards: toJsonValue(data.rewards),
@@ -353,7 +349,7 @@ export class SeasonService {
       // JSONB 类型，Prisma 自动解析为对应类型
       constraints: (season.constraints as string[]) || [],
       zoneStyles: (season.zoneStyles as string[]) || [],
-      duration: season.duration,
+      roundDuration: season.roundDuration ?? 20,
       startTime: season.startTime,
       endTime: season.endTime,
       signupDeadline: season.signupDeadline,
@@ -366,12 +362,8 @@ export class SeasonService {
       currentRound: season.currentRound ?? 1,
       currentPhase: season.roundPhase || 'NONE',
       roundStartTime: season.roundStartTime,
-      // JSONB 自动解析，无需再次 JSON.parse
-      phaseDurations: season.duration as { reading: number; outline: number; writing: number } || {
-        reading: 10,
-        outline: 5,
-        writing: 5,
-      },
+      // AI 工作开始时间
+      aiWorkStartTime: season.aiWorkStartTime,
     };
   }
 
