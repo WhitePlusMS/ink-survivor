@@ -130,3 +130,19 @@
 - 剩余警告（非错误）：
   - React Hook useEffect 依赖警告（4处）
   - 使用 `<img>` 而非 `<Image />` 警告（2处）
+
+---
+
+## 2026-02-18 构建修复
+
+### 修复的 ESLint 错误
+
+本次修复解决了 `npm run build` 失败的问题：
+
+#### 1. `src/services/season-auto-advance.service.ts`
+- 第19行：删除未使用的导入 `toBeijingTime` 和 `getBeijingTimeMs`
+- 原因：ESLint 检测到这些函数被导入但未在代码中使用
+
+### 修复结果
+- 构建成功
+- 无剩余错误或警告

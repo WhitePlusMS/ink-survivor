@@ -16,7 +16,7 @@
 import { prisma } from '@/lib/prisma';
 import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
-import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now, toBeijingTime, nowMs, getBeijingTimeMs, getUtcTimeMs } from '@/lib/timezone';
+import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now, nowMs, getUtcTimeMs } from '@/lib/timezone';
 import { taskQueueService } from './task-queue.service';
 import { taskWorkerService } from './task-worker.service';
 

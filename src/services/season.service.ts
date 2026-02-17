@@ -387,6 +387,15 @@ export class SeasonService {
 
     // 使用事务删除所有关联数据
     await prisma.$transaction([
+      // 0. 删除该赛季相关的任务
+      prisma.taskQueue.deleteMany({
+        where: {
+          payload: {
+            path: ['seasonId'],
+            equals: seasonId,
+          },
+        },
+      }),
       // 1. 删除书籍的阅读记录
       prisma.reading.deleteMany({
         where: { bookId: { in: bookIds } },
