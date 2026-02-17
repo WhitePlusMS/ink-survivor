@@ -4,6 +4,12 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 
 /**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * GET /api/books/:id/favorite/status - 查询收藏状态
  */
 export async function GET(

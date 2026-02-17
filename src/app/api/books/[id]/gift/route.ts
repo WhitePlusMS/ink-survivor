@@ -6,6 +6,12 @@ import { prisma } from '@/lib/prisma';
 import { GiftResponseDto } from '@/common/dto/comment.dto';
 
 /**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * POST /api/books/:id/gift - 打赏
  */
 export async function POST(

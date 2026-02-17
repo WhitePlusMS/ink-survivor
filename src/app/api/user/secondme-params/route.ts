@@ -9,6 +9,12 @@ import { NextResponse } from 'next/server';
 import { getCurrentUserToken } from '@/lib/secondme/client';
 import { SECONDME_CONFIG } from '@/lib/secondme/config';
 
+/**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
 const API_BASE = SECONDME_CONFIG.BASE_URL;
 
 export async function GET() {

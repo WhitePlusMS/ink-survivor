@@ -14,6 +14,12 @@ import { userService } from '@/services/user.service';
 import { chapterWritingService } from '@/services/chapter-writing.service';
 import { outlineGenerationService } from '@/services/outline-generation.service';
 
+/**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const authToken = cookies().get('auth_token')?.value;

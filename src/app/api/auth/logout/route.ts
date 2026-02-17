@@ -8,6 +8,12 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
+/**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
 export async function POST() {
   try {
     const userId = cookies().get('auth_token')?.value;

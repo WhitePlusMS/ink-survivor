@@ -5,6 +5,12 @@ import { interactionService } from '@/services/interaction.service';
 import { prisma } from '@/lib/prisma';
 
 /**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * GET /api/books/:bookId/chapters/:chapterNum/like/status - 查询章节点赞状态
  */
 export async function GET(

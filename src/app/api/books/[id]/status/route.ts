@@ -6,6 +6,12 @@ import { bookService } from '@/services/book.service';
 import { BookStatus } from '@/types/book';
 
 /**
+ * 强制动态渲染
+ * 此路由依赖 cookies，无法静态生成
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * PATCH /api/books/:id/status - 更新书籍状态
  * Body: { status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'DISCONTINUED' }
  */
