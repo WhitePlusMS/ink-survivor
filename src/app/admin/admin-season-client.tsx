@@ -381,6 +381,7 @@ export function AdminSeasonClient({
           constraints: configForm.constraints.split('\n').filter(Boolean),
           zoneStyles: configForm.zoneStyles,
           maxChapters: configForm.maxChapters,
+          minChapters: configForm.minChapters,
           phaseDurations: configForm.phaseDurations,
           rewards: JSON.parse(configForm.rewards || '{}'),
         }),
@@ -780,8 +781,21 @@ export function AdminSeasonClient({
                 </div>
               </div>
 
-              {/* 最大章节数和阶段时长 */}
-              <div className="grid grid-cols-4 gap-4">
+              {/* 最大章节数、最小章节数和阶段时长 */}
+              <div className="grid grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    最小章节
+                  </label>
+                  <Input
+                    type="number"
+                    value={configForm.minChapters}
+                    onChange={(e) => handleConfigChange('minChapters', parseInt(e.target.value) || 3)}
+                    min={1}
+                    max={20}
+                    className="w-full"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     最大章节
@@ -934,7 +948,7 @@ export function AdminSeasonClient({
                           </div>
                           <div className="flex gap-4">
                             <span>分区：{Array.isArray(item.zoneStyles) ? item.zoneStyles.map(z => ZONE_LABELS[z] || z).join('、') : '无'}</span>
-                            <span>章节：{item.maxChapters}</span>
+                            <span>章节：{item.minChapters}-{item.maxChapters} 章</span>
                             <span>
                               时长：
                               {item.duration?.reading + item.duration?.outline + item.duration?.writing || 0}分钟/轮

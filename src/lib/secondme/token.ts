@@ -177,12 +177,8 @@ export async function getValidUserToken(userId: string): Promise<{
  * @param userId 用户 ID
  */
 export async function isTokenValid(userId: string): Promise<boolean> {
-  try {
-    const token = await getValidUserToken(userId);
-    return token.expiresAt.getTime() > Date.now();
-  } catch {
-    return false;
-  }
+  const token = await getValidUserToken(userId);
+  return token.expiresAt.getTime() > Date.now();
 }
 
 /**

@@ -8,11 +8,15 @@
  *
  * 阶段顺序：
  * OUTLINE (大纲生成期) -> WRITING (章节创作期) -> READING (阅读窗口期) -> OUTLINE (下一轮)
+ *
+ * 注意：AI 任务通过 TaskQueue 异步执行，不阻塞 API 响应
  */
 
 import { prisma } from '@/lib/prisma';
 import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
+import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now } from '@/lib/timezone';
+import { taskQueueService } from './task-queue.service';
 
 // 阶段顺序
 const PHASE_ORDER: RoundPhase[] = ['OUTLINE', 'WRITING', 'READING'];
@@ -47,11 +51,8 @@ function getPhaseDurationMs(season: Season, phase: RoundPhase): number {
 function getPhaseRemainingTime(season: Season, currentPhase: RoundPhase): number {
   if (!season.roundStartTime) return 0;
   const phaseDurationMs = getPhaseDurationMs(season, currentPhase);
-  const phaseStartTime = new Date(season.roundStartTime).getTime();
-  const now = Date.now();
-  const elapsed = now - phaseStartTime;
-  const remaining = phaseDurationMs - elapsed;
-  return Math.max(0, remaining);
+  const phaseStartTime = new Date(season.roundStartTime);
+  return getPhaseRemainingTimeBeijing(phaseStartTime, phaseDurationMs / 60 / 1000);
 }
 
 /**
@@ -136,10 +137,9 @@ export class SeasonAutoAdvanceService {
         return;
       }
 
-      // 检查是否需要结束赛季
-      const now = Date.now();
-      if (now >= new Date(season.endTime).getTime()) {
-        console.log('[SeasonAutoAdvance] 赛季已结束时间，自动结束赛季');
+      // 检查是否需要结束赛季（使用北京时间）
+      if (isExpired(season.endTime)) {
+        console.log('[SeasonAutoAdvance] 赛季已结束时间（北京时区），自动结束赛季');
         await this.endSeason(season.id);
         return;
       }
@@ -148,7 +148,7 @@ export class SeasonAutoAdvanceService {
       let currentRound = season.currentRound || 1;
       let phaseStartTime = season.roundStartTime
         ? new Date(season.roundStartTime)
-        : new Date(season.startTime || now);
+        : new Date(season.startTime || now());
 
       const transitions: Array<{ round: number; phase: RoundPhase; startTime: Date }> = [];
 
@@ -162,11 +162,12 @@ export class SeasonAutoAdvanceService {
       const maxRounds = season.maxChapters || 7;
       const maxTransitions = maxRounds * PHASE_ORDER.length + 2;
       let safety = 0;
+      const nowBeijing = now();
 
       while (safety < maxTransitions) {
         const durationMs = getPhaseDurationMs(season, currentPhase);
         const phaseEndTime = phaseStartTime.getTime() + durationMs;
-        const timeLeft = phaseEndTime - now;
+        const timeLeft = phaseEndTime - nowBeijing.getTime();
         if (timeLeft > 5000) {
           break;
         }
@@ -239,33 +240,31 @@ export class SeasonAutoAdvanceService {
   }
 
   /**
-   * 触发阶段任务
+   * 触发阶段任务（异步，不阻塞）
+   * 将任务添加到队列，由 Worker 异步执行
    */
   private async triggerPhaseTask(seasonId: string, round: number, phase: RoundPhase): Promise<void> {
-    // 导入服务（避免循环依赖）
-    const { outlineGenerationService } = await import('./outline-generation.service');
-    const { chapterWritingService } = await import('./chapter-writing.service');
-    const { readerAgentService } = await import('./reader-agent.service');
-
     if (phase === 'OUTLINE') {
-      console.log(`[SeasonAutoAdvance] 触发大纲生成任务 - 第 ${round} 轮`);
+      console.log(`[SeasonAutoAdvance] 创建大纲生成任务 - 第 ${round} 轮`);
 
       // 第1轮生成整本书大纲，后续轮次生成下一章大纲
       if (round === 1) {
-        await outlineGenerationService.generateOutlinesForSeason(seasonId);
-      } else {
-        const books = await prisma.book.findMany({
-          where: { seasonId, status: 'ACTIVE' },
-          select: { id: true },
+        await taskQueueService.create({
+          taskType: 'OUTLINE',
+          payload: { seasonId, round },
+          priority: 10,
         });
-        await Promise.all(
-          books.map((book) => outlineGenerationService.generateNextChapterOutline(book.id))
-        );
+      } else {
+        await taskQueueService.create({
+          taskType: 'NEXT_OUTLINE',
+          payload: { seasonId, round },
+          priority: 10,
+        });
       }
     } else if (phase === 'WRITING') {
-      console.log(`[SeasonAutoAdvance] 触发章节创作任务 - 第 ${round} 轮`);
+      console.log(`[SeasonAutoAdvance] 创建章节创作任务 - 第 ${round} 轮`);
 
-      // 检测落后书籍并追赶
+      // 检测落后书籍
       const allBooks = await prisma.book.findMany({
         where: {
           seasonId,
@@ -276,17 +275,25 @@ export class SeasonAutoAdvanceService {
         },
       });
 
-      // 筛选 chapterCount < round 的书籍
       const behindBooks = allBooks.filter(book => book._count.chapters < round);
 
       if (behindBooks.length > 0) {
-        console.log(`[SeasonAutoAdvance] 发现 ${behindBooks.length} 本落后书籍，执行追赶`);
-        await chapterWritingService.catchUpBooks(seasonId, round);
+        // 创建追赶任务
+        await taskQueueService.create({
+          taskType: 'CATCH_UP',
+          payload: { seasonId, round, bookIds: behindBooks.map(b => b.id) },
+          priority: 5,
+        });
       } else {
-        await chapterWritingService.writeChaptersForSeason(seasonId, round);
+        // 创建正常写作任务
+        await taskQueueService.create({
+          taskType: 'WRITE_CHAPTER',
+          payload: { seasonId, round },
+          priority: 5,
+        });
       }
     } else if (phase === 'READING') {
-      console.log(`[SeasonAutoAdvance] 触发 Reader Agents 阅读任务 - 第 ${round} 轮`);
+      console.log(`[SeasonAutoAdvance] 创建 Reader Agents 阅读任务 - 第 ${round} 轮`);
 
       // 获取最新章节
       const recentChapters = await prisma.chapter.findMany({
@@ -304,11 +311,14 @@ export class SeasonAutoAdvanceService {
       const maxChapterNumber = Math.max(...recentChapters.map((c) => c.chapterNumber));
       const latestChapters = recentChapters.filter((c) => c.chapterNumber === maxChapterNumber);
 
-      await Promise.all(
-        latestChapters.map((chapter) =>
-          readerAgentService.dispatchReaderAgents(chapter.id, chapter.bookId)
-        )
-      );
+      // 为每个章节创建 Reader Agent 任务
+      for (const chapter of latestChapters) {
+        await taskQueueService.create({
+          taskType: 'READER_AGENT',
+          payload: { chapterId: chapter.id, bookId: chapter.bookId, round },
+          priority: 3,
+        });
+      }
     }
   }
 

@@ -283,3 +283,22 @@ model Like {
   @@unique([userId, chapterId])
   @@index([chapterId])
 }
+
+// 异步任务队列
+model TaskQueue {
+  id            String    @id @default(cuid())
+  taskType      String    // 任务类型: OUTLINE, WRITE_CHAPTER, READER_AGENT, etc.
+  payload       Json      // 任务参数
+  status        String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  priority      Int       @default(0) // 优先级，数字越大越优先
+  attempts      Int       @default(0) // 已尝试次数
+  maxAttempts   Int       @default(3) // 最大尝试次数
+  errorMessage String?   // 错误信息
+  startedAt     DateTime? // 开始执行时间
+  completedAt   DateTime? // 完成时间
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, priority])
+  @@index([createdAt])
+}

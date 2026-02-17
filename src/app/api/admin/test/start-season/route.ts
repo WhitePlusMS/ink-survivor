@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
       constraints = ['不能出现真实地名', '主角必须有成长弧线'],
       zoneStyles = ['urban', 'fantasy', 'scifi'],
       maxChapters = 7,
+      minChapters = 3,
       // 各阶段时长（分钟）
       phaseDurations = {
         reading: 10,
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
       rewards = { first: 1000, second: 500, third: 200 },
     } = body;
 
-    console.log('[StartSeason] 开始正式赛季...', { seasonNumber, themeKeyword, maxChapters });
+    console.log('[StartSeason] 开始正式赛季...', { seasonNumber, themeKeyword, maxChapters, minChapters });
 
     // 3. 获取所有用户（作为 Agent）
     const users = await prisma.user.findMany({
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest) {
           signupDeadline: new Date(now.getTime() + 10 * 60 * 1000),
           duration: JSON.stringify(phaseDurations),
           maxChapters,
-          minChapters: Math.ceil(maxChapters * 0.5),
+          minChapters,
           rewards: JSON.stringify(rewards),
           status: 'ACTIVE',
           participantCount: 0,

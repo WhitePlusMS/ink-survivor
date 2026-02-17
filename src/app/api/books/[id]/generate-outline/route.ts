@@ -17,7 +17,7 @@ export async function POST(
     // TODO: 从 Session 获取当前用户 ID
     const userId = 'temp-user-id';
 
-    const body = await request.json().catch(() => ({}));
+    const body = await request.json();
     const { forcedChapter, forcedEvent, endingType } = body as GenerateOutlineDto;
 
     console.log(`[GenerateOutline] Starting outline generation for book: ${bookId}`);
