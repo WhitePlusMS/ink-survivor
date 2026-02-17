@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { BookOpen, Eye, MessageCircle, Gift, Star, Pen } from 'lucide-react';
+import { BookOpen, Eye, MessageCircle, Gift, Star, Pen, User } from 'lucide-react';
 import { ZONE_CONFIGS } from '@/lib/utils/zone';
 
 // 作者配置类型
@@ -15,6 +15,10 @@ interface AuthorConfig {
   preferredGenres: string[];
   maxChapters: number;
   wordCountTarget: number;
+  // SecondMe 附加信息
+  secondMeBio?: string;
+  secondMeShades?: string[];
+  secondMeSoftMemory?: string[];
 }
 
 // 读者配置类型
@@ -33,6 +37,10 @@ interface ReaderConfig {
     pokeEnabled: boolean;
     giftEnabled: boolean;
   };
+  // SecondMe 附加信息
+  secondMeBio?: string;
+  secondMeShades?: string[];
+  secondMeSoftMemory?: string[];
 }
 
 // 默认值
@@ -94,9 +102,9 @@ const WRITING_STYLES = [
 const GENRES = ZONE_CONFIGS.map(z => z.label);
 
 const CHAPTER_COUNTS = [
-  { value: 3, label: '3 章（短篇）' },
-  { value: 5, label: '5 章（中篇）' },
-  { value: 7, label: '7 章（长篇）' },
+  { value: 3, label: '短篇（精简干练）' },
+  { value: 5, label: '中篇（平衡适当）' },
+  { value: 7, label: '长篇（宏大叙事）' },
 ];
 
 const WORD_COUNTS = [
@@ -121,6 +129,7 @@ export function AgentConfigForm({
 }) {
   const { success, error: showError } = useToast();
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [activeTab, setActiveTab] = useState<ConfigType>('author');
 
   const [authorConfig, setAuthorConfig] = useState<AuthorConfig>(
@@ -130,6 +139,74 @@ export function AgentConfigForm({
   const [readerConfig, setReaderConfig] = useState<ReaderConfig>(
     initialReaderConfig || DEFAULT_READER_CONFIG
   );
+
+  // 从 SecondMe 导入个人设置
+  const handleImportFromSecondMe = async () => {
+    setImporting(true);
+    try {
+      const response = await fetch('/api/user/secondme-params');
+      const data = await response.json();
+
+      if (!response.ok || data.code !== 0) {
+        throw new Error(data.message || '获取 SecondMe 数据失败');
+      }
+
+      const { userInfo, shades, softMemory } = data.data || {};
+
+      // 构建性格描述文本
+      const parts: string[] = [];
+
+      // 添加个人简介/自我介绍
+      if (userInfo?.selfIntroduction) {
+        parts.push(`自我介绍：${userInfo.selfIntroduction}`);
+      }
+      if (userInfo?.bio) {
+        parts.push(`个人简介：${userInfo.bio}`);
+      }
+
+      // 添加兴趣标签
+      if (shades && shades.length > 0) {
+        const shadeNames = shades.map((s: { shadeNamePublic?: string; shadeName: string }) =>
+          s.shadeNamePublic || s.shadeName
+        ).join('、');
+        parts.push(`兴趣标签：${shadeNames}`);
+      }
+
+      // 添加软记忆（取前3条）
+      if (softMemory && softMemory.length > 0) {
+        const memories = softMemory.slice(0, 3).map((m: { factContent: string }) => m.factContent).join('；');
+        parts.push(`重要记忆：${memories}`);
+      }
+
+      const importText = parts.join('\n');
+
+      // 根据当前 tab 更新对应配置
+      if (activeTab === 'author') {
+        setAuthorConfig({
+          ...authorConfig,
+          persona: importText || authorConfig.persona,
+          secondMeBio: userInfo?.selfIntroduction || userInfo?.bio || '',
+          secondMeShades: shades?.map((s: { shadeNamePublic?: string; shadeName: string }) => s.shadeNamePublic || s.shadeName) || [],
+          secondMeSoftMemory: softMemory?.map((m: { factContent: string }) => m.factContent) || [],
+        });
+      } else {
+        setReaderConfig({
+          ...readerConfig,
+          personality: importText || readerConfig.personality,
+          secondMeBio: userInfo?.selfIntroduction || userInfo?.bio || '',
+          secondMeShades: shades?.map((s: { shadeNamePublic?: string; shadeName: string }) => s.shadeNamePublic || s.shadeName) || [],
+          secondMeSoftMemory: softMemory?.map((m: { factContent: string }) => m.factContent) || [],
+        });
+      }
+
+      success('已从 SecondMe 导入个人设置');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '导入失败';
+      showError(message);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -212,9 +289,22 @@ export function AgentConfigForm({
         <div className="space-y-6">
           {/* 性格描述 */}
           <div className="bg-surface-50 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <BookOpen className="w-4 h-4 text-primary-600" />
-              <h3 className="font-medium">性格描述</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-primary-600" />
+                <h3 className="font-medium">性格描述</h3>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleImportFromSecondMe}
+                loading={importing}
+                className="text-xs"
+              >
+                <User className="w-3 h-3 mr-1" />
+                从 SecondMe 导入
+              </Button>
             </div>
             <p className="text-xs text-gray-500 mb-3">
               选择或输入你的创作性格，点击选项可直接填入
@@ -245,11 +335,10 @@ export function AgentConfigForm({
               onChange={(e) =>
                 setAuthorConfig({ ...authorConfig, persona: e.target.value })
               }
-              rows={2}
+              rows={6}
               className="w-full px-3 py-2 border border-surface-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="或自定义输入你的性格描述..."
             />
-            <p className="text-xs text-surface-400 mt-1">200字以内</p>
           </div>
 
           {/* 写作风格 */}
@@ -350,11 +439,11 @@ export function AgentConfigForm({
             </div>
           </div>
 
-          {/* 单书章节数 */}
+          {/* 创作风格 */}
           <div className="bg-surface-50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <BookOpen className="w-4 h-4 text-primary-600" />
-              <h3 className="font-medium">单书章节数</h3>
+              <h3 className="font-medium">创作风格</h3>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {CHAPTER_COUNTS.map((option) => (
@@ -417,9 +506,22 @@ export function AgentConfigForm({
         <div className="space-y-6">
           {/* 性格描述 */}
           <div className="bg-surface-50 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <BookOpen className="w-4 h-4 text-primary-600" />
-              <h3 className="font-medium">性格描述</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-primary-600" />
+                <h3 className="font-medium">性格描述</h3>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleImportFromSecondMe}
+                loading={importing}
+                className="text-xs"
+              >
+                <User className="w-3 h-3 mr-1" />
+                从 SecondMe 导入
+              </Button>
             </div>
             <p className="text-xs text-gray-500 mb-3">
               选择或输入你的性格特点，点击选项可直接填入
@@ -458,7 +560,7 @@ export function AgentConfigForm({
               }
               placeholder="或自定义输入你的性格描述..."
               className="w-full px-3 py-2 border border-surface-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
-              rows={2}
+              rows={6}
             />
           </div>
 

@@ -169,11 +169,12 @@ model Book {
   updatedAt       DateTime  @updatedAt
 
   // 关联
-  chapters        Chapter[]
-  comments        Comment[]
-  readings        Reading[]
+  chapters           Chapter[]
+  comments           Comment[]
+  readings           Reading[]
+  outlineVersions
 
-  @@index([authorId])
+  @@index BookOutlineVersion[]([authorId])
   @@index([seasonId])
   @@index([zoneStyle])
   @@index([status])
@@ -182,6 +183,28 @@ model Book {
   @@index([finalScore])
   @@index([viewCount])
   @@index([likeCount])
+}
+
+// 大纲版本历史表
+model BookOutlineVersion {
+  id              String    @id @default(cuid())
+  bookId          String
+  book            Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  version         Int       // 版本号：1, 2, 3...
+  roundCreated    Int       // 创建时对应的轮次
+
+  // 大纲内容（与 Book 表对应）
+  originalIntent  String?   // 故事概要
+  characters      Json?     // 人物列表
+  chaptersPlan    Json?     // 章节大纲
+
+  reason          String?   // 修改原因（初始版本为 null）
+
+  createdAt       DateTime  @default(now())
+
+  @@unique([bookId, version])
+  @@index([bookId])
 }
 
 // 删除 Outline - 已合并到 Book

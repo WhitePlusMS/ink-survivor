@@ -51,14 +51,30 @@ export function buildOutlinePrompt(params: {
   seasonTheme: string;
   constraints: string[];
   zoneStyle: string;
-  chapterCount?: number;  // 动态章节数，默认5
+  minChapters?: number;   // 赛季最小章节数
+  maxChapters?: number;  // 赛季最大章节数
+  chapterPreference?: string; // 用户倾向描述（短篇/中篇/长篇）
   forcedChapter?: number;
   forcedEvent?: string;
   endingType?: string;
 }): string {
-  const chapterCount = params.chapterCount || 5;
   const normalizedConstraints = normalizeConstraints(params.constraints);
-  return `请为这个故事生成一个 ${chapterCount} 章的详细大纲。
+
+  // 构建章节限制说明
+  const chapterLimitText = params.minChapters && params.maxChapters
+    ? `本赛季章节限制：${params.minChapters} - ${params.maxChapters} 章`
+    : '';
+  const preferenceText = params.chapterPreference
+    ? `创作风格倾向：${params.chapterPreference}`
+    : '';
+
+  return `请为这个故事生成一个大纲。
+
+## 章节要求
+${chapterLimitText}
+${preferenceText}
+你应根据故事内容和创作风格自行决定合适的章节数量（必须在 ${params.minChapters || 3}-${params.maxChapters || 7} 章范围内）。
+**重要：最后一章必须是结局章，必须完结所有伏笔、悬念和主线情节，不能是"未完待续"。**
 
 ## 硬性约束
 ${normalizedConstraints.map(c => `- ${c}`).join('\n') || '无'}
@@ -89,54 +105,6 @@ ${params.zoneStyle}
       "key_events": ["事件1", "事件2"],
       "word_count_target": 2000
     }
-    ${chapterCount > 1 ? `,
-    {
-      "number": 2,
-      "title": "章节标题（不能包含冒号）",
-      "summary": "章节概要（不能包含冒号）",
-      "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
-    }` : ''}
-    ${chapterCount > 2 ? `,
-    {
-      "number": 3,
-      "title": "章节标题（不能包含冒号）",
-      "summary": "章节概要（不能包含冒号）",
-      "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
-    }` : ''}
-    ${chapterCount > 3 ? `,
-    {
-      "number": 4,
-      "title": "章节标题（不能包含冒号）",
-      "summary": "章节概要（不能包含冒号）",
-      "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
-    }` : ''}
-    ${chapterCount > 4 ? `,
-    {
-      "number": 5,
-      "title": "章节标题（不能包含冒号）",
-      "summary": "章节概要（不能包含冒号）",
-      "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
-    }` : ''}
-    ${chapterCount > 5 ? `,
-    {
-      "number": 6,
-      "title": "章节标题（不能包含冒号）",
-      "summary": "章节概要（不能包含冒号）",
-      "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
-    }` : ''}
-    ${chapterCount > 6 ? `,
-    {
-      "number": 7,
-      "title": "章节标题（不能包含冒号）",
-      "summary": "章节概要（不能包含冒号）",
-      "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
-    }` : ''}
   ],
   "themes": ["主题1", "主题2"],
   "tone": "叙事风格描述"
@@ -144,10 +112,10 @@ ${params.zoneStyle}
 \`\`\`
 
 请确保：
-1. 生成完整的 ${chapterCount} 章大纲，章节编号从 1 到 ${chapterCount}
-2. 每个字符串字段都不能包含冒号（:）
-3. 不要在字符串中嵌套引号或冒号
-4. 严格遵守以上 JSON 格式，key 和 value 一一对应
+1. 章节数量在 ${params.minChapters || 3}-${params.maxChapters || 7} 章之间
+2. 最后一章必须是完整的结局，要完结所有伏笔和主线情节
+3. 每个字符串字段都不能包含冒号（:）
+4. 不要在字符串中嵌套引号或冒号
 5. 故事有清晰的起承转合
 ${params.forcedChapter ? `6. 第${params.forcedChapter}章必须包含：${params.forcedEvent}` : ''}
 7. 结局类型：${params.endingType || '开放结局'}

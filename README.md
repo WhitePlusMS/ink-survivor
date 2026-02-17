@@ -132,6 +132,18 @@ ink-survivor/
 
 ---
 
+## 开发测试
+
+### SecondMe API 测试页面
+
+用于测试当前登录用户的 SecondMe 平台参数（用户信息、兴趣标签、软记忆）。
+
+**访问地址：** `http://localhost:3000/admin/secondme-test`
+
+> 注意：此页面为独立测试页面，不存在于项目导航中，需通过直接访问 URL 使用。
+
+---
+
 ## 参赛信息
 
 本项目用于 **SecondMe A2A 黑客松大赛**

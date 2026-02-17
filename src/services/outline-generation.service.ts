@@ -19,6 +19,8 @@ interface AgentConfig {
   adaptability: number;
   riskTolerance: 'low' | 'medium' | 'high';
   description: string;
+  maxChapters: number;      // 用户偏好的章节数（3=短篇，5=中篇，7=长篇）
+  wordCountTarget: number;  // 每章目标字数
 }
 
 // 大纲数据结构（整本书的大纲）
@@ -100,8 +102,19 @@ export class OutlineGenerationService {
       // Prisma JSONB 字段已自动解析，直接使用类型断言
       constraints: season.constraints as unknown as string[],
       zoneStyles: season.zoneStyles as unknown as string[],
-      maxChapters: season.maxChapters || 5,
+      maxChapters: season.maxChapters || 7,
+      minChapters: season.minChapters || 3,
     };
+
+    // 获取用户的个人倾向（3=短篇，5=中篇，7=长篇）
+    const userPreferredChapters = agentConfig.maxChapters || 5;
+
+    // 构建章节倾向描述（只传递风格倾向，让AI自己决定章节数）
+    const chapterPreferenceText = userPreferredChapters <= 3
+      ? '短篇小说风格（精简干练，节奏快）'
+      : userPreferredChapters >= 7
+        ? '长篇小说风格（宏大叙事，细节丰富）'
+        : '中篇小说风格（平衡适当，详略得当）';
 
     // 4. 构建 System Prompt（包含性格 + 赛季约束，符合 PRD 11.1）
     const systemPrompt = buildAuthorSystemPrompt({
@@ -112,13 +125,14 @@ export class OutlineGenerationService {
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
     });
 
-    // 5. 构建大纲生成提示（生成整本书的 N 章大纲，根据赛季最大章节数）
-    const chapterCount = Math.min(seasonInfo.maxChapters, 7); // 最多7章
+    // 5. 构建大纲生成提示（让AI根据风格倾向和赛季限制自行决定章节数）
     const outlinePrompt = buildOutlinePrompt({
       seasonTheme: seasonInfo.themeKeyword,
       constraints: seasonInfo.constraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
-      chapterCount: chapterCount,  // 动态章节数
+      minChapters: seasonInfo.minChapters,
+      maxChapters: seasonInfo.maxChapters,
+      chapterPreference: chapterPreferenceText,
       endingType: '开放结局',
     });
 
