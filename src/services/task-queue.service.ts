@@ -214,6 +214,18 @@ export class TaskQueueService {
   }
 
   /**
+   * 根据 ID 获取任务
+   */
+  async getTaskById(taskId: string): Promise<TaskItem | null> {
+    const task = await prisma.taskQueue.findUnique({
+      where: { id: taskId },
+    });
+
+    if (!task) return null;
+    return this.formatTask(task);
+  }
+
+  /**
    * 获取待处理任务列表
    */
   async getPendingTasks(limit: number = 50): Promise<TaskItem[]> {

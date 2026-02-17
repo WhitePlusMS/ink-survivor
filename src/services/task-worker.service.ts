@@ -157,6 +157,42 @@ export class TaskWorkerService {
   }
 
   /**
+   * 处理特定任务（根据任务ID）
+   */
+  async processTaskById(taskId: string): Promise<void> {
+    try {
+      // 获取指定任务
+      const task = await taskQueueService.getTaskById(taskId);
+
+      if (!task) {
+        console.error(`[TaskWorker] 任务不存在: ${taskId}`);
+        return;
+      }
+
+      console.log(`[TaskWorker] 开始处理任务: ${task.taskType} (${task.id})`);
+
+      const handler = taskHandlers[task.taskType];
+
+      if (!handler) {
+        console.error(`[TaskWorker] 未找到任务处理器: ${task.taskType}`);
+        await taskQueueService.fail(task.id, `Unknown task type: ${task.taskType}`);
+        return;
+      }
+
+      try {
+        await handler(task.payload);
+        await taskQueueService.complete(task.id);
+        console.log(`[TaskWorker] 任务完成: ${task.taskType} (${task.id})`);
+      } catch (error) {
+        console.error(`[TaskWorker] 任务执行失败: ${task.id}`, error);
+        await taskQueueService.fail(task.id, (error as Error).message);
+      }
+    } catch (error) {
+      console.error('[TaskWorker] 处理任务时发生错误:', error);
+    }
+  }
+
+  /**
    * 处理队列中的任务
    */
   async processTasks(): Promise<void> {

@@ -16,8 +16,9 @@
 import { prisma } from '@/lib/prisma';
 import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
-import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now, toBeijingTime, nowMs, getBeijingTimeMs } from '@/lib/timezone';
+import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now, toBeijingTime, nowMs, getBeijingTimeMs, getUtcTimeMs } from '@/lib/timezone';
 import { taskQueueService } from './task-queue.service';
+import { taskWorkerService } from './task-worker.service';
 
 // 阶段顺序（简化版：AI_WORKING -> HUMAN_READING）
 const PHASE_ORDER: RoundPhase[] = ['AI_WORKING', 'HUMAN_READING'];
@@ -151,11 +152,8 @@ export class SeasonAutoAdvanceService {
 
       let currentPhase = (season.roundPhase as RoundPhase) || 'NONE';
       let currentRound = season.currentRound || 1;
-      // 转换为北京时间
-      const seasonStartTimeBeijing = toBeijingTime(season.startTime || now());
-      let phaseStartTime = season.roundStartTime
-        ? toBeijingTime(season.roundStartTime)
-        : seasonStartTimeBeijing;
+      // phaseStartTime 保持 UTC，用于时间比较
+      let phaseStartTime = season.roundStartTime || season.startTime || now();
 
       const transitions: Array<{ round: number; phase: RoundPhase; startTime: Date }> = [];
 
@@ -169,15 +167,15 @@ export class SeasonAutoAdvanceService {
       const maxRounds = season.maxChapters || 7;
       const maxTransitions = maxRounds * PHASE_ORDER.length + 2;
       let safety = 0;
-      const nowBeijingMs = nowMs(); // 使用北京时间毫秒数
+      const nowUtcMs = nowMs(); // UTC 毫秒数
 
       while (safety < maxTransitions) {
         const durationMs = getPhaseDurationMs(season, currentPhase);
-        // 使用 getBeijingTimeMs 获取阶段的北京时间毫秒数
-        const phaseStartTimeMs = getBeijingTimeMs(phaseStartTime);
+        // 使用 getUtcTimeMs 获取阶段的 UTC 毫秒数
+        const phaseStartTimeMs = getUtcTimeMs(phaseStartTime);
         const phaseEndTimeMs = phaseStartTimeMs + durationMs;
-        const timeLeft = phaseEndTimeMs - nowBeijingMs;
-        console.log(`[SeasonAutoAdvance] Loop: phase=${currentPhase}, round=${currentRound}, durationMs=${durationMs}, phaseStartTimeMs=${phaseStartTimeMs}, nowBeijingMs=${nowBeijingMs}, timeLeft=${timeLeft}`);
+        const timeLeft = phaseEndTimeMs - nowUtcMs;
+        console.log(`[SeasonAutoAdvance] Loop: phase=${currentPhase}, round=${currentRound}, durationMs=${durationMs}, phaseStartTimeMs=${phaseStartTimeMs}, nowUtcMs=${nowUtcMs}, timeLeft=${timeLeft}`);
 
         if (timeLeft > 5000) {
           console.log('[SeasonAutoAdvance] Time left > 5s, breaking loop');
@@ -262,11 +260,10 @@ export class SeasonAutoAdvanceService {
   }
 
   /**
-   * 触发阶段任务（异步，不阻塞）
-   * 将任务添加到队列，由 Worker 异步执行
+   * 触发阶段任务
    *
    * 简化版：只有 AI_WORKING 和 HUMAN_READING 两个阶段
-   * - AI_WORKING: 创建 ROUND_CYCLE 任务，任务完成后自动调用 advanceToNextRound
+   * - AI_WORKING: 创建 ROUND_CYCLE 任务并立即执行，完成后自动调用 advanceToNextRound
    * - HUMAN_READING: 不需要触发任务，等待人类阅读
    */
   private async triggerPhaseTask(seasonId: string, round: number, phase: RoundPhase): Promise<void> {
@@ -285,14 +282,16 @@ export class SeasonAutoAdvanceService {
         },
       });
 
-      // 创建轮次完整流程任务（大纲→章节→评论）
-      // 任务完成后会自动调用 advanceToNextRound 切换到 HUMAN_READING
-      await taskQueueService.create({
+      // 创建任务到队列
+      const task = await taskQueueService.create({
         taskType: 'ROUND_CYCLE',
         payload: { seasonId, round },
         priority: 10,
       });
-      console.log(`[SeasonAutoAdvance] ✅ ROUND_CYCLE 任务已创建`);
+      console.log(`[SeasonAutoAdvance] ✅ ROUND_CYCLE 任务已创建: ${task.id}`);
+
+      // 立即执行刚创建的任务（不等待 Worker 轮询）
+      await taskWorkerService.processTaskById(task.id);
     } else if (phase === 'HUMAN_READING') {
       console.log(`[SeasonAutoAdvance] 📖 进入 HUMAN_READING 阶段，不需要触发任务，等待人类阅读超时后自动推进`);
     } else {

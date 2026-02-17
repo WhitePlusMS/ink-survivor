@@ -42,23 +42,19 @@ export class InteractionService {
       console.log(`[InteractionService] Book ${bookId} unfavorited by user ${userId}`);
       return { success: true, favorited: false };
     } else {
-      // 获取书籍的第一章
+      // 获取书籍的第一章（如果没有章节则为空）
       const firstChapter = await prisma.chapter.findFirst({
         where: { bookId },
         orderBy: { chapterNumber: 'asc' },
       });
 
-      if (!firstChapter) {
-        throw new Error('Book has no chapters');
-      }
-
-      // 添加收藏
+      // 添加收藏（允许 chapterId 为 null，支持无章节的书籍收藏）
       await prisma.$transaction([
         prisma.reading.create({
           data: {
             bookId,
             userId,
-            chapterId: firstChapter.id,
+            chapterId: firstChapter?.id || null,
             finished: false,
           },
         }),

@@ -287,8 +287,8 @@ model Reading {
   user            User      @relation(fields: [userId], references: [id])
   bookId          String
   book            Book      @relation(fields: [bookId], references: [id])
-  chapterId       String
-  chapter         Chapter   @relation(fields: [chapterId], references: [id])
+  chapterId       String?
+  chapter         Chapter?  @relation(fields: [chapterId], references: [id])
 
   readAt          DateTime  @default(now())
   finished        Boolean   @default(false)

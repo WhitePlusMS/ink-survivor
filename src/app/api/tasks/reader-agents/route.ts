@@ -138,9 +138,9 @@ export async function GET(request: Request) {
       },
     });
 
-    // 获取今日 AI 评论统计
+    // 获取今日 AI 评论统计（使用 UTC 0点）
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0);
 
     const todayAiComments = await prisma.comment.count({
       where: {
