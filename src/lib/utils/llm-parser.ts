@@ -25,70 +25,13 @@ const RETRY_CONFIG = {
 };
 
 /**
- * 预处理 JSON 字符串，将未转义的引号转义
- *
- * LLM 有时会返回这样的内容：
- * "content": "...招牌闪烁着"24小时营业"。这座城市..."
- *
- * 其中 "24小时营业" 里的引号没有转义，会导致 JSON.parse 失败
- *
- * @param json - 可能是损坏的 JSON 字符串
- * @returns 修复后的 JSON 字符串
- */
-function escapeUnescapedQuotes(json: string): string {
-  // 只处理 " 未转义的情况：在双引号字符串内容中
-  // 使用反向否定断言，确保引号前不是反斜杠（已转义）
-  return json.replace(/(?<!\\)"(.*?)"/g, (match, content) => {
-    // 将内部的双引号转义
-    const escaped = content.replace(/"/g, '\\"');
-    return `"${escaped}"`;
-  });
-}
-
-/**
- * 预处理：清理 LLM 返回的占位符和无效内容
- *
- * LLM 经常在 JSON 中使用占位符，如：
- * - "...", "……", "......" 表示内容省略
- * - "..." 出现在字符串中间导致 JSON 截断
- *
- * @param json - 原始响应字符串
- * @returns 清理后的字符串
- */
-function cleanLLMPlaceholders(json: string): string {
-  let cleaned = json;
-
-  // 1. 处理字符串值中的省略号占位符（这会导致 JSON 解析失败）
-  // 匹配模式：双引号字符串以 ... 或 …… 或 ...... 结尾
-  cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"(?:\s*[,}\]])/g, (match, content, suffix) => {
-    // 清理字符串末尾的省略号
-    const trimmedContent = content.replace(/\s*[⋯…]{1,6}\s*$/, '');
-    return `"${trimmedContent}"${suffix}`;
-  });
-
-  // 2. 处理数组元素中的省略号占位符
-  cleaned = cleaned.replace(/"([^"]*)"\s*\,\s*"?.\.\."?/g, '"$1"');
-
-  // 3. 处理键值对中值是纯省略号的情况 "key": "..."
-  cleaned = cleaned.replace(/"([^"]+)"\s*:\s*"[\s⋯…\.]+"/g, (match, key) => {
-    return `"${key}": ""`;
-  });
-
-  // 4. 处理类似 "description": "内容... 这样的截断字符串
-  // 找到未闭合的字符串（以省略号结尾但没有正确的结束引号）
-  cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*?)[\s⋯…]{3,}(?=\s*[,}\]\d])/g, '"$1"');
-
-  return cleaned;
-}
-
-/**
  * 从 LLM 响应中提取并修复 JSON
  *
  * @param response - LLM 的原始响应
  * @returns 修复后的 JSON 字符串
  */
 function extractAndRepairJson(response: string): string {
-  let cleanedResponse = response;
+  const cleanedResponse = response;
 
   // 0. 预处理：只清理不属于 JSON 响应的内容
   // 注意：不删除内容中的换行和空格，因为这些是小说正文的一部分

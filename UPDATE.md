@@ -98,30 +98,99 @@
    - 章节状态：显示当前章节、大纲章节、赛季轮次
 
 **修改文件**:
-1. `src/services/chapter-writing.service.ts`
-   - 新增 `catchUpSingleBook` 方法：单本书的章节补全
-
-2. `src/app/book/[id]/page.tsx`
-   - 引入 `CatchUpButton` 组件
-   - 在"完本按钮"下方添加章节补全按钮
-
-#### 鉴权逻辑
-- 使用 `auth_token` cookie 获取当前用户ID
-- 比较 `book.authorId` 和当前用户ID
-- 只有相等时才显示按钮
-
-#### 按钮样式
-- **可点击状态**：蓝色背景 `bg-blue-50`，显示"补全章节 (缺 X 章)"
-- **加载中状态**：灰色、禁用，显示"补全中..."和旋转图标
-- **无需补全状态**：灰色、禁用，显示"章节已完整"
-- **成功状态**：绿色背景，显示成功信息
+1. `prisma/schema.prisma` - Book 表添加 `isCatchingUp` 字段
 
 #### 影响范围
 - 书籍详情页
-- 章节补全API
+- 章节补全功能
 
 #### 测试建议
-1. 以非作者身份访问书籍详情页，确认不显示按钮
-2. 以作者身份访问，确认显示"补全章节"按钮
-3. 点击按钮，验证是否能正确检测和补全缺失章节
-4. 验证按钮防抖和加载状态
+1. 以 Agent 作者身份登录，访问自己创建的书籍详情页
+2. 检查是否显示"补全章节"按钮
+3. 点击按钮，验证是否能补全缺失章节
+
+---
+
+### 问题4：章节补全功能接入任务队列系统（本次更新）
+
+#### 问题描述
+原补全章节功能使用 `setTimeout` + `isCatchingUp` 字段的方案存在以下问题：
+- 服务器重启时任务会丢失，但状态可能卡在"补全中"
+- 没有任务重试机制
+- 无法追踪任务状态
+- 没有超时机制
+
+#### 原因分析
+项目已有完善的任务队列系统（TaskQueue + TaskWorker），但补全功能没有使用它，而是自己实现了一套简单但不可靠的方案。
+
+#### 修改内容
+
+**1. 新增任务类型 `CATCH_UP_SINGLE`**
+- 文件: `src/services/task-queue.service.ts`
+- 添加 `CATCH_UP_SINGLE` 任务类型，用于单本书章节补全
+
+**2. 添加任务处理器**
+- 文件: `src/services/task-worker.service.ts`
+- 新增 `CATCH_UP_SINGLE` 任务处理逻辑
+- 调用 `chapterWritingService.catchUpSingleBook()` 执行补全
+
+**3. 修改 API 使用任务队列**
+- 文件: `src/app/api/books/[id]/catch-up/route.ts`
+- 移除 `setTimeout` + `isCatchingUp` 的不可靠方案
+- 改用 `taskQueueService.create()` 创建任务
+- 防重机制改为查询任务队列中的 PENDING/PROCESSING 任务
+- GET 接口的 `isCatchingUp` 状态也改为从任务队列获取
+
+#### 修改前后对比
+
+| 方面 | 修改前 | 修改后 |
+|------|--------|--------|
+| 任务执行 | setTimeout (不可靠) | 任务队列 (可靠) |
+| 防重机制 | isCatchingUp 字段 | 查询 PENDING/PROCESSING 任务 |
+| 状态追踪 | 字段可能卡住 | 任务状态实时更新 |
+| 失败重试 | 无 | 最多3次重试 |
+| 任务丢失 | 服务器重启丢失 | 自动重试恢复 |
+
+#### 影响范围
+- 章节补全 API
+- 任务队列系统
+- 前端状态显示（isCatchingUp 仍从 API 获取）
+
+#### 测试建议
+1. 触发章节补全，验证任务是否正确创建到 TaskQueue 表
+2. 观察 TaskWorker 是否正确执行任务
+3. 检查任务完成后状态是否正确变为 COMPLETED
+4. 模拟失败场景，验证重试机制是否生效
+
+#### 后续可选优化
+- 删除 `prisma/schema.prisma` 中的 `isCatchingUp` 字段（目前前端通过 API 获取状态，字段已无实际作用）
+
+---
+
+### 问题4：撤销章节补全接入任务队列（本次更新）
+
+#### 问题描述
+之前尝试将用户手动触发的章节补全功能接入任务队列系统，但经过讨论决定：
+
+- **CATCH_UP**：赛季自动流程的一部分，ROUND_CYCLE 结束后自动触发，保留在任务队列
+- **CATCH_UP_SINGLE**：用户手动点击按钮触发的独立任务，**不应该**接入任务队列
+
+用户手动触发的任务应该保持简单独立，不混入赛季自动流程。
+
+#### 修改内容（撤销）
+
+**1. 撤销 task-queue.service.ts**
+- 删除 `CATCH_UP_SINGLE` 任务类型
+
+**2. 撤销 task-worker.service.ts**
+- 删除 `CATCH_UP_SINGLE` 任务处理逻辑
+
+**3. 恢复 catch-up API**
+- 改回使用 `setTimeout` + `isCatchingUp` 字段的方案
+- 用户点击按钮时设置 `isCatchingUp = true`
+- 异步执行补全任务，完成后重置为 `false`
+
+#### 设计决策
+- 补全任务是用户手动触发的独立任务，不需要任务队列的重试机制
+- 简单方案：用户点击 → setTimeout 异步执行 → 完成后重置状态
+- 如遇服务器重启导致状态卡住，需手动在数据库将 `isCatchingUp` 重置为 `false`

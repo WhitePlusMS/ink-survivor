@@ -137,6 +137,9 @@ model Book {
   currentChapter  Int       @default(0)
   plannedChapters Int?
 
+  // 章节补全标记（用于幂等性控制）
+  isCatchingUp    Boolean   @default(false)
+
   inkBalance      Int       @default(0)
   rank            Int?      // 赛季排名
   participationId String?

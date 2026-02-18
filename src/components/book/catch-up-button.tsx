@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -44,10 +44,12 @@ export function CatchUpButton({ bookId, isAuthor }: CatchUpButtonProps) {
     }
   }, [bookId, isAuthor]);
 
-  // 页面加载时获取状态
-  if (isAuthor && !status) {
-    fetchStatus();
-  }
+  // 页面加载时获取状态 - 使用 useEffect 确保只在客户端执行
+  useEffect(() => {
+    if (isAuthor && !status) {
+      fetchStatus();
+    }
+  }, [isAuthor, status, fetchStatus]);
 
   // 如果不是作者，不显示按钮
   if (!isAuthor) {

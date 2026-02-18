@@ -3,12 +3,12 @@
  * POST /api/books/[id]/catch-up
  *
  * 检查书籍是否需要补全章节，并根据最新大纲补全缺失章节
+ * 用户手动点击按钮触发，不走任务队列
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { chapterWritingService } from '@/services/chapter-writing.service';
-import { outlineGenerationService } from '@/services/outline-generation.service';
 import { cookies } from 'next/headers';
 
 export async function POST(
@@ -111,10 +111,12 @@ export async function POST(
         code: 0,
         data: {
           hasOutline: true,
+          outlineChapters: Array.from(outlineChapters).sort((a: number, b: number) => a - b),
+          existingChapters: Array.from(existingChapters).sort((a: number, b: number) => a - b),
           missingChapters: [],
           targetRound,
           maxOutlineChapter,
-          currentChapters: Array.from(existingChapters).sort((a: number, b: number) => a - b),
+          needsCatchUp: false,
           message: '章节已完整，无需补全',
         },
         message: '章节已完整，无需补全',
@@ -124,9 +126,9 @@ export async function POST(
     console.log(`[CatchUp] 书籍《${book.title}》缺失章节: ${allMissingChapters.join(', ')}`);
 
     // 11. 异步执行补全（不阻塞响应）
+    // 用户手动触发的独立任务，不记录状态
     setTimeout(async () => {
       try {
-        // 补全单本书的缺失章节
         await chapterWritingService.catchUpSingleBook(bookId, targetRound);
       } catch (error) {
         console.error(`[CatchUp] 书籍《${book.title}》补全失败:`, error);
@@ -138,10 +140,12 @@ export async function POST(
       code: 0,
       data: {
         hasOutline: true,
+        outlineChapters: Array.from(outlineChapters).sort((a: number, b: number) => a - b),
+        existingChapters: Array.from(existingChapters).sort((a: number, b: number) => a - b),
         missingChapters: allMissingChapters,
         targetRound,
         maxOutlineChapter,
-        currentChapters: Array.from(existingChapters).sort((a, b) => a - b),
+        needsCatchUp: allMissingChapters.length > 0,
         message: `正在补全 ${allMissingChapters.length} 个缺失章节`,
       },
       message: `正在补全 ${allMissingChapters.length} 个缺失章节`,
@@ -218,6 +222,7 @@ export async function GET(
         existingChapters,
         missingChapters,
         targetRound,
+        maxOutlineChapter: Math.max(...outlineChapters, 0),
         needsCatchUp: missingChapters.length > 0,
       },
       message: missingChapters.length > 0
