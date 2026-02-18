@@ -46,62 +46,152 @@ function escapeUnescapedQuotes(json: string): string {
 }
 
 /**
+ * 预处理：清理 LLM 返回的占位符和无效内容
+ *
+ * LLM 经常在 JSON 中使用占位符，如：
+ * - "...", "……", "......" 表示内容省略
+ * - "..." 出现在字符串中间导致 JSON 截断
+ *
+ * @param json - 原始响应字符串
+ * @returns 清理后的字符串
+ */
+function cleanLLMPlaceholders(json: string): string {
+  let cleaned = json;
+
+  // 1. 处理字符串值中的省略号占位符（这会导致 JSON 解析失败）
+  // 匹配模式：双引号字符串以 ... 或 …… 或 ...... 结尾
+  cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"(?:\s*[,}\]])/g, (match, content, suffix) => {
+    // 清理字符串末尾的省略号
+    const trimmedContent = content.replace(/\s*[⋯…]{1,6}\s*$/, '');
+    return `"${trimmedContent}"${suffix}`;
+  });
+
+  // 2. 处理数组元素中的省略号占位符
+  cleaned = cleaned.replace(/"([^"]*)"\s*\,\s*"?.\.\."?/g, '"$1"');
+
+  // 3. 处理键值对中值是纯省略号的情况 "key": "..."
+  cleaned = cleaned.replace(/"([^"]+)"\s*:\s*"[\s⋯…\.]+"/g, (match, key) => {
+    return `"${key}": ""`;
+  });
+
+  // 4. 处理类似 "description": "内容... 这样的截断字符串
+  // 找到未闭合的字符串（以省略号结尾但没有正确的结束引号）
+  cleaned = cleaned.replace(/"([^"\\]*(?:\\.[^"\\]*)*?)[\s⋯…]{3,}(?=\s*[,}\]\d])/g, '"$1"');
+
+  return cleaned;
+}
+
+/**
  * 从 LLM 响应中提取并修复 JSON
  *
  * @param response - LLM 的原始响应
  * @returns 修复后的 JSON 字符串
  */
 function extractAndRepairJson(response: string): string {
-  // 0. 预处理：转义未转义的引号
-  const preprocessed = escapeUnescapedQuotes(response);
-  const jsonToRepair = preprocessed;
+  let cleanedResponse = response;
 
-  // 0.5. 检查是否是纯文本（没有任何 JSON 特征）
-  const trimmed = response.trim();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && !trimmed.includes('```json')) {
+  // 0. 预处理：只清理不属于 JSON 响应的内容
+  // 注意：不删除内容中的换行和空格，因为这些是小说正文的一部分
+  // 让 jsonrepair 库来处理 JSON 格式问题
+
+  // 0.1 检查是否是纯文本（没有任何 JSON 特征）
+  const trimmed = cleanedResponse.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && !trimmed.includes('```json') && !trimmed.includes('```')) {
     // 纯文本响应，包装成 JSON 对象
-    // 这种情况通常发生在章节创作时 LLM 直接返回正文
     console.log(`[LLM Parser] 检测到纯文本响应，包装成 JSON 格式`);
     return JSON.stringify({
       title: "章节内容",
-      content: response.trim()
+      content: cleanedResponse.trim()
     });
   }
 
   // 1. 尝试提取 ```json ... ``` 包裹的内容
-  const jsonCodeBlock = response.match(/```json\s*([\s\S]*?)\s*```/);
+  const jsonCodeBlock = cleanedResponse.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonCodeBlock) {
     const content = jsonCodeBlock[1].trim();
     try {
       JSON.parse(content);
       return content;
     } catch {
+      // 使用 jsonrepair 修复
       return jsonrepair(content);
     }
   }
 
   // 2. 尝试提取 ``` ... ``` 包裹的内容
-  const plainCodeBlock = response.match(/```\s*([\s\S]*?)\s*```/);
+  const plainCodeBlock = cleanedResponse.match(/```\s*([\s\S]*?)\s*```/);
   if (plainCodeBlock) {
     const content = plainCodeBlock[1].trim();
-    return jsonrepair(content);
+    try {
+      return jsonrepair(content);
+    } catch {
+      // jsonrepair 失败，返回包装后的纯文本
+      console.log(`[LLM Parser] 代码块解析失败，尝试提取纯文本`);
+      return JSON.stringify({
+        title: "章节内容",
+        content: cleanedResponse.trim()
+      });
+    }
   }
 
-  // 3. 尝试提取 { ... } 结构（最后一个）
-  const firstBrace = response.lastIndexOf('{');
-  const lastBrace = response.lastIndexOf('}');
+  // 3. 尝试提取 { ... } 结构
+  const firstBrace = cleanedResponse.indexOf('{');
+  const lastBrace = cleanedResponse.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const extracted = response.substring(firstBrace, lastBrace + 1);
+    const extracted = cleanedResponse.substring(firstBrace, lastBrace + 1);
     try {
       JSON.parse(extracted);
       return extracted;
     } catch {
-      return jsonrepair(extracted);
+      // 使用 jsonrepair 修复
+      try {
+        return jsonrepair(extracted);
+      } catch {
+        // jsonrepair 也失败，尝试更激进的方法
+        console.log(`[LLM Parser] JSON 提取和修复都失败，尝试提取 title 和 content 字段`);
+        return extractChapterFromText(cleanedResponse);
+      }
     }
   }
 
-  // 4. 直接尝试修复整个响应（预处理后的）
-  return jsonrepair(jsonToRepair.trim());
+  // 4. 如果以上都失败，尝试从文本中提取章节内容
+  console.log(`[LLM Parser] 无法提取 JSON，尝试从文本提取`);
+  return extractChapterFromText(cleanedResponse);
+}
+
+/**
+ * 从纯文本中提取章节内容
+ * 当 JSON 解析失败时的备用方案
+ */
+function extractChapterFromText(text: string): string {
+  // 尝试提取 title
+  const titleMatch = text.match(/"title"\s*:\s*"([^"]+)"/) || text.match(/title[:：]\s*([^\n]+)/i);
+  const title = titleMatch ? titleMatch[1] : "章节内容";
+
+  // 尝试提取 content（更激进：获取第一个 ``` 之后的所有内容）
+  const contentMatch = text.match(/```[\s\S]*?```/);
+  let content = text;
+  if (contentMatch) {
+    // 移除代码块标记，保留内容
+    content = contentMatch[0].replace(/```\w*\s*/g, '').trim();
+  } else {
+    // 如果没有代码块，尝试获取 { } 之间的内容
+    const braceMatch = text.match(/\{[\s\S]*\}/);
+    if (braceMatch) {
+      content = braceMatch[0];
+    }
+  }
+
+  // 返回修复后的 JSON
+  try {
+    return jsonrepair(`{"title":"${title}","content":${JSON.stringify(content)}}`);
+  } catch {
+    // 最坏情况：直接返回纯文本包装
+    return JSON.stringify({
+      title: title,
+      content: text.substring(0, 5000) // 限制长度
+    });
+  }
 }
 
 /**
@@ -166,14 +256,19 @@ export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
+      // 增强错误信息，包含更多上下文
+      const enhancedError = lastError.message.includes('原始响应预览')
+        ? lastError
+        : new Error(`${lastError.message} (尝试 ${attempt + 1}/${maxRetries + 1})`);
+
       if (attempt < maxRetries) {
         const delay = getExponentialBackoffDelay(attempt);
-        console.warn(`[${taskId}] 解析失败 (尝试 ${attempt + 1}/${maxRetries + 1}): ${lastError.message}`);
+        console.warn(`[${taskId}] 解析失败: ${enhancedError.message}`);
         console.log(`[${taskId}] 等待 ${delay}ms 后进行第 ${attempt + 2} 次重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
-        console.error(`[${taskId}] 重试次数用尽，解析失败: ${lastError.message}`);
-        throw new Error(`${lastError.message} (已重试 ${maxRetries} 次)`);
+        console.error(`[${taskId}] 重试次数用尽，解析最终失败: ${enhancedError.message}`);
+        throw enhancedError;
       }
     }
   }
@@ -225,7 +320,7 @@ export function parseLLMJson<T = Record<string, unknown>>(
   } catch (error) {
     const errorMsg = `[LLM Parser] 解析失败: ${error instanceof Error ? error.message : 'Unknown error'}`;
     console.error(errorMsg);
-    throw new Error(`${errorMsg}, 原始响应: ${response.substring(0, 500)}...`);
+    throw new Error(errorMsg);
   }
 }
 

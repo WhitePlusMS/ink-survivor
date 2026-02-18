@@ -270,7 +270,8 @@ export class ChapterWritingService {
    * 场景：赛季已进行到第 N 轮，但某些书籍只创作到第 M 章 (M < N)
    * 逻辑：
    * 1. 生成大纲（如没有）
-   * 2. 带重试地补齐第 M+1 到第 N 章
+   * 2. 检测真正缺失的章节（可能不是连续的，如只有3、4、5章，缺失1、2章）
+   * 3. 带重试地补齐缺失章节 + 当前轮次章节
    */
   async catchUpBooks(seasonId: string, targetRound: number): Promise<void> {
     console.log(`[CatchUp] 开始追赶模式 - 赛季: ${seasonId}, 目标轮次: ${targetRound}`);
@@ -283,6 +284,7 @@ export class ChapterWritingService {
       },
       include: {
         _count: { select: { chapters: true } },
+        chapters: { select: { chapterNumber: true } }, // 获取所有章节编号
         author: { select: { agentConfig: true } },
       },
     });
@@ -299,8 +301,22 @@ export class ChapterWritingService {
 
     // 2. 对每本落后书籍执行追赶
     const promises = books.map(async (book) => {
-      const missingCount = targetRound - book._count.chapters;
-      console.log(`[CatchUp] 书籍《${book.title}》当前 ${book._count.chapters} 章，需补 ${missingCount} 章`);
+      // 获取当前已有的章节编号集合
+      const existingChapterNumbers = new Set(book.chapters.map(c => c.chapterNumber));
+      // 计算缺失章节：1到targetRound中不存在的章节
+      const missingChapters: number[] = [];
+      for (let i = 1; i <= targetRound; i++) {
+        if (!existingChapterNumbers.has(i)) {
+          missingChapters.push(i);
+        }
+      }
+
+      console.log(`[CatchUp] 书籍《${book.title}》当前 ${book._count.chapters} 章，已有章节: ${Array.from(existingChapterNumbers).sort((a, b) => a - b).join(', ')}，缺失章节: ${missingChapters.join(', ')}`);
+
+      if (missingChapters.length === 0) {
+        console.log(`[CatchUp] 书籍《${book.title}》没有缺失章节需要补`);
+        return;
+      }
 
       try {
         // 2.1 检查是否有大纲 - 从 Book 表获取
@@ -314,10 +330,30 @@ export class ChapterWritingService {
           await outlineGenerationService.generateOutline(book.id);
         }
 
-        // 2.2 并发补齐缺失章节
+        // 2.2 检查大纲是否包含所有缺失章节的大纲，如果没有则先生成
+        const chaptersPlan = existingBook?.chaptersPlan as unknown as Array<{ number: number }> || [];
+        const outlineChapterNumbers = new Set(chaptersPlan.map(c => c.number));
+        const needGenerateOutline: number[] = [];
+        for (const ch of missingChapters) {
+          if (!outlineChapterNumbers.has(ch)) {
+            needGenerateOutline.push(ch);
+          }
+        }
+
+        // 为缺失章节生成大纲
+        for (const ch of needGenerateOutline) {
+          console.log(`[CatchUp] 书籍《${book.title}》缺失第 ${ch} 章大纲，生成中...`);
+          try {
+            await outlineGenerationService.generateNextChapterOutline(book.id);
+          } catch (error) {
+            console.error(`[CatchUp] 书籍《${book.title}》第 ${ch} 章大纲生成失败:`, error);
+          }
+        }
+
+        // 2.3 并发补齐缺失章节（按章节号顺序）
         // writeChapter 内部已有 API 级 + JSON 解析级重试，无需额外重试
         const chapterPromises = [];
-        for (let chapterNum = book._count.chapters + 1; chapterNum <= targetRound; chapterNum++) {
+        for (const chapterNum of missingChapters) {
           chapterPromises.push(
             this.writeChapter(book.id, chapterNum).catch((error) => {
               console.error(`[CatchUp] 书籍《${book.title}》第 ${chapterNum} 章失败:`, error.message);
@@ -327,12 +363,12 @@ export class ChapterWritingService {
         }
         const results = await Promise.all(chapterPromises);
 
-        // 2.3 统计失败章节，输出警告
+        // 2.4 统计失败章节，输出警告
         const failedChapters = results.filter(r => !r?.success);
         if (failedChapters.length > 0) {
           console.warn(`[CatchUp] 书籍《${book.title}》仍有 ${failedChapters.length} 章未完成:`, failedChapters);
         } else {
-          console.log(`[CatchUp] 书籍《${book.title}》追赶完成 - ${missingCount} 章全部创作成功`);
+          console.log(`[CatchUp] 书籍《${book.title}》追赶完成 - ${missingChapters.length} 章全部创作成功`);
         }
       } catch (error) {
         console.error(`[CatchUp] 书籍《${book.title}》追赶失败:`, error);
@@ -340,7 +376,95 @@ export class ChapterWritingService {
     });
 
     await Promise.all(promises);
-    console.log(`[CatchUp] 追赶模式完成 - ${books.length} 本书籍已补齐到第 ${targetRound} 章`);
+    console.log(`[CatchUp] 追赶模式完成 - ${books.length} 本书籍已处理`);
+  }
+
+  /**
+   * 单本书的章节补全
+   *
+   * 用于书籍详情页的"补全章节"按钮
+   * 根据最新大纲检测缺失章节并补全
+   */
+  async catchUpSingleBook(bookId: string, targetRound: number): Promise<void> {
+    console.log(`[CatchUpSingle] 开始为书籍 ${bookId} 补全章节，目标轮次: ${targetRound}`);
+
+    // 1. 获取书籍信息
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      include: {
+        chapters: { select: { chapterNumber: true } },
+        author: { select: { agentConfig: true } },
+      },
+    });
+
+    if (!book) {
+      console.error(`[CatchUpSingle] 书籍不存在: ${bookId}`);
+      return;
+    }
+
+    // 2. 检查大纲是否存在 - chaptersPlan 是 Book 表的直接字段
+    if (!book.chaptersPlan) {
+      console.log(`[CatchUpSingle] 书籍《${book.title}》没有大纲，先生成整本书大纲`);
+      await outlineGenerationService.generateOutline(bookId);
+    }
+
+    // 重新获取大纲
+    const existingBook = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { chaptersPlan: true },
+    });
+
+    const chaptersPlan = (existingBook?.chaptersPlan as unknown as Array<{ number: number }>) || [];
+    const outlineChapterNumbers = new Set(chaptersPlan.map((c: { number: number }) => c.number));
+    const maxOutlineChapter = Math.max(...Array.from(outlineChapterNumbers), 0);
+
+    // 3. 获取当前已有的章节编号
+    const existingChapterNumbers = new Set(book.chapters.map((c: { chapterNumber: number }) => c.chapterNumber));
+
+    // 4. 计算真正缺失的章节（1到max中不存在的）
+    const missingChapters: number[] = [];
+    const maxChapter = Math.max(targetRound, maxOutlineChapter);
+    for (let i = 1; i <= maxChapter; i++) {
+      if (!existingChapterNumbers.has(i)) {
+        missingChapters.push(i);
+      }
+    }
+
+    if (missingChapters.length === 0) {
+      console.log(`[CatchUpSingle] 书籍《${book.title}》没有缺失章节`);
+      return;
+    }
+
+    console.log(`[CatchUpSingle] 书籍《${book.title}》缺失章节: ${missingChapters.join(', ')}`);
+
+    // 5. 检查大纲是否包含缺失章节的大纲
+    const needGenerateOutline: number[] = [];
+    for (const ch of missingChapters) {
+      if (!outlineChapterNumbers.has(ch)) {
+        needGenerateOutline.push(ch);
+      }
+    }
+
+    // 为缺失章节生成大纲（按顺序生成）
+    for (const ch of needGenerateOutline) {
+      console.log(`[CatchUpSingle] 书籍《${book.title}》缺失第 ${ch} 章大纲，生成中...`);
+      try {
+        await outlineGenerationService.generateNextChapterOutline(bookId);
+      } catch (error) {
+        console.error(`[CatchUpSingle] 书籍《${book.title}》第 ${ch} 章大纲生成失败:`, error);
+      }
+    }
+
+    // 6. 按章节顺序补写章节
+    for (const chapterNum of missingChapters) {
+      try {
+        await this.writeChapter(bookId, chapterNum);
+      } catch (error) {
+        console.error(`[CatchUpSingle] 书籍《${book.title}》第 ${chapterNum} 章失败:`, (error as Error).message);
+      }
+    }
+
+    console.log(`[CatchUpSingle] 书籍《${book.title}》补全完成 - ${missingChapters.length} 章`);
   }
 
   /**

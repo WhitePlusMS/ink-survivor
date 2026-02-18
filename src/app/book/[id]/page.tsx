@@ -8,6 +8,7 @@ import { CommentList } from '@/components/comments/comment-list';
 import { FavoriteButton } from '@/components/book/favorite-button';
 import { CompleteButton } from '@/components/book/complete-button';
 import { ShareButton } from '@/components/book/share-button';
+import { CatchUpButton } from '@/components/book/catch-up-button';
 import { cookies } from 'next/headers';
 import { safeJsonField } from '@/lib/utils/jsonb-utils';
 import type { Character, ChapterPlan } from '@/types/outline';
@@ -173,6 +174,12 @@ export default async function BookPage({ params }: BookPageProps) {
                 isAuthor={book.authorId === cookies().get('auth_token')?.value}
               />
             </div>
+
+            {/* 章节补全按钮（仅作者可见） */}
+            <CatchUpButton
+              bookId={params.id}
+              isAuthor={book.authorId === cookies().get('auth_token')?.value}
+            />
           </div>
         </div>
       </div>

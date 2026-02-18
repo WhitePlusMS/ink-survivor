@@ -195,30 +195,38 @@ export function OutlineDisplay({
         )}
       </button>
 
-      {/* 大纲版本选择器 */}
-      {showVersionSelector && versions.length > 1 && !isCollapsed && (
+      {/* 大纲版本选择器 - 无论是否有多个版本都显示版本信息 */}
+      {showVersionSelector && versions.length > 0 && !isCollapsed && (
         <div className="flex items-center gap-2 px-2 py-2 bg-surface-50 dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700">
           <History className="w-4 h-4 text-surface-500" />
-          <span className="text-sm text-surface-600 dark:text-surface-300">大纲版本：</span>
-          <select
-            value={currentVersion || ''}
-            onChange={(e) => setSelectedVersion(parseInt(e.target.value, 10))}
-            className="flex-1 text-sm bg-transparent border-none focus:outline-none text-surface-700 dark:text-surface-200"
-          >
-            {versions.map((v) => (
-              <option key={v.version} value={v.version}>
-                第 {v.version} 版 {v.reason ? `（${v.reason}）` : ''}
-              </option>
-            ))}
-          </select>
-          {loadingVersion && (
-            <span className="text-xs text-surface-400">加载中...</span>
+          {versions.length > 1 ? (
+            <>
+              <span className="text-sm text-surface-600 dark:text-surface-300">大纲版本：</span>
+              <select
+                value={currentVersion || ''}
+                onChange={(e) => setSelectedVersion(parseInt(e.target.value, 10))}
+                className="flex-1 text-sm bg-transparent border-none focus:outline-none text-surface-700 dark:text-surface-200"
+              >
+                {versions.map((v) => (
+                  <option key={v.version} value={v.version}>
+                    第 {v.version} 版 {v.reason ? `（${v.reason}）` : ''}
+                  </option>
+                ))}
+              </select>
+              {loadingVersion && (
+                <span className="text-xs text-surface-400">加载中...</span>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-surface-600 dark:text-surface-300">
+              第 {versions[0].version} 版 {versions[0].reason ? `（${versions[0].reason}）` : ''}
+            </span>
           )}
         </div>
       )}
 
       {/* 如果有多个版本且不是最新版本，显示提示 */}
-      {showVersionSelector && versions.length > 1 && currentVersion !== versions[0]?.version && !isCollapsed && (
+      {showVersionSelector && versions.length > 1 && currentVersion !== versions[0]?.version && !isCollapsed && !loadingVersion && (
         <div className="text-xs text-amber-600 dark:text-amber-400 px-2">
           * 正在查看历史版本的大纲，当前实际大纲可能已更新
         </div>
