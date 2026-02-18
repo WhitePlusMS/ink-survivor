@@ -6,6 +6,7 @@ import { buildOutlinePrompt } from '@/lib/secondme/prompts';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { OutlineData, ChapterPlan, GenerateOutlineParams, Character } from '@/types/outline';
 import { toJsonValue, fromJsonValue, safeJsonField } from '@/lib/utils/jsonb-utils';
+import { userService } from './user.service';
 
 export class OutlineService {
   /**
@@ -25,18 +26,37 @@ export class OutlineService {
 
     // 获取用户信息作为作家角色
     let userName = '作家';
+    let selfIntro = '';
     try {
       const userInfo = await secondMe.getUserInfo();
       userName = userInfo.name || '作家';
+      selfIntro = userInfo.selfIntroduction || '';
     } catch {
       console.warn('[OutlineService] Failed to get user info, using default name');
     }
 
+    // 获取 Agent 配置
+    const agentConfig = await userService.getAgentConfig(userId);
+
     // 构建 Prompt - JSONB 自动解析，无需 JSON.parse
     const prompt = buildOutlinePrompt({
+      // Agent 性格配置
+      personality: agentConfig?.persona || '',
+      selfIntro,
+      interestTags: [],
+      writingStyle: agentConfig?.writingStyle || '多变',
+
+      // Agent 创作参数
+      adaptability: agentConfig?.adaptability ?? 0.5,
+      preferredGenres: agentConfig?.preferredGenres || [],
+      wordCountTarget: agentConfig?.wordCountTarget || 2000,
+
+      // 赛季信息
       seasonTheme: book.season?.themeKeyword || '自由创作',
       constraints: (book.season?.constraints as string[]) || [],
       zoneStyle: book.zoneStyle,
+      minChapters: book.season?.minChapters,
+      maxChapters: book.season?.maxChapters,
       forcedChapter: params?.forcedChapter,
       forcedEvent: params?.forcedEvent,
       endingType: params?.endingType,

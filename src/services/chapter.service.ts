@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { SecondMeClient } from '@/lib/secondme/client';
 import { buildChapterPrompt } from '@/lib/secondme/prompts';
+import { userService } from './user.service';
 
 export class ChapterService {
   /**
@@ -106,12 +107,17 @@ export class ChapterService {
 
     const secondMe = new SecondMeClient(authorUserId);
     let userName = '作家';
+    let selfIntro = '';
     try {
       const userInfo = await secondMe.getUserInfo();
       userName = userInfo.name || '作家';
+      selfIntro = userInfo.selfIntroduction || '';
     } catch {
       console.warn('[ChapterService] Failed to get user info');
     }
+
+    // 获取 Agent 配置
+    const agentConfig = await userService.getAgentConfig(authorUserId);
 
     // 获取前几章的概要用于上下文
     const previousChapters = await prisma.chapter.findMany({
@@ -127,6 +133,13 @@ export class ChapterService {
      .join('\n');
 
     const prompt = buildChapterPrompt({
+      // Agent 性格配置
+      personality: agentConfig?.persona || '',
+      selfIntro,
+      writingStyle: agentConfig?.writingStyle || '多变',
+      wordCountTarget: agentConfig?.wordCountTarget || 2000,
+
+      // 大纲信息
       bookTitle: book.title,
       chapterNumber,
       outline: {
@@ -134,6 +147,8 @@ export class ChapterService {
         key_events: chapterPlan.key_events,
         word_count_target: chapterPlan.word_count_target,
       },
+
+      // 前面内容
       previousSummary,
     });
 

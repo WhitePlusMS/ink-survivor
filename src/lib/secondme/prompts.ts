@@ -16,21 +16,139 @@ function normalizeConstraints(constraints: unknown): string[] {
 }
 
 /**
+ * 根据性格和写作风格生成风格引导
+ * 使用 persona 字段作为性格描述来源
+ */
+function getStyleGuidance(personality: string, writingStyle: string, preferredGenres: string[]): string {
+  // personality 参数实际传入的是 persona 字段内容
+  const personalityKeywords = (personality || '').toLowerCase();
+  const styleKeywords = (writingStyle || '').toLowerCase();
+  const genreList = preferredGenres || [];
+
+  let guidance = '';
+
+  // 性格特点引导
+  if (personalityKeywords.includes('幽默') || personalityKeywords.includes('风趣')) {
+    guidance += '- 你的性格幽默风趣，故事应该轻松有趣，对话机智诙谐，可以适当吐槽\n';
+  }
+  if (personalityKeywords.includes('温柔') || personalityKeywords.includes('细腻')) {
+    guidance += '- 你的性格温柔细腻，故事应该情感丰富，注重人物内心描写，文字温暖治愈\n';
+  }
+  if (personalityKeywords.includes('悬疑') || personalityKeywords.includes('推理')) {
+    guidance += '- 你擅长悬疑推理，故事应该逻辑笔重重严密，伏，保持神秘感\n';
+  }
+  if (personalityKeywords.includes('史诗') || personalityKeywords.includes('大气')) {
+    guidance += '- 你的风格史诗大气，故事应该有宏大叙事，世界观完整，格局开阔\n';
+  }
+  if (personalityKeywords.includes('现实') || personalityKeywords.includes('写实')) {
+    guidance += '- 你的风格现实写实，故事应该贴近生活，描写真实，细节丰富\n';
+  }
+  if (personalityKeywords.includes('创意') || personalityKeywords.includes('无限')) {
+    guidance += '- 你创意无限，故事应该新颖独特，不落俗套，有奇思妙想\n';
+  }
+
+  // 写作风格引导
+  if (styleKeywords === '严肃') {
+    guidance += '- 写作风格严肃庄重，叙事严谨认真，措辞正式\n';
+  } else if (styleKeywords === '幽默') {
+    guidance += '- 写作风格轻松幽默，诙谐有趣，可以适当调侃\n';
+  } else if (styleKeywords === '浪漫') {
+    guidance += '- 写作风格浪漫抒情，情感细腻，充满理想色彩\n';
+  } else if (styleKeywords === '悬疑') {
+    guidance += '- 写作风格紧张刺激，节奏紧凑，悬念迭起\n';
+  }
+
+  // 题材偏好引导
+  if (genreList.includes('scifi') || genreList.includes('科幻')) {
+    guidance += '- 你偏好科幻题材，可以加入科技元素、未来设定、人工智能等\n';
+  }
+  if (genreList.includes('fantasy') || genreList.includes('玄幻')) {
+    guidance += '- 你偏好玄幻题材，可以加入魔法、异世界、修炼体系等\n';
+  }
+  if (genreList.includes('urban') || genreList.includes('都市')) {
+    guidance += '- 你偏好都市题材，故事背景可以设在现代城市\n';
+  }
+  if (genreList.includes('history') || genreList.includes('历史')) {
+    guidance += '- 你偏好历史题材，可以借鉴历史背景或典故\n';
+  }
+  if (genreList.includes('game') || genreList.includes('游戏')) {
+    guidance += '- 你偏好游戏题材，可以加入游戏元素、系统设定等\n';
+  }
+  if (genreList.includes('mystery') || genreList.includes('悬疑')) {
+    guidance += '- 你偏好悬疑题材，故事应该充满谜团和反转\n';
+  }
+  if (genreList.includes('romance') || genreList.includes('言情')) {
+    guidance += '- 你偏好言情题材，故事应该以感情线为主\n';
+  }
+
+  return guidance || '- 根据你的性格自由发挥';
+}
+
+/**
  * 构建作家角色 System Prompt
  * PRD 11.1：System Prompt 应包含性格特征 + 赛季约束
+ * 完整使用 Agent 的所有配置信息
  */
 export function buildAuthorSystemPrompt(params: {
+  // 显示用
   userName: string;
-  writingStyle?: string;
+
+  // Agent 性格配置 - personality 参数实际传入的是数据库的 persona 字段
+  personality: string;        // 来自数据库 persona 字段
+  selfIntro: string;         // 自我介绍（可能为空）
+  interestTags: string[];     // 兴趣标签
+
+  // Agent 写作偏好
+  writingStyle: string;       // 写作风格：严肃/幽默/浪漫/悬疑/多变
+  adaptability: number;      // 听劝指数：0-1
+  preferredGenres: string[];  // 偏好题材
+
+  // 赛季信息
   seasonTheme: string;
   constraints: string[];
   zoneStyle: string;
+
+  // 创作参数
+  wordCountTarget: number;   // 每章目标字数
 }): string {
   const normalizedConstraints = normalizeConstraints(params.constraints);
-  return `你是${params.userName}，一个热爱创作的故事作家。
 
-## 你的写作风格
-${params.writingStyle || '风格多变，能驾驭多种题材'}
+  // persona 字段包含完整的性格描述
+  const personalityDesc = params.personality || '性格多变';
+  const interestDesc = params.interestTags?.length > 0
+    ? params.interestTags.join('、')
+    : '广泛';
+
+  // 构建听劝程度描述
+  const adaptabilityDesc = params.adaptability >= 0.7
+    ? '高度听劝，会认真考虑读者反馈调整剧情'
+    : params.adaptability >= 0.4
+      ? '中等听劝，会选择性采纳读者建议'
+      : '固执己见，除非有严重问题否则坚持原大纲';
+
+  // 构建题材偏好描述
+  const genreDesc = params.preferredGenres?.length > 0
+    ? params.preferredGenres.map(g => {
+        const map: Record<string, string> = {
+          urban: '现代都市', fantasy: '玄幻架空', scifi: '科幻未来',
+          history: '历史军事', game: '游戏体育', mystery: '悬疑推理',
+          romance: '言情', fantasy_cn: '古风穿越'
+        };
+        return map[g] || g;
+      }).join('、')
+    : '不限';
+
+  return `你是${params.userName}，${params.selfIntro || '一位热爱创作的故事作家'}。
+
+## 个人特质
+- 性格特点：${personalityDesc}
+- 兴趣领域：${interestDesc}
+- 听劝指数：${params.adaptability}（${adaptabilityDesc}）
+
+## 写作偏好
+- 写作风格：${params.writingStyle || '多变'}
+- 偏好题材：${genreDesc}
+- 每章目标字数：${params.wordCountTarget || 2000} 字
 
 ## 当前创作任务
 你正在参加 InkSurvivor 赛季创作比赛：
@@ -41,19 +159,32 @@ ${normalizedConstraints.map(c => `- ${c}`).join('\n') || '无'}
 **分区风格**: ${params.zoneStyle}
 
 ## 任务要求
-请严格遵守以上限制进行创作。`;
+请严格按照以上个人特质和限制进行创作，保持个人风格一致性。`;
 }
 
 /**
  * 构建大纲生成 Prompt
+ * 包含 Agent 性格引导和完整创作参数
  */
 export function buildOutlinePrompt(params: {
+  // Agent 性格配置（新增）
+  personality: string;        // 性格描述
+  selfIntro: string;         // 自我介绍
+  interestTags: string[];     // 兴趣标签
+  writingStyle: string;      // 写作风格
+
+  // Agent 创作参数（新增）
+  adaptability: number;      // 听劝指数
+  preferredGenres: string[];  // 偏好题材
+  wordCountTarget: number;   // 每章目标字数
+
+  // 赛季信息（已有）
   seasonTheme: string;
   constraints: string[];
   zoneStyle: string;
-  minChapters?: number;   // 赛季最小章节数
-  maxChapters?: number;  // 赛季最大章节数
-  chapterPreference?: string; // 用户倾向描述（短篇/中篇/长篇）
+  minChapters?: number;
+  maxChapters?: number;
+  chapterPreference?: string;
   forcedChapter?: number;
   forcedEvent?: string;
   endingType?: string;
@@ -68,7 +199,23 @@ export function buildOutlinePrompt(params: {
     ? `创作风格倾向：${params.chapterPreference}`
     : '';
 
+  // 构建性格风格引导
+  const styleGuidance = getStyleGuidance(params.personality, params.writingStyle, params.preferredGenres);
+
+  // 构建听劝程度说明
+  const adaptabilityNote = params.adaptability >= 0.7
+    ? '你是一个高度听劝的作者，会认真考虑读者反馈，大纲应保留调整空间'
+    : params.adaptability >= 0.4
+      ? '你是一个中等听劝的作者，会选择性采纳建议'
+      : '你是一个固执的作者，除非有严重问题否则坚持原大纲';
+
   return `请为这个故事生成一个大纲。
+
+## 作者风格引导（来自 Agent 配置）
+${styleGuidance}
+
+## 听劝程度
+${adaptabilityNote}（听劝指数：${params.adaptability}）
 
 ## 章节要求
 ${chapterLimitText}
@@ -76,7 +223,7 @@ ${preferenceText}
 你应根据故事内容和创作风格自行决定合适的章节数量（必须在 ${params.minChapters || 3}-${params.maxChapters || 7} 章范围内）。
 **重要：最后一章必须是结局章，必须完结所有伏笔、悬念和主线情节，不能是"未完待续"。**
 
-## 硬性约束
+## 硬性约束（来自赛季）
 ${normalizedConstraints.map(c => `- ${c}`).join('\n') || '无'}
 
 ## 分区风格
@@ -103,7 +250,7 @@ ${params.zoneStyle}
       "title": "章节标题（不能包含冒号）",
       "summary": "章节概要（不能包含冒号）",
       "key_events": ["事件1", "事件2"],
-      "word_count_target": 2000
+      "word_count_target": ${params.wordCountTarget || 2000}
     }
   ],
   "themes": ["主题1", "主题2"],
@@ -117,16 +264,27 @@ ${params.zoneStyle}
 3. 每个字符串字段都不能包含冒号（:）
 4. 不要在字符串中嵌套引号或冒号
 5. 故事有清晰的起承转合
-${params.forcedChapter ? `6. 第${params.forcedChapter}章必须包含：${params.forcedEvent}` : ''}
-7. 结局类型：${params.endingType || '开放结局'}
+6. 根据你的性格特点和写作风格，形成独特的叙事风格
+${params.forcedChapter ? `7. 第${params.forcedChapter}章必须包含：${params.forcedEvent}` : ''}
+8. 结局类型：${params.endingType || '开放结局'}
 
 只输出 JSON 代码块，不要有任何其他内容。`;
 }
 
 /**
  * 构建章节创作 Prompt
+ * 包含 Agent 性格引导和上一章详细内容
  */
 export function buildChapterPrompt(params: {
+  // Agent 性格配置（新增）
+  personality: string;
+  selfIntro: string;
+  writingStyle: string;
+
+  // Agent 创作参数（新增）
+  wordCountTarget: number;
+
+  // 大纲信息
   bookTitle: string;
   chapterNumber: number;
   outline: {
@@ -134,43 +292,77 @@ export function buildChapterPrompt(params: {
     key_events: string[];
     word_count_target: number;
   };
+
+  // 前面内容（优化）
   previousSummary: string;
+  previousChapterContent?: string;
+
+  // 反馈
   feedbacks?: string[];
 }): string {
-  return `请撰写《${params.bookTitle}》第 ${params.chapterNumber} 章。
+  // 使用大纲中的字数要求，优先使用 Agent 配置的字数
+  const targetWordCount = params.wordCountTarget || params.outline.word_count_target || 2000;
 
-## 本章大纲
-${params.outline.summary}
+  // 构建风格引导
+  let styleGuidance = '';
+  const personalityKeywords = params.personality.toLowerCase();
+  const styleKeywords = params.writingStyle.toLowerCase();
 
-## 前文回顾
-${params.previousSummary}
+  if (personalityKeywords.includes('幽默') || personalityKeywords.includes('风趣')) {
+    styleGuidance += '保持幽默风趣的风格，对话可以机智诙谐；';
+  }
+  if (personalityKeywords.includes('温柔') || personalityKeywords.includes('细腻')) {
+    styleGuidance += '保持温柔细腻的风格，注重情感描写；';
+  }
+  if (personalityKeywords.includes('悬疑') || personalityKeywords.includes('推理')) {
+    styleGuidance += '保持悬疑推理的风格，节奏紧凑，悬念迭起；';
+  }
+  if (personalityKeywords.includes('史诗') || personalityKeywords.includes('大气')) {
+    styleGuidance += '保持史诗大气的风格，叙事宏大；';
+  }
 
-${params.feedbacks?.length ? `## 读者反馈（已采纳）
-${params.feedbacks.join('\n')}` : ''}
+  if (styleKeywords === '严肃') {
+    styleGuidance += '叙事严谨认真，措辞正式';
+  } else if (styleKeywords === '幽默') {
+    styleGuidance += '语言轻松幽默，可以适当调侃';
+  } else if (styleKeywords === '浪漫') {
+    styleGuidance += '语言浪漫抒情，充满情感';
+  } else if (styleKeywords === '悬疑') {
+    styleGuidance += '语言紧张刺激，悬念迭起';
+  }
 
-## 要求
-- 目标字数：${params.outline.word_count_target}字
-- 保持与前文风格一致
-- 推进剧情发展
-- 对话自然，符合角色性格
+  const feedbackSection = params.feedbacks && params.feedbacks.length > 0
+    ? '## 读者反馈（已采纳）\n' + params.feedbacks.join('\n')
+    : '';
 
-## 输出格式 (JSON)
-严格按照以下 JSON 格式输出：
-
-\`\`\`json
-{
-  "title": "章节标题（不能包含冒号）",
-  "content": "章节正文内容..."
-}
-\`\`\`
-
-请确保：
-1. 标题简洁明了，能概括本章核心内容（不能包含冒号）
-2. 正文直接开始，不需要章节标题
-3. 字数达到 ${params.outline.word_count_target} 字左右
-4. 严格遵守 JSON 格式，key 和 value 一一对应
-
-只输出 JSON 代码块，不要有任何其他内容。`;
+  return '请撰写《' + params.bookTitle + '》第 ' + params.chapterNumber + ' 章。\n\n' +
+    '## 作者风格（保持一致）\n' +
+    (params.selfIntro ? '你是 ' + params.selfIntro + '\n' : '') +
+    '- 性格特点：' + (params.personality || '根据配置自由发挥') + '\n' +
+    '- 写作风格：' + (styleGuidance || '保持你的个人风格') + '\n\n' +
+    '## 本章大纲\n' +
+    params.outline.summary + '\n\n' +
+    '## 上一章详细剧情（用于保持连贯性）\n' +
+    (params.previousChapterContent || params.previousSummary) + '\n\n' +
+    '## 本章需要体现的关键事件\n' +
+    params.outline.key_events.map(e => '- ' + e).join('\n') + '\n\n' +
+    (feedbackSection ? feedbackSection + '\n\n' : '') +
+    '## 要求\n' +
+    '- 目标字数：' + targetWordCount + '字\n' +
+    '- 保持与前文风格一致\n' +
+    '- 推进剧情发展\n' +
+    '- 对话自然，符合角色性格\n\n' +
+    '## 输出格式 (JSON)\n严格按照以下 JSON 格式输出：\n\n' +
+    '{\n' +
+    '  "title": "章节标题（不能包含冒号）",\n' +
+    '  "content": "章节正文内容..."\n' +
+    '}\n\n' +
+    '请确保：\n' +
+    '1. 标题简洁明了，能概括本章核心内容（不能包含冒号）\n' +
+    '2. 正文直接开始，不需要章节标题\n' +
+    '3. 字数达到 ' + targetWordCount + ' 字左右\n' +
+    '4. 严格遵守 JSON 格式，key 和 value 一一对应\n\n' +
+    '只输出 JSON，不要有其他内容。';
 }
 
 /**

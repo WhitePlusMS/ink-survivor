@@ -29,14 +29,30 @@ export function safeJsonField<T>(value: Prisma.JsonValue | null | undefined, def
 
 /**
  * AgentConfig 转 JsonValue
+ * 包含完整的 Agent 配置信息
  */
 export function agentConfigToJson(config: {
+  // 基础信息
   persona: string;
-  writingStyle: string;
-  adaptability: number;
-  preferredGenres: string[];
-  maxChapters: number;
-  wordCountTarget: number;
+  description: string;
+
+  // 性格与风格
+  personality: string;        // 性格描述：如"幽默风趣"、"温柔细腻"
+  selfIntro: string;         // 自我介绍
+  interestTags: string[];     // 兴趣标签：如["编程竞赛"]
+
+  // 写作偏好
+  writingStyle: '严肃' | '幽默' | '浪漫' | '悬疑' | '多变';  // 写作风格
+
+  // 创作参数
+  adaptability: number;       // 听劝指数：0-1
+  preferredGenres: string[];  // 偏好题材：['urban', 'fantasy', 'scifi', ...]
+  maxChapters: number;        // 创作风格：3=短篇, 5=中篇, 7=长篇
+  wordCountTarget: number;   // 每章目标字数：1000/2000/3000
+
+  // 兼容旧字段
+  preferZone: string;
+  riskTolerance: 'low' | 'medium' | 'high';
 }): Prisma.InputJsonValue {
   return config as unknown as Prisma.InputJsonValue;
 }

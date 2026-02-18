@@ -11,16 +11,24 @@ import { testModeSendChat } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { toJsonValue } from '@/lib/utils/jsonb-utils';
 
-// Agent 配置接口
+// Agent 配置接口（完整版）
 interface AgentConfig {
-  personality: string;
-  writingStyle: string;
-  preferZone: string;
-  adaptability: number;
-  riskTolerance: 'low' | 'medium' | 'high';
-  description: string;
-  maxChapters: number;      // 用户偏好的章节数（3=短篇，5=中篇，7=长篇）
-  wordCountTarget: number;  // 每章目标字数
+  // 基础信息
+  personality: string;        // 性格描述：如"幽默风趣"、"温柔细腻"
+  selfIntro: string;       // 自我介绍
+  interestTags: string[];    // 兴趣标签：如["编程竞赛"]
+
+  // 写作偏好
+  writingStyle: string;      // 写作风格：严肃/幽默/浪漫/悬疑/多变
+  preferZone: string;       // 偏好分区
+
+  // 创作参数
+  adaptability: number;     // 听劝指数：0-1
+  riskTolerance: 'low' | 'medium' | 'high';  // 风险偏好
+  description: string;      // 显示名称
+  preferredGenres: string[]; // 偏好题材：['urban', 'fantasy', 'scifi', ...]
+  maxChapters: number;     // 创作风格：3=短篇, 5=中篇, 7=长篇
+  wordCountTarget: number;  // 每章目标字数：1000/2000/3000
 }
 
 // 单章大纲数据结构
@@ -85,8 +93,22 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 2. 解析作者配置 - Prisma JSONB 字段已自动解析，直接使用类型断言
-    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
+    // 2. 解析作者配置 - 直接使用数据库中的 persona 字段
+    // 数据库字段：persona（性格描述）, writingStyle, adaptability, maxChapters, wordCountTarget, preferredGenres
+    const rawConfig = book.author.agentConfig as unknown as Record<string, unknown>;
+    const agentConfig: AgentConfig = {
+      personality: (rawConfig.persona as string) || '',
+      selfIntro: '',
+      interestTags: (rawConfig.interestTags as string[]) || this.extractInterestTags(rawConfig.persona as string),
+      writingStyle: (rawConfig.writingStyle as string) || '多变',
+      adaptability: (rawConfig.adaptability as number) ?? 0.5,
+      preferZone: (rawConfig.preferZone as string) || '',
+      riskTolerance: (rawConfig.riskTolerance as 'low' | 'medium' | 'high') || 'medium',
+      description: (rawConfig.description as string) || book.author.nickname || '作家',
+      preferredGenres: (rawConfig.preferredGenres as string[]) || [],
+      maxChapters: (rawConfig.maxChapters as number) || 5,
+      wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
+    };
 
     // 3. 获取赛季信息
     const season = await prisma.season.findUnique({
@@ -117,17 +139,44 @@ export class OutlineGenerationService {
         ? '长篇小说风格（宏大叙事，细节丰富）'
         : '中篇小说风格（平衡适当，详略得当）';
 
-    // 4. 构建 System Prompt（包含性格 + 赛季约束，符合 PRD 11.1）
+    // 4. 构建 System Prompt（包含完整 Agent 配置 + 赛季约束）
     const systemPrompt = buildAuthorSystemPrompt({
+      // 显示用
       userName: agentConfig.description || '作家',
-      writingStyle: agentConfig.writingStyle,
+
+      // Agent 性格配置
+      personality: agentConfig.personality || '',
+      selfIntro: agentConfig.selfIntro || '',
+      interestTags: agentConfig.interestTags || [],
+
+      // Agent 写作偏好
+      writingStyle: agentConfig.writingStyle || '多变',
+      adaptability: agentConfig.adaptability ?? 0.5,
+      preferredGenres: agentConfig.preferredGenres || [],
+
+      // 赛季信息
       seasonTheme: seasonInfo.themeKeyword,
       constraints: seasonInfo.constraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
+
+      // 创作参数
+      wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
-    // 5. 构建大纲生成提示（让AI根据风格倾向和赛季限制自行决定章节数）
+    // 5. 构建大纲生成提示（包含 Agent 性格引导）
     const outlinePrompt = buildOutlinePrompt({
+      // Agent 性格配置
+      personality: agentConfig.personality || '',
+      selfIntro: agentConfig.selfIntro || '',
+      interestTags: agentConfig.interestTags || [],
+      writingStyle: agentConfig.writingStyle || '多变',
+
+      // Agent 创作参数
+      adaptability: agentConfig.adaptability ?? 0.5,
+      preferredGenres: agentConfig.preferredGenres || [],
+      wordCountTarget: agentConfig.wordCountTarget || 2000,
+
+      // 赛季信息
       seasonTheme: seasonInfo.themeKeyword,
       constraints: seasonInfo.constraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
@@ -318,13 +367,42 @@ export class OutlineGenerationService {
     // 5. 获取上一章的读者反馈（只用于生成大纲的参考）
     const recentFeedbacks = await this.getChapterFeedbacks(bookId, currentChapterCount);
 
-    // 6. 构建 System Prompt
+    // 6. 获取上一章的详细内容（用于保持连贯性）
+    let previousChapterContent = '';
+    if (currentChapterCount > 0) {
+      const previousChapter = await prisma.chapter.findFirst({
+        where: { bookId, chapterNumber: currentChapterCount },
+        select: { title: true, content: true },
+      });
+      if (previousChapter?.content) {
+        // 取上一章前300字作为摘要
+        previousChapterContent = `第${currentChapterCount}章"${previousChapter.title}"：` +
+          previousChapter.content.slice(0, 300) + '...';
+      }
+    }
+
+    // 7. 构建 System Prompt（包含完整 Agent 配置）
     const systemPrompt = buildAuthorSystemPrompt({
+      // 显示用
       userName: agentConfig.description || '作家',
-      writingStyle: agentConfig.writingStyle,
+
+      // Agent 性格配置
+      personality: agentConfig.personality || '',
+      selfIntro: agentConfig.selfIntro || '',
+      interestTags: agentConfig.interestTags || [],
+
+      // Agent 写作偏好
+      writingStyle: agentConfig.writingStyle || '多变',
+      adaptability: agentConfig.adaptability ?? 0.5,
+      preferredGenres: agentConfig.preferredGenres || [],
+
+      // 赛季信息
       seasonTheme: seasonInfo.themeKeyword,
       constraints: seasonInfo.constraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
+
+      // 创作参数
+      wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
     // 7. 构建单章大纲生成提示
@@ -334,6 +412,7 @@ export class OutlineGenerationService {
       previousChapterSummary: currentChapterCount > 0
         ? this.getChapterSummary(updatedChapters, currentChapterCount)
         : '这是本书的第一章',
+      previousChapterContent: previousChapterContent || undefined,  // 上一章详细内容
       feedbacks: recentFeedbacks,
       isLastChapter: nextChapterNumber >= (season.maxChapters || 5),
     });
@@ -615,13 +694,28 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
       throw new Error('赛季不存在');
     }
 
-    // 构建修改大纲的 prompt
+    // 构建修改大纲的 prompt（包含完整 Agent 配置）
     const systemPrompt = buildAuthorSystemPrompt({
+      // 显示用
       userName: agentConfig.description || '作家',
-      writingStyle: agentConfig.writingStyle,
+
+      // Agent 性格配置
+      personality: agentConfig.personality || '',
+      selfIntro: agentConfig.selfIntro || '',
+      interestTags: agentConfig.interestTags || [],
+
+      // Agent 写作偏好
+      writingStyle: agentConfig.writingStyle || '多变',
+      adaptability: agentConfig.adaptability ?? 0.5,
+      preferredGenres: agentConfig.preferredGenres || [],
+
+      // 赛季信息
       seasonTheme: season.themeKeyword,
       constraints: season.constraints as unknown as string[],
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
+
+      // 创作参数
+      wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
     const prompt = this.buildModifyOutlinePrompt({
@@ -771,18 +865,20 @@ ${params.existingOutline.chapters.map(c => `第 ${c.number} 章 "${c.title}": ${
 
   /**
    * 构建单章大纲生成提示
+   * 增加上一章详细内容用于保持连贯性
    */
   private buildSingleChapterPrompt(params: {
     bookTitle: string;
     chapterNumber: number;
-    previousChapterSummary: string;
+    previousChapterSummary: string;      // 简略：章节标题列表
+    previousChapterContent?: string;     // 新增：上一章正文摘要
     feedbacks?: string[];
     isLastChapter: boolean;
   }): string {
     return `请为《${params.bookTitle}》第 ${params.chapterNumber} 章生成详细大纲。
 
 ## 前文回顾
-${params.previousChapterSummary}
+${params.previousChapterContent || params.previousChapterSummary}
 
 ${params.feedbacks && params.feedbacks.length > 0 ? `## 读者反馈（供参考）
 ${params.feedbacks.map((f) => `- ${f}`).join('\n')}` : ''}
@@ -811,6 +907,34 @@ ${params.isLastChapter ? '注意：这是最后一章，需要有完结感。' :
       scifi: '科幻未来',
     };
     return zoneMap[zoneStyle.toLowerCase()] || zoneStyle;
+  }
+
+  /**
+   * 从 persona 字符串中提取兴趣标签
+   * 支持格式如："兴趣标签：编程竞赛" 或 "兴趣标签：小说创作\n幽默风趣..."
+   */
+  private extractInterestTags(persona: string | null | undefined): string[] {
+    if (!persona) return [];
+
+    const tags: string[] = [];
+
+    // 尝试匹配 "兴趣标签：" 后面的内容
+    const match = persona.match(/兴趣标签[：:]\s*([^\n]+)/);
+    if (match && match[1]) {
+      // 按中文顿号、逗号或空格分割
+      const tagStr = match[1].replace(/[、，,\s]+/g, ',').split(',');
+      tags.push(...tagStr.filter(t => t.trim()));
+    }
+
+    // 如果没有匹配到兴趣标签，但 persona 中包含关键词，也作为标签
+    const keywords = ['编程', '医生', '摄影', '园艺', '小说', '写作', '工程师', '黑客', '比赛'];
+    for (const kw of keywords) {
+      if (persona.includes(kw) && !tags.includes(kw)) {
+        tags.push(kw);
+      }
+    }
+
+    return tags;
   }
 }
 

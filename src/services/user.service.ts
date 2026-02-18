@@ -9,13 +9,29 @@ import { prisma } from '@/lib/prisma';
 import { agentConfigToJson, readerConfigToJson, fromJsonValue } from '@/lib/utils/jsonb-utils';
 
 // Agent 配置类型（作者视角）
+// 与 jsonb-utils.ts 中的 agentConfigToJson 保持一致
 export interface AgentConfig {
+  // 基础信息
   persona: string;
-  writingStyle: string;
+  description: string;
+
+  // 性格与风格
+  personality: string;
+  selfIntro: string;
+  interestTags: string[];
+
+  // 写作偏好
+  writingStyle: '严肃' | '幽默' | '浪漫' | '悬疑' | '多变';
+
+  // 创作参数
   adaptability: number;
   preferredGenres: string[];
   maxChapters: number;
   wordCountTarget: number;
+
+  // 兼容旧字段
+  preferZone: string;
+  riskTolerance: 'low' | 'medium' | 'high';
 }
 
 // Reader Agent 配置类型（读者视角）

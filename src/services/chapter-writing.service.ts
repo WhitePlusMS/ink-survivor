@@ -13,14 +13,22 @@ import { readerAgentService } from './reader-agent.service';
 import { wsEvents } from '@/lib/websocket/events';
 import { outlineGenerationService } from './outline-generation.service';
 
-// Agent 配置接口
+// Agent 配置接口（完整版）
 interface AgentConfig {
-  personality: string;
-  writingStyle: string;
-  preferZone: string;
-  adaptability: number;
-  riskTolerance: 'low' | 'medium' | 'high';
-  description: string;
+  // 基础信息
+  personality: string;        // 性格描述
+  selfIntro: string;         // 自我介绍
+  interestTags: string[];    // 兴趣标签
+  writingStyle: string;      // 写作风格
+  preferZone: string;       // 偏好分区
+
+  // 创作参数
+  adaptability: number;     // 听劝指数
+  riskTolerance: 'low' | 'medium' | 'high';  // 风险偏好
+  description: string;     // 显示名称
+  preferredGenres: string[]; // 偏好题材
+  maxChapters: number;     // 创作风格
+  wordCountTarget: number; // 每章目标字数
 }
 
 // 章节数据结构
@@ -82,14 +90,20 @@ export class ChapterWritingService {
       return;
     }
 
-    // 3. 解析作者配置 - JSONB 自动解析
-    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig || {
-      persona: '作家',
-      writingStyle: 'standard',
-      adaptability: 5,
-      preferredGenres: [],
-      maxChapters: 10,
-      wordCountTarget: 3000,
+    // 3. 解析作者配置 - 直接使用数据库中的 persona 字段
+    const rawConfig = (book.author.agentConfig as unknown as Record<string, unknown>) || {};
+    const agentConfig: AgentConfig = {
+      personality: (rawConfig.persona as string) || '',
+      selfIntro: '',
+      interestTags: (rawConfig.interestTags as string[]) || [],
+      writingStyle: (rawConfig.writingStyle as string) || '多变',
+      adaptability: (rawConfig.adaptability as number) ?? 0.5,
+      preferZone: (rawConfig.preferZone as string) || '',
+      riskTolerance: (rawConfig.riskTolerance as 'low' | 'medium' | 'high') || 'medium',
+      description: (rawConfig.description as string) || book.author.nickname || '作家',
+      preferredGenres: (rawConfig.preferredGenres as string[]) || [],
+      maxChapters: (rawConfig.maxChapters as number) || 5,
+      wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
     };
 
     // 4. 获取赛季信息（用于 System Prompt 中的约束）
@@ -107,27 +121,59 @@ export class ChapterWritingService {
       },
       orderBy: { chapterNumber: 'desc' },
       take: 2,
-      select: { content: true, title: true },
+      select: { content: true, title: true, chapterNumber: true },
     });
 
     const previousSummary = previousChapters.length > 0
       ? `前情：${previousChapters.map(c => c.title).join(' -> ')}`
       : '这是本书的第一章';
 
-    // 5. 获取本章的读者反馈（如果有，用于优化）
+    // 5.1 获取上一章详细内容（用于章节生成的连贯性）
+    let previousChapterContent = '';
+    if (previousChapters.length > 0) {
+      const latestChapter = previousChapters[0];
+      if (latestChapter.content) {
+        previousChapterContent = `第${latestChapter.chapterNumber}章"${latestChapter.title}"：` +
+          latestChapter.content.slice(0, 300) + '...';
+      }
+    }
+
+    // 6. 获取本章的读者反馈（如果有，用于优化）
     const feedbacks = await this.getChapterFeedbacks(bookId, chapterNumber - 1);
 
-    // 6. 构建 System Prompt（包含性格 + 赛季约束，符合 PRD 11.1 规范）
+    // 7. 构建 System Prompt（包含完整 Agent 配置 + 赛季约束）
     const systemPrompt = buildAuthorSystemPrompt({
+      // 显示用
       userName: agentConfig.description || '作家',
-      writingStyle: agentConfig.writingStyle,
+
+      // Agent 性格配置
+      personality: agentConfig.personality || '',
+      selfIntro: agentConfig.selfIntro || '',
+      interestTags: agentConfig.interestTags || [],
+
+      // Agent 写作偏好
+      writingStyle: agentConfig.writingStyle || '多变',
+      adaptability: agentConfig.adaptability ?? 0.5,
+      preferredGenres: agentConfig.preferredGenres || [],
+
+      // 赛季信息
       seasonTheme,
       constraints: seasonConstraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
+
+      // 创作参数
+      wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
-    // 7. 构建章节创作提示
+    // 8. 构建章节创作提示（包含 Agent 性格引导和上一章详细内容）
     const chapterPrompt = buildChapterPrompt({
+      // Agent 性格配置
+      personality: agentConfig.personality || '',
+      selfIntro: agentConfig.selfIntro || '',
+      writingStyle: agentConfig.writingStyle || '多变',
+      wordCountTarget: agentConfig.wordCountTarget || 2000,
+
+      // 大纲信息
       bookTitle: book.title,
       chapterNumber,
       outline: {
@@ -135,7 +181,12 @@ export class ChapterWritingService {
         key_events: chapterOutline.key_events,
         word_count_target: chapterOutline.word_count_target,
       },
+
+      // 前面内容
       previousSummary,
+      previousChapterContent: previousChapterContent || undefined,
+
+      // 反馈
       feedbacks,
     });
 
