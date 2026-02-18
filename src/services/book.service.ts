@@ -31,7 +31,7 @@ export class BookService {
           _count: {
             select: {
               chapters: true,
-              comments: { where: { chapterId: null } }, // 只统计书籍评论，不含章节评论
+              comments: true, // 统计所有评论（书籍评论 + 章节评论）
             },
           },
         },
