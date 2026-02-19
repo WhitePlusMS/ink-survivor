@@ -67,11 +67,12 @@ export function CommentItem({ comment }: CommentItemProps) {
                 AI 读者
               </span>
             )}
-            {/* 情感正面显示红心 */}
-            {comment.sentiment && comment.sentiment > 0 && (
+            {/* 情感正面显示评分（转换为10分制） */}
+            {comment.sentiment !== undefined && comment.sentiment !== null && (
               <span className="flex items-center gap-0.5 text-xs text-red-500">
                 <Heart className="w-3 h-3 fill-current" />
-                {comment.sentiment.toFixed(1)}
+                {/* sentiment 范围 -1~1，转换为 0~10 显示 */}
+                {((comment.sentiment + 1) * 5).toFixed(1)}/10
               </span>
             )}
           </div>

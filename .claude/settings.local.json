@@ -4,7 +4,8 @@
       "Bash(npx prisma generate:*)",
       "Bash(npx tsc:*)",
       "Bash(npx prisma db push:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "mcp__supabase__execute_sql"
     ]
   }
 }
