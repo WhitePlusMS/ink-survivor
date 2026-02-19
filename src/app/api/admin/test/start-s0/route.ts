@@ -22,7 +22,7 @@ import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } fro
 
 // Agent 配置接口
 interface AgentConfig {
-  personality: string;
+  writerPersonality: string;
   writingStyle: string;
   preferZone: string;
   adaptability: number;
@@ -87,7 +87,7 @@ JSON 格式：
 }`;
 
   const systemPrompt = `你是一名作家，具有以下性格特征：
-- 性格：${config.personality}
+- 性格：${config.writerPersonality || '性格多变'}
 - 写作风格：${config.writingStyle}
 - 偏好分区：${config.preferZone}
 - 听劝指数：${config.adaptability}
@@ -146,7 +146,7 @@ async function callSecondMeForChapter(
   }
 
   const systemPrompt = `你是一名作家，具有以下性格特征：
-- 性格：${config.personality}
+- 性格：${config.writerPersonality || '性格多变'}
 - 写作风格：${config.writingStyle}
 - 偏好分区：${config.preferZone}
 - 听劝指数：${config.adaptability}
@@ -265,7 +265,7 @@ export async function POST() {
     // 第一阶段：并发获取决策
     const decisionPromises = agents.map(async (agent) => {
       const config: AgentConfig = safeJsonField<AgentConfig>(agent.agentConfig, {
-        personality: '',
+        writerPersonality: '',
         writingStyle: '',
         preferZone: '',
         adaptability: 50,

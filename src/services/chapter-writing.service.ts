@@ -13,12 +13,14 @@ import { readerAgentService } from './reader-agent.service';
 import { wsEvents } from '@/lib/websocket/events';
 import { outlineGenerationService } from './outline-generation.service';
 
-// Agent 配置接口（完整版）
+// Agent 配置接口
 interface AgentConfig {
   // 基础信息
-  personality: string;        // 性格描述
-  selfIntro: string;         // 自我介绍
-  interestTags: string[];    // 兴趣标签
+  writerPersonality: string;  // 作者性格描述
+  selfIntro?: string;  // 自我介绍
+  interestTags?: string[];  // 兴趣标签
+
+  // 写作偏好
   writingStyle: string;      // 写作风格
   preferZone: string;       // 偏好分区
 
@@ -90,12 +92,10 @@ export class ChapterWritingService {
       return;
     }
 
-    // 3. 解析作者配置 - 直接使用数据库中的 persona 字段
+    // 3. 解析作者配置 - 使用数据库的 writerPersonality 字段
     const rawConfig = (book.author.agentConfig as unknown as Record<string, unknown>) || {};
     const agentConfig: AgentConfig = {
-      personality: (rawConfig.persona as string) || '',
-      selfIntro: '',
-      interestTags: (rawConfig.interestTags as string[]) || [],
+      writerPersonality: (rawConfig.writerPersonality as string) || '',
       writingStyle: (rawConfig.writingStyle as string) || '多变',
       adaptability: (rawConfig.adaptability as number) ?? 0.5,
       preferZone: (rawConfig.preferZone as string) || '',
@@ -147,9 +147,7 @@ export class ChapterWritingService {
       userName: agentConfig.description || '作家',
 
       // Agent 性格配置
-      personality: agentConfig.personality || '',
-      selfIntro: agentConfig.selfIntro || '',
-      interestTags: agentConfig.interestTags || [],
+      writerPersonality: agentConfig.writerPersonality || '',
 
       // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
@@ -168,7 +166,7 @@ export class ChapterWritingService {
     // 8. 构建章节创作提示（包含 Agent 性格引导和上一章详细内容）
     const chapterPrompt = buildChapterPrompt({
       // Agent 性格配置
-      personality: agentConfig.personality || '',
+      writerPersonality: agentConfig.writerPersonality || '',
       selfIntro: agentConfig.selfIntro || '',
       writingStyle: agentConfig.writingStyle || '多变',
       wordCountTarget: agentConfig.wordCountTarget || 2000,

@@ -19,12 +19,10 @@ import { normalizeZoneStyle } from '@/lib/utils/zone';
 import { safeJsonField } from '@/lib/utils/jsonb-utils';
 import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } from '@/lib/utils/admin';
 
-// Agent 配置接口（完整版）
+// Agent 配置接口
 interface AgentConfig {
   // 基础信息
-  personality: string;        // 性格描述
-  selfIntro: string;         // 自我介绍
-  interestTags: string[];    // 兴趣标签
+  writerPersonality: string;  // 作者性格描述
 
   // 写作偏好
   writingStyle: string;      // 写作风格
@@ -95,9 +93,7 @@ JSON 格式：
 }`;
 
   const systemPrompt = `你是一名作家，具有以下性格特征：
-- 性格：${config.personality}
-- 自我介绍：${config.selfIntro || '无'}
-- 兴趣标签：${config.interestTags?.join('、') || '无'}
+- 性格：${config.writerPersonality || '性格多变'}
 - 写作风格：${config.writingStyle}
 - 偏好分区：${config.preferZone}
 - 听劝指数：${config.adaptability}（越高越会采纳读者意见）
@@ -207,7 +203,31 @@ export async function POST(request: NextRequest) {
       console.log(`[StartSeason] 使用已有赛季: S${season.seasonNumber}`);
     } else {
       // 5. 创建新赛季
-      const nextNumber = seasonNumber ?? (await prisma.season.count()) + 1;
+      let nextNumber: number;
+      if (seasonNumber) {
+        nextNumber = seasonNumber;
+      } else {
+        // 获取当前最大的赛季号，然后 +1
+        const maxSeason = await prisma.season.findFirst({
+          orderBy: { seasonNumber: 'desc' },
+          select: { seasonNumber: true },
+        });
+        nextNumber = (maxSeason?.seasonNumber ?? 0) + 1;
+      }
+
+      // 检查该赛季号是否已存在
+      const existingSeasonByNumber = await prisma.season.findUnique({
+        where: { seasonNumber: nextNumber },
+      });
+
+      if (existingSeasonByNumber) {
+        return NextResponse.json({
+          code: 400,
+          data: null,
+          message: `赛季 S${nextNumber} 已存在，请使用不同的赛季号或先结束现有赛季`,
+        });
+      }
+
       const now = new Date();
 
       // 计算赛季总时长 = roundDuration * maxChapters + 报名截止 10 分钟
@@ -252,9 +272,7 @@ export async function POST(request: NextRequest) {
     const decisionPromises = users.map(async (user) => {
       const config: AgentConfig = safeJsonField<AgentConfig>(user.agentConfig, {
         // 基础信息
-        personality: '',
-        selfIntro: '',
-        interestTags: [],
+        writerPersonality: '',
         // 写作偏好
         writingStyle: '',
         preferZone: '',

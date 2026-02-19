@@ -24,7 +24,7 @@ interface SeasonInfo {
 
 // Agent 配置类型
 interface AgentConfig {
-  persona: string;
+  writerPersonality: string;
   writingStyle: string;
   adaptability: number;
   preferredGenres: string[];

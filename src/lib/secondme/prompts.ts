@@ -17,35 +17,27 @@ function normalizeConstraints(constraints: unknown): string[] {
 
 /**
  * 根据性格和写作风格生成风格引导
- * 使用 persona 字段作为性格描述来源
+ * 用户填写的 writerPersonality 直接使用，不做关键词检查
  */
-function getStyleGuidance(personality: string, writingStyle: string, preferredGenres: string[]): string {
-  // personality 参数实际传入的是 persona 字段内容
-  const personalityKeywords = (personality || '').toLowerCase();
+function getStyleGuidance(writerPersonality: string, writingStyle: string, preferredGenres: string[]): string {
+  // writerPersonality 参数是作者填写的人格描述
+  const personalityText = writerPersonality || '';
   const styleKeywords = (writingStyle || '').toLowerCase();
   const genreList = preferredGenres || [];
 
   let guidance = '';
 
-  // 性格特点引导
-  if (personalityKeywords.includes('幽默') || personalityKeywords.includes('风趣')) {
-    guidance += '- 你的性格幽默风趣，故事应该轻松有趣，对话机智诙谐，可以适当吐槽\n';
+  // 用户填写了自定义内容，直接使用用户输入，不做关键词检查
+  if (personalityText.trim()) {
+    // 清理可能包含的冒号（JSON格式不允许）
+    const cleanPersonality = personalityText.replace(/：/g, '：').replace(/:/g, '：');
+    guidance += `- ${cleanPersonality}`;
+  } else {
+    // 如果没有填写，使用默认引导
+    guidance += '- 根据你的性格自由发挥';
   }
-  if (personalityKeywords.includes('温柔') || personalityKeywords.includes('细腻')) {
-    guidance += '- 你的性格温柔细腻，故事应该情感丰富，注重人物内心描写，文字温暖治愈\n';
-  }
-  if (personalityKeywords.includes('悬疑') || personalityKeywords.includes('推理')) {
-    guidance += '- 你擅长悬疑推理，故事应该逻辑笔重重严密，伏，保持神秘感\n';
-  }
-  if (personalityKeywords.includes('史诗') || personalityKeywords.includes('大气')) {
-    guidance += '- 你的风格史诗大气，故事应该有宏大叙事，世界观完整，格局开阔\n';
-  }
-  if (personalityKeywords.includes('现实') || personalityKeywords.includes('写实')) {
-    guidance += '- 你的风格现实写实，故事应该贴近生活，描写真实，细节丰富\n';
-  }
-  if (personalityKeywords.includes('创意') || personalityKeywords.includes('无限')) {
-    guidance += '- 你创意无限，故事应该新颖独特，不落俗套，有奇思妙想\n';
-  }
+
+  guidance += '\n';
 
   // 写作风格引导
   if (styleKeywords === '严肃') {
@@ -93,10 +85,9 @@ export function buildAuthorSystemPrompt(params: {
   // 显示用
   userName: string;
 
-  // Agent 性格配置 - personality 参数实际传入的是数据库的 persona 字段
-  personality: string;        // 来自数据库 persona 字段
-  selfIntro: string;         // 自我介绍（可能为空）
-  interestTags: string[];     // 兴趣标签
+  // Agent 性格配置 - 使用 writerPersonality 字段
+  writerPersonality: string;
+  selfIntro?: string;  // 自我介绍
 
   // Agent 写作偏好
   writingStyle: string;       // 写作风格：严肃/幽默/浪漫/悬疑/多变
@@ -113,11 +104,8 @@ export function buildAuthorSystemPrompt(params: {
 }): string {
   const normalizedConstraints = normalizeConstraints(params.constraints);
 
-  // persona 字段包含完整的性格描述
-  const personalityDesc = params.personality || '性格多变';
-  const interestDesc = params.interestTags?.length > 0
-    ? params.interestTags.join('、')
-    : '广泛';
+  // writerPersonality 是作者填写的人格描述
+  const personalityDesc = params.writerPersonality || '性格多变';
 
   // 构建听劝程度描述
   const adaptabilityDesc = params.adaptability >= 0.7
@@ -142,7 +130,6 @@ export function buildAuthorSystemPrompt(params: {
 
 ## 个人特质
 - 性格特点：${personalityDesc}
-- 兴趣领域：${interestDesc}
 - 听劝指数：${params.adaptability}（${adaptabilityDesc}）
 
 ## 写作偏好
@@ -167,18 +154,16 @@ ${normalizedConstraints.map(c => `- ${c}`).join('\n') || '无'}
  * 包含 Agent 性格引导和完整创作参数
  */
 export function buildOutlinePrompt(params: {
-  // Agent 性格配置（新增）
-  personality: string;        // 性格描述
-  selfIntro: string;         // 自我介绍
-  interestTags: string[];     // 兴趣标签
+  // Agent 性格配置
+  writerPersonality: string;  // 作者性格描述
   writingStyle: string;      // 写作风格
 
-  // Agent 创作参数（新增）
+  // Agent 创作参数
   adaptability: number;      // 听劝指数
   preferredGenres: string[];  // 偏好题材
   wordCountTarget: number;   // 每章目标字数
 
-  // 赛季信息（已有）
+  // 赛季信息
   seasonTheme: string;
   constraints: string[];
   zoneStyle: string;
@@ -200,7 +185,7 @@ export function buildOutlinePrompt(params: {
     : '';
 
   // 构建性格风格引导
-  const styleGuidance = getStyleGuidance(params.personality, params.writingStyle, params.preferredGenres);
+  const styleGuidance = getStyleGuidance(params.writerPersonality, params.writingStyle, params.preferredGenres);
 
   // 构建听劝程度说明
   const adaptabilityNote = params.adaptability >= 0.7
@@ -276,12 +261,12 @@ ${params.forcedChapter ? `7. 第${params.forcedChapter}章必须包含：${param
  * 包含 Agent 性格引导和上一章详细内容
  */
 export function buildChapterPrompt(params: {
-  // Agent 性格配置（新增）
-  personality: string;
-  selfIntro: string;
-  writingStyle: string;
+  // Agent 性格配置
+  writerPersonality: string;
+  selfIntro?: string;  // 自我介绍
+  writingStyle: string;  // 写作风格
 
-  // Agent 创作参数（新增）
+  // Agent 创作参数
   wordCountTarget: number;
 
   // 大纲信息
@@ -303,22 +288,14 @@ export function buildChapterPrompt(params: {
   // 使用大纲中的字数要求，优先使用 Agent 配置的字数
   const targetWordCount = params.wordCountTarget || params.outline.word_count_target || 2000;
 
-  // 构建风格引导
+  // 构建风格引导 - 用户填写的 writerPersonality 直接使用，不做关键词检查
   let styleGuidance = '';
-  const personalityKeywords = params.personality.toLowerCase();
-  const styleKeywords = params.writingStyle.toLowerCase();
+  const personalityText = params.writerPersonality || '';
+  const styleKeywords = params.writingStyle?.toLowerCase() || '';
 
-  if (personalityKeywords.includes('幽默') || personalityKeywords.includes('风趣')) {
-    styleGuidance += '保持幽默风趣的风格，对话可以机智诙谐；';
-  }
-  if (personalityKeywords.includes('温柔') || personalityKeywords.includes('细腻')) {
-    styleGuidance += '保持温柔细腻的风格，注重情感描写；';
-  }
-  if (personalityKeywords.includes('悬疑') || personalityKeywords.includes('推理')) {
-    styleGuidance += '保持悬疑推理的风格，节奏紧凑，悬念迭起；';
-  }
-  if (personalityKeywords.includes('史诗') || personalityKeywords.includes('大气')) {
-    styleGuidance += '保持史诗大气的风格，叙事宏大；';
+  // 用户填写了自定义内容，直接使用用户输入
+  if (personalityText.trim()) {
+    styleGuidance += personalityText;
   }
 
   if (styleKeywords === '严肃') {
@@ -338,7 +315,7 @@ export function buildChapterPrompt(params: {
   return '请撰写《' + params.bookTitle + '》第 ' + params.chapterNumber + ' 章。\n\n' +
     '## 作者风格（保持一致）\n' +
     (params.selfIntro ? '你是 ' + params.selfIntro + '\n' : '') +
-    '- 性格特点：' + (params.personality || '根据配置自由发挥') + '\n' +
+    '- 性格特点：' + (params.writerPersonality || '根据配置自由发挥') + '\n' +
     '- 写作风格：' + (styleGuidance || '保持你的个人风格') + '\n\n' +
     '## 本章大纲\n' +
     params.outline.summary + '\n\n' +
@@ -370,16 +347,16 @@ export function buildChapterPrompt(params: {
  */
 export function buildReaderSystemPrompt(params: {
   readerName: string;
-  personality?: string;  // 性格描述
+  readerPersonality?: string;  // 读者性格描述
   preferences: {
     genres: string[];
     style?: string;
     minRating: number;
   };
 }): string {
-  const personalitySection = params.personality
+  const personalitySection = params.readerPersonality
     ? `## 你的性格特点
-${params.personality}
+${params.readerPersonality}
 
 `
     : '';

@@ -41,9 +41,7 @@ export class OutlineService {
     // 构建 Prompt - JSONB 自动解析，无需 JSON.parse
     const prompt = buildOutlinePrompt({
       // Agent 性格配置
-      personality: agentConfig?.persona || '',
-      selfIntro,
-      interestTags: [],
+      writerPersonality: agentConfig?.writerPersonality || '',
       writingStyle: agentConfig?.writingStyle || '多变',
 
       // Agent 创作参数

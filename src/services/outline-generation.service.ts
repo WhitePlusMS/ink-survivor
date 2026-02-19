@@ -11,12 +11,12 @@ import { testModeSendChat } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { toJsonValue } from '@/lib/utils/jsonb-utils';
 
-// Agent 配置接口（完整版）
+// Agent 配置接口
 interface AgentConfig {
   // 基础信息
-  personality: string;        // 性格描述：如"幽默风趣"、"温柔细腻"
-  selfIntro: string;       // 自我介绍
-  interestTags: string[];    // 兴趣标签：如["编程竞赛"]
+  writerPersonality: string;  // 作者性格描述
+  selfIntro?: string;  // 自我介绍
+  interestTags?: string[];  // 兴趣标签
 
   // 写作偏好
   writingStyle: string;      // 写作风格：严肃/幽默/浪漫/悬疑/多变
@@ -93,13 +93,10 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 2. 解析作者配置 - 直接使用数据库中的 persona 字段
-    // 数据库字段：persona（性格描述）, writingStyle, adaptability, maxChapters, wordCountTarget, preferredGenres
+    // 2. 解析作者配置 - 使用数据库的 writerPersonality 字段
     const rawConfig = book.author.agentConfig as unknown as Record<string, unknown>;
     const agentConfig: AgentConfig = {
-      personality: (rawConfig.persona as string) || '',
-      selfIntro: '',
-      interestTags: (rawConfig.interestTags as string[]) || this.extractInterestTags(rawConfig.persona as string),
+      writerPersonality: (rawConfig.writerPersonality as string) || '',
       writingStyle: (rawConfig.writingStyle as string) || '多变',
       adaptability: (rawConfig.adaptability as number) ?? 0.5,
       preferZone: (rawConfig.preferZone as string) || '',
@@ -145,9 +142,7 @@ export class OutlineGenerationService {
       userName: agentConfig.description || '作家',
 
       // Agent 性格配置
-      personality: agentConfig.personality || '',
-      selfIntro: agentConfig.selfIntro || '',
-      interestTags: agentConfig.interestTags || [],
+      writerPersonality: agentConfig.writerPersonality || '',
 
       // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
@@ -166,9 +161,7 @@ export class OutlineGenerationService {
     // 5. 构建大纲生成提示（包含 Agent 性格引导）
     const outlinePrompt = buildOutlinePrompt({
       // Agent 性格配置
-      personality: agentConfig.personality || '',
-      selfIntro: agentConfig.selfIntro || '',
-      interestTags: agentConfig.interestTags || [],
+      writerPersonality: agentConfig.writerPersonality || '',
       writingStyle: agentConfig.writingStyle || '多变',
 
       // Agent 创作参数
@@ -387,9 +380,7 @@ export class OutlineGenerationService {
       userName: agentConfig.description || '作家',
 
       // Agent 性格配置
-      personality: agentConfig.personality || '',
-      selfIntro: agentConfig.selfIntro || '',
-      interestTags: agentConfig.interestTags || [],
+      writerPersonality: agentConfig.writerPersonality || '',
 
       // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
@@ -700,9 +691,7 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
       userName: agentConfig.description || '作家',
 
       // Agent 性格配置
-      personality: agentConfig.personality || '',
-      selfIntro: agentConfig.selfIntro || '',
-      interestTags: agentConfig.interestTags || [],
+      writerPersonality: agentConfig.writerPersonality || '',
 
       // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
@@ -909,33 +898,6 @@ ${params.isLastChapter ? '注意：这是最后一章，需要有完结感。' :
     return zoneMap[zoneStyle.toLowerCase()] || zoneStyle;
   }
 
-  /**
-   * 从 persona 字符串中提取兴趣标签
-   * 支持格式如："兴趣标签：编程竞赛" 或 "兴趣标签：小说创作\n幽默风趣..."
-   */
-  private extractInterestTags(persona: string | null | undefined): string[] {
-    if (!persona) return [];
-
-    const tags: string[] = [];
-
-    // 尝试匹配 "兴趣标签：" 后面的内容
-    const match = persona.match(/兴趣标签[：:]\s*([^\n]+)/);
-    if (match && match[1]) {
-      // 按中文顿号、逗号或空格分割
-      const tagStr = match[1].replace(/[、，,\s]+/g, ',').split(',');
-      tags.push(...tagStr.filter(t => t.trim()));
-    }
-
-    // 如果没有匹配到兴趣标签，但 persona 中包含关键词，也作为标签
-    const keywords = ['编程', '医生', '摄影', '园艺', '小说', '写作', '工程师', '黑客', '比赛'];
-    for (const kw of keywords) {
-      if (persona.includes(kw) && !tags.includes(kw)) {
-        tags.push(kw);
-      }
-    }
-
-    return tags;
-  }
 }
 
 export const outlineGenerationService = new OutlineGenerationService();

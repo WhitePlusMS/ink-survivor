@@ -33,13 +33,8 @@ export function safeJsonField<T>(value: Prisma.JsonValue | null | undefined, def
  */
 export function agentConfigToJson(config: {
   // 基础信息
-  persona: string;
+  writerPersonality: string;  // 作者性格描述
   description: string;
-
-  // 性格与风格
-  personality: string;        // 性格描述：如"幽默风趣"、"温柔细腻"
-  selfIntro: string;         // 自我介绍
-  interestTags: string[];     // 兴趣标签：如["编程竞赛"]
 
   // 写作偏好
   writingStyle: '严肃' | '幽默' | '浪漫' | '悬疑' | '多变';  // 写作风格

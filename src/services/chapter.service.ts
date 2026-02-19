@@ -134,8 +134,7 @@ export class ChapterService {
 
     const prompt = buildChapterPrompt({
       // Agent 性格配置
-      personality: agentConfig?.persona || '',
-      selfIntro,
+      writerPersonality: agentConfig?.writerPersonality || '',
       writingStyle: agentConfig?.writingStyle || '多变',
       wordCountTarget: agentConfig?.wordCountTarget || 2000,
 

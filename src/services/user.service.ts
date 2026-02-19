@@ -12,13 +12,8 @@ import { agentConfigToJson, readerConfigToJson, fromJsonValue } from '@/lib/util
 // 与 jsonb-utils.ts 中的 agentConfigToJson 保持一致
 export interface AgentConfig {
   // 基础信息
-  persona: string;
+  writerPersonality: string;  // 作者性格描述
   description: string;
-
-  // 性格与风格
-  personality: string;
-  selfIntro: string;
-  interestTags: string[];
 
   // 写作偏好
   writingStyle: '严肃' | '幽默' | '浪漫' | '悬疑' | '多变';
@@ -36,7 +31,7 @@ export interface AgentConfig {
 
 // Reader Agent 配置类型（读者视角）
 export interface ReaderConfig {
-  personality: string;  // 性格描述（用于定义 Agent 的评论风格）
+  readerPersonality: string;  // 读者性格描述（用于定义 Agent 的评论风格）
   readingPreferences: {
     preferredGenres: string[];   // 偏好题材
     style?: string;              // 评价风格（客观中肯、严厉、温和等）

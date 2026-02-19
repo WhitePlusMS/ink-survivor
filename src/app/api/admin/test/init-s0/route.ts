@@ -12,16 +12,16 @@ import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } fro
 
 // 10 个风格迥异的 Agent 配置
 const TEST_AGENTS = [
-  { secondMeId: 'agent-001', nickname: '文艺青年_A01', personality: '感性、擅长情感描写', preferZone: 'urban', adaptability: 0.9, riskTolerance: 'low' },
-  { secondMeId: 'agent-002', nickname: '硬核科幻_B02', personality: '理性、注重逻辑', preferZone: 'scifi', adaptability: 0.5, riskTolerance: 'high' },
-  { secondMeId: 'agent-003', nickname: '玄幻大师_C03', personality: '想象力丰富、宏大叙事', preferZone: 'fantasy', adaptability: 0.6, riskTolerance: 'medium' },
-  { secondMeId: 'agent-004', nickname: '悬疑推理_D04', personality: '逻辑严密、擅长埋坑', preferZone: 'urban', adaptability: 0.7, riskTolerance: 'low' },
-  { secondMeId: 'agent-005', nickname: '幽默段子_E05', personality: '乐观幽默、喜欢吐槽', preferZone: 'urban', adaptability: 0.8, riskTolerance: 'medium' },
-  { secondMeId: 'agent-006', nickname: '黑暗写手_F06', personality: '阴暗、擅长反转', preferZone: 'scifi', adaptability: 0.4, riskTolerance: 'high' },
-  { secondMeId: 'agent-007', nickname: '治愈系_G07', personality: '温暖、治愈', preferZone: 'urban', adaptability: 0.95, riskTolerance: 'low' },
-  { secondMeId: 'agent-008', nickname: '动作达人_H08', personality: '热血、动作描写强', preferZone: 'fantasy', adaptability: 0.5, riskTolerance: 'high' },
-  { secondMeId: 'agent-009', nickname: '历史考据_I09', personality: '严谨、考据癖', preferZone: 'fantasy', adaptability: 0.7, riskTolerance: 'medium' },
-  { secondMeId: 'agent-010', nickname: '萌新写手_J10', personality: '好奇、学习欲强', preferZone: 'urban', adaptability: 0.99, riskTolerance: 'medium' },
+  { secondMeId: 'agent-001', nickname: '文艺青年_A01', writerPersonality: '感性、擅长情感描写', preferZone: 'urban', adaptability: 0.9, riskTolerance: 'low' },
+  { secondMeId: 'agent-002', nickname: '硬核科幻_B02', writerPersonality: '理性、注重逻辑', preferZone: 'scifi', adaptability: 0.5, riskTolerance: 'high' },
+  { secondMeId: 'agent-003', nickname: '玄幻大师_C03', writerPersonality: '想象力丰富、宏大叙事', preferZone: 'fantasy', adaptability: 0.6, riskTolerance: 'medium' },
+  { secondMeId: 'agent-004', nickname: '悬疑推理_D04', writerPersonality: '逻辑严密、擅长埋坑', preferZone: 'urban', adaptability: 0.7, riskTolerance: 'low' },
+  { secondMeId: 'agent-005', nickname: '幽默段子_E05', writerPersonality: '乐观幽默、喜欢吐槽', preferZone: 'urban', adaptability: 0.8, riskTolerance: 'medium' },
+  { secondMeId: 'agent-006', nickname: '黑暗写手_F06', writerPersonality: '阴暗、擅长反转', preferZone: 'scifi', adaptability: 0.4, riskTolerance: 'high' },
+  { secondMeId: 'agent-007', nickname: '治愈系_G07', writerPersonality: '温暖、治愈', preferZone: 'urban', adaptability: 0.95, riskTolerance: 'low' },
+  { secondMeId: 'agent-008', nickname: '动作达人_H08', writerPersonality: '热血、动作描写强', preferZone: 'fantasy', adaptability: 0.5, riskTolerance: 'high' },
+  { secondMeId: 'agent-009', nickname: '历史考据_I09', writerPersonality: '严谨、考据癖', preferZone: 'fantasy', adaptability: 0.7, riskTolerance: 'medium' },
+  { secondMeId: 'agent-010', nickname: '萌新写手_J10', writerPersonality: '好奇、学习欲强', preferZone: 'urban', adaptability: 0.99, riskTolerance: 'medium' },
 ];
 
 export async function POST() {
@@ -131,7 +131,7 @@ export async function POST() {
         });
 
         const agentConfig = JSON.stringify({
-          personality: agentData.personality,
+          writerPersonality: agentData.writerPersonality,
           writingStyle: '根据性格自动生成',
           preferZone: agentData.preferZone,
           adaptability: agentData.adaptability,

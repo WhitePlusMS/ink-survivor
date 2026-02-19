@@ -9,7 +9,7 @@ import { ZONE_CONFIGS } from '@/lib/utils/zone';
 
 // 作者配置类型
 interface AuthorConfig {
-  persona: string;
+  writerPersonality: string;  // 作者性格描述
   writingStyle: string;
   adaptability: number;
   preferredGenres: string[];
@@ -23,7 +23,7 @@ interface AuthorConfig {
 
 // 读者配置类型
 interface ReaderConfig {
-  personality: string;  // 性格描述
+  readerPersonality: string;  // 读者性格描述
   readingPreferences: {
     preferredGenres: string[];
     minRatingThreshold: number;
@@ -45,7 +45,7 @@ interface ReaderConfig {
 
 // 默认值
 const DEFAULT_AUTHOR_CONFIG: AuthorConfig = {
-  persona: '',
+  writerPersonality: '',
   writingStyle: '其他',
   adaptability: 0.8,
   preferredGenres: [],
@@ -54,7 +54,7 @@ const DEFAULT_AUTHOR_CONFIG: AuthorConfig = {
 };
 
 const DEFAULT_READER_CONFIG: ReaderConfig = {
-  personality: '',
+  readerPersonality: '',
   readingPreferences: {
     preferredGenres: [],
     minRatingThreshold: 3.0,
@@ -184,7 +184,7 @@ export function AgentConfigForm({
       if (activeTab === 'author') {
         setAuthorConfig({
           ...authorConfig,
-          persona: importText || authorConfig.persona,
+          writerPersonality: importText || authorConfig.writerPersonality,
           secondMeBio: userInfo?.selfIntroduction || userInfo?.bio || '',
           secondMeShades: shades?.map((s: { shadeNamePublic?: string; shadeName: string }) => s.shadeNamePublic || s.shadeName) || [],
           secondMeSoftMemory: softMemory?.map((m: { factContent: string }) => m.factContent) || [],
@@ -192,7 +192,7 @@ export function AgentConfigForm({
       } else {
         setReaderConfig({
           ...readerConfig,
-          personality: importText || readerConfig.personality,
+          readerPersonality: importText || readerConfig.readerPersonality,
           secondMeBio: userInfo?.selfIntroduction || userInfo?.bio || '',
           secondMeShades: shades?.map((s: { shadeNamePublic?: string; shadeName: string }) => s.shadeNamePublic || s.shadeName) || [],
           secondMeSoftMemory: softMemory?.map((m: { factContent: string }) => m.factContent) || [],
@@ -316,11 +316,11 @@ export function AgentConfigForm({
                   key={item.value}
                   type="button"
                   onClick={() =>
-                    setAuthorConfig({ ...authorConfig, persona: item.value })
+                    setAuthorConfig({ ...authorConfig, writerPersonality: item.value })
                   }
                   className={cn(
                     'px-3 py-1.5 rounded-full text-sm transition-all',
-                    authorConfig.persona === item.value
+                    authorConfig.writerPersonality === item.value
                       ? 'bg-primary-600 text-white'
                       : 'bg-white text-surface-600 hover:bg-surface-200 border border-surface-200'
                   )}
@@ -331,9 +331,9 @@ export function AgentConfigForm({
             </div>
             {/* 自定义输入 */}
             <textarea
-              value={authorConfig.persona}
+              value={authorConfig.writerPersonality}
               onChange={(e) =>
-                setAuthorConfig({ ...authorConfig, persona: e.target.value })
+                setAuthorConfig({ ...authorConfig, writerPersonality: e.target.value })
               }
               rows={6}
               className="w-full px-3 py-2 border border-surface-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -535,12 +535,12 @@ export function AgentConfigForm({
                   onClick={() =>
                     setReaderConfig({
                       ...readerConfig,
-                      personality: item.value,
+                      readerPersonality: item.value,
                     })
                   }
                   className={cn(
                     'px-3 py-1.5 rounded-full text-sm transition-all',
-                    readerConfig.personality === item.value
+                    readerConfig.readerPersonality === item.value
                       ? 'bg-primary-600 text-white'
                       : 'bg-white text-surface-600 hover:bg-surface-200 border border-surface-200'
                   )}
@@ -551,11 +551,11 @@ export function AgentConfigForm({
             </div>
             {/* 自定义输入 */}
             <textarea
-              value={readerConfig.personality}
+              value={readerConfig.readerPersonality}
               onChange={(e) =>
                 setReaderConfig({
                   ...readerConfig,
-                  personality: e.target.value,
+                  readerPersonality: e.target.value,
                 })
               }
               placeholder="或自定义输入你的性格描述..."

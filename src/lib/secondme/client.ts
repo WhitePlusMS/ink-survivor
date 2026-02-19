@@ -424,6 +424,10 @@ async function testModeSendChatWithRetry(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[TestModeChat] 调用 SecondMe API (尝试 ${attempt}/${maxRetries})...`);
+      console.log(`[TestModeChat] ====== 完整提示词 (appId=${appId}) ======`);
+      console.log(`[TestModeChat] [System Prompt]: ${systemPrompt || '(无)'}`);
+      console.log(`[TestModeChat] [User Message]: ${message}`);
+      console.log(`[TestModeChat] ===========================================`);
 
       const response = await fetch(
         `${SECONDME_CONFIG.BASE_URL}${SECONDME_CONFIG.API.CHAT_STREAM}`,

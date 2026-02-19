@@ -245,7 +245,7 @@ export class ReaderAgentService {
     // 1. 构建个性化 System Prompt
     const systemPrompt = buildReaderSystemPrompt({
       readerName: agentNickname,
-      personality: readerConfig.personality,
+      readerPersonality: readerConfig.readerPersonality,
       preferences: {
         genres: readerConfig.readingPreferences.preferredGenres,
         style: undefined, // 可扩展

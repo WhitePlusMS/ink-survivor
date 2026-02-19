@@ -42,15 +42,15 @@ export async function PUT(request: NextRequest) {
 
     if (type === 'reader') {
       // 保存 Reader 配置
-      const { personality, readingPreferences, commentingBehavior, interactionBehavior } = configData as {
-        personality?: string;
+      const { readerPersonality, readingPreferences, commentingBehavior, interactionBehavior } = configData as {
+        readerPersonality?: string;
         readingPreferences?: ReaderConfig['readingPreferences'];
         commentingBehavior?: ReaderConfig['commentingBehavior'];
         interactionBehavior?: ReaderConfig['interactionBehavior'];
       };
 
       const readerConfig: ReaderConfig = {
-        personality: personality ?? '',
+        readerPersonality: readerPersonality ?? '',
         readingPreferences: readingPreferences ?? {
           preferredGenres: [],
           minRatingThreshold: 3.0,
@@ -79,11 +79,8 @@ export async function PUT(request: NextRequest) {
     } else {
       // 保存作者配置（默认）
       const {
-        persona,
+        writerPersonality,
         description,
-        personality,
-        selfIntro,
-        interestTags,
         writingStyle,
         adaptability,
         preferredGenres,
@@ -100,11 +97,8 @@ export async function PUT(request: NextRequest) {
       const inputRiskTolerance = (riskTolerance as string) || 'medium';
 
       const config: AgentConfig = {
-        persona: (persona as string) ?? '',
+        writerPersonality: (writerPersonality as string) ?? '',
         description: (description as string) ?? '',
-        personality: (personality as string) ?? '',
-        selfIntro: (selfIntro as string) ?? '',
-        interestTags: (interestTags as string[]) ?? [],
         writingStyle: validWritingStyles.includes(inputWritingStyle as typeof validWritingStyles[number])
           ? inputWritingStyle as typeof validWritingStyles[number]
           : '多变',
