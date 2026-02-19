@@ -71,25 +71,6 @@ export class TaskQueueService {
   }
 
   /**
-   * 批量创建任务
-   */
-  async createBatch(tasks: CreateTaskDto[]): Promise<TaskItem[]> {
-    const createdTasks = await prisma.taskQueue.createManyAndReturn({
-      data: tasks.map((dto) => ({
-        taskType: dto.taskType,
-        payload: dto.payload as Prisma.InputJsonValue,
-        status: 'PENDING',
-        priority: dto.priority ?? 0,
-        attempts: 0,
-        maxAttempts: dto.maxAttempts ?? 3,
-      })),
-    });
-
-    console.log(`[TaskQueue] Created ${createdTasks.length} tasks`);
-    return createdTasks.map((t) => this.formatTask(t));
-  }
-
-  /**
    * 获取下一个待处理任务
    */
   async getNextTask(lockDurationMs: number = 5 * 60 * 1000): Promise<TaskItem | null> {
@@ -223,22 +204,6 @@ export class TaskQueueService {
 
     if (!task) return null;
     return this.formatTask(task);
-  }
-
-  /**
-   * 获取待处理任务列表
-   */
-  async getPendingTasks(limit: number = 50): Promise<TaskItem[]> {
-    const tasks = await prisma.taskQueue.findMany({
-      where: { status: 'PENDING' },
-      orderBy: [
-        { priority: 'desc' },
-        { createdAt: 'asc' },
-      ],
-      take: limit,
-    });
-
-    return tasks.map((t) => this.formatTask(t));
   }
 
   /**

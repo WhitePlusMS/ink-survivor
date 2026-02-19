@@ -338,7 +338,8 @@ export function buildChapterPrompt(params: {
     '1. 标题简洁明了，能概括本章核心内容（不能包含冒号）\n' +
     '2. 正文直接开始，不需要章节标题\n' +
     '3. 字数达到 ' + targetWordCount + ' 字左右\n' +
-    '4. 严格遵守 JSON 格式，key 和 value 一一对应\n\n' +
+    '4. 严格遵守 JSON 格式，key 和 value 一一对应\n' +
+    '5. 重要：content 内容中的所有双引号必须转义为 \\\\, 单引号必须转义为 \\\\\'\n\n' +
     '只输出 JSON，不要有其他内容。';
 }
 

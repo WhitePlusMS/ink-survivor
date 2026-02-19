@@ -1,15 +1,11 @@
 /**
  * LLM 响应 JSON 解析器
  *
- * 使用成熟的 jsonrepair 库处理 LLM 返回的各种格式问题
- *
- * 支持的情况：
- * - Markdown 代码块（```json / ```）
- * - 前后有额外文字说明
- * - 未转义的引号
- * - 单引号代替双引号
- * - 缺失的逗号
- * - 换行符问题
+ * 使用自定义逻辑 + jsonrepair 双重保障
+ * 主要针对 LLM 输出的常见问题：
+ * - content 字段中未转义的引号
+ * - Markdown 代码块
+ * - 各种格式问题
  */
 
 import { jsonrepair } from 'jsonrepair';
@@ -18,156 +14,174 @@ import { jsonrepair } from 'jsonrepair';
  * 指数退避配置
  */
 const RETRY_CONFIG = {
-  maxRetries: 3,           // 最大重试次数
-  baseDelayMs: 1000,       // 基础延迟（毫秒）
-  maxDelayMs: 10000,       // 最大延迟（毫秒）
-  backoffMultiplier: 2,    // 退避倍率
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  backoffMultiplier: 2,
 };
 
 /**
- * 从 LLM 响应中提取并修复 JSON
+ * 修复 JSON 字符串中 content 字段内未转义的引号
+ * 这是 LLM 输出的常见问题：content 中包含中文引号或英文引号导致 JSON 解析失败
  *
- * @param response - LLM 的原始响应
- * @returns 修复后的 JSON 字符串
+ * 示例问题：
+ * {"title":"第一章","content":"他说："你好"，然后..."}
+ * {"title":"第一章","content":"He said: "Hello world" end"}
+ */
+function fixUnescapedQuotesInContent(jsonString: string): string {
+  // 匹配 "content": "..." 的模式
+  // 使用更精确的正则来处理嵌套引号
+  return jsonString.replace(
+    /("content"\s*:\s*")((?:[^"\\]|\\.)*)(\")/g,
+    (match, prefix, content, suffix) => {
+      // 修复 content 中的各种引号问题
+      let fixed = content
+        // 中文左双引号 → 转义
+        .replace(/"/g, '\u201C')
+        // 中文右双引号 → 转义
+        .replace(/"/g, '\u201D')
+        // 英文左双引号(开引号) → 转义
+        .replace(/(?<!\x5c)"/g, '\\"')
+        // 英文右双引号(闭引号) → 转义
+        .replace(/"/g, '\\"');
+
+      return prefix + fixed + suffix;
+    }
+  );
+}
+
+/**
+ * 修复整个 JSON 字符串中的未转义引号（全局修复）
+ */
+function fixAllUnescapedQuotes(input: string): string {
+  let result = input;
+
+  // 方法1：针对 content 字段的定向修复
+  result = fixUnescapedQuotesInContent(result);
+
+  // 方法2：全局修复未转义的英文双引号（但要避免破坏已转义的）
+  // 匹配不在字符串内且未转义的引号
+  result = result.replace(
+    /(?<!\\)(?:\\\\)*(?<!["\\])"(?!\s*:|\s*,|\s*\]|\s*\}|\s*$)/g,
+    '\\"'
+  );
+
+  return result;
+}
+
+/**
+ * 从 LLM 响应中提取并修复 JSON
  */
 function extractAndRepairJson(response: string): string {
-  const cleanedResponse = response;
+  // 预处理：移除 Markdown 代码块标记
+  let processed = response
+    .replace(/^```json\s*/g, '')
+    .replace(/^```\s*/g, '')
+    .replace(/\s*```$/g, '');
 
-  // 0. 预处理：只清理不属于 JSON 响应的内容
-  // 注意：不删除内容中的换行和空格，因为这些是小说正文的一部分
-  // 让 jsonrepair 库来处理 JSON 格式问题
-
-  // 0.1 检查是否是纯文本（没有任何 JSON 特征）
-  const trimmed = cleanedResponse.trim();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && !trimmed.includes('```json') && !trimmed.includes('```')) {
-    // 纯文本响应，包装成 JSON 对象
+  // 检查是否是纯文本
+  const trimmed = processed.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && !trimmed.includes('```')) {
     console.log(`[LLM Parser] 检测到纯文本响应，包装成 JSON 格式`);
     return JSON.stringify({
       title: "章节内容",
-      content: cleanedResponse.trim()
+      content: trimmed
     });
   }
 
-  // 1. 尝试提取 ```json ... ``` 包裹的内容
-  const jsonCodeBlock = cleanedResponse.match(/```json\s*([\s\S]*?)\s*```/);
+  // 尝试提取 ```json ... ``` 包裹的内容
+  const jsonCodeBlock = processed.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonCodeBlock) {
     const content = jsonCodeBlock[1].trim();
-    try {
-      JSON.parse(content);
-      return content;
-    } catch {
-      // 使用 jsonrepair 修复
-      return jsonrepair(content);
-    }
+    return repairJsonString(content);
   }
 
-  // 2. 尝试提取 ``` ... ``` 包裹的内容
-  const plainCodeBlock = cleanedResponse.match(/```\s*([\s\S]*?)\s*```/);
+  // 尝试提取 ``` ... ``` 包裹的内容
+  const plainCodeBlock = processed.match(/```\s*([\s\S]*?)\s*```/);
   if (plainCodeBlock) {
     const content = plainCodeBlock[1].trim();
-    try {
-      return jsonrepair(content);
-    } catch {
-      // jsonrepair 失败，返回包装后的纯文本
-      console.log(`[LLM Parser] 代码块解析失败，尝试提取纯文本`);
-      return JSON.stringify({
-        title: "章节内容",
-        content: cleanedResponse.trim()
-      });
-    }
+    return repairJsonString(content);
   }
 
-  // 3. 尝试提取 { ... } 结构
-  const firstBrace = cleanedResponse.indexOf('{');
-  const lastBrace = cleanedResponse.lastIndexOf('}');
+  // 尝试提取 { ... } 结构
+  const firstBrace = processed.indexOf('{');
+  const lastBrace = processed.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const extracted = cleanedResponse.substring(firstBrace, lastBrace + 1);
-    try {
-      JSON.parse(extracted);
-      return extracted;
-    } catch {
-      // 使用 jsonrepair 修复
-      try {
-        return jsonrepair(extracted);
-      } catch {
-        // jsonrepair 也失败，尝试更激进的方法
-        console.log(`[LLM Parser] JSON 提取和修复都失败，尝试提取 title 和 content 字段`);
-        return extractChapterFromText(cleanedResponse);
-      }
-    }
+    const extracted = processed.substring(firstBrace, lastBrace + 1);
+    return repairJsonString(extracted);
   }
 
-  // 4. 如果以上都失败，尝试从文本中提取章节内容
+  // 最后的备用方案
   console.log(`[LLM Parser] 无法提取 JSON，尝试从文本提取`);
-  return extractChapterFromText(cleanedResponse);
+  return extractFieldsFromText(processed);
 }
 
 /**
- * 从纯文本中提取章节内容
- * 当 JSON 解析失败时的备用方案
+ * 修复 JSON 字符串的完整流程
+ * 1. 先尝试自定义修复（针对 content 字段）
+ * 2. 再用 jsonrepair 处理其他问题
+ * 3. 最后尝试直接解析
  */
-function extractChapterFromText(text: string): string {
-  // 尝试提取 title
+function repairJsonString(input: string): string {
+  // 第1步：自定义修复未转义引号
+  let fixed = fixAllUnescapedQuotes(input);
+
+  // 第2步：验证是否修复成功
+  try {
+    JSON.parse(fixed);
+    return fixed;
+  } catch {
+    // 第3步：使用 jsonrepair
+    try {
+      fixed = jsonrepair(fixed);
+      JSON.parse(fixed); // 验证
+      return fixed;
+    } catch {
+      // 第4步：提取字段作为后备
+      return extractFieldsFromText(input);
+    }
+  }
+}
+
+/**
+ * 从纯文本中提取字段
+ */
+function extractFieldsFromText(text: string): string {
   const titleMatch = text.match(/"title"\s*:\s*"([^"]+)"/) || text.match(/title[:：]\s*([^\n]+)/i);
   const title = titleMatch ? titleMatch[1] : "章节内容";
 
-  // 尝试提取 content（更激进：获取第一个 ``` 之后的所有内容）
   const contentMatch = text.match(/```[\s\S]*?```/);
-  let content = text;
-  if (contentMatch) {
-    // 移除代码块标记，保留内容
-    content = contentMatch[0].replace(/```\w*\s*/g, '').trim();
-  } else {
-    // 如果没有代码块，尝试获取 { } 之间的内容
-    const braceMatch = text.match(/\{[\s\S]*\}/);
-    if (braceMatch) {
-      content = braceMatch[0];
-    }
-  }
+  const content = contentMatch
+    ? contentMatch[0].replace(/```\w*\s*/g, '').trim()
+    : text;
 
-  // 返回修复后的 JSON
-  try {
-    return jsonrepair(`{"title":"${title}","content":${JSON.stringify(content)}}`);
-  } catch {
-    // 最坏情况：直接返回纯文本包装
-    return JSON.stringify({
-      title: title,
-      content: text.substring(0, 5000) // 限制长度
-    });
-  }
+  return JSON.stringify({
+    title,
+    content
+  });
 }
 
 /**
- * 计算指数退避延迟时间
+ * 计算指数退避延迟
  */
 function getExponentialBackoffDelay(attempt: number): number {
   const delay = Math.min(
     RETRY_CONFIG.baseDelayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt),
     RETRY_CONFIG.maxDelayMs
   );
-  // 添加随机抖动（±20%）
   const jitter = delay * 0.2 * (Math.random() - 0.5) * 2;
   return Math.max(0, Math.round(delay + jitter));
 }
 
 /**
  * 带指数退避的 LLM 响应 JSON 解析
- *
- * @param llmResponseFn - 返回 LLM 响应的异步函数
- * @param options - 解析选项
- * @returns 解析后的 JSON 对象
- * @throws Error - 当重试次数用尽后解析仍失败
  */
 export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
   llmResponseFn: () => Promise<string>,
   options?: {
-    /** 期望的根键名，如果指定则从该键提取值 */
     rootKey?: string;
-    /** 打印日志的字符数 */
     logLength?: number;
-    /** 自定义重试次数（覆盖默认配置） */
     maxRetries?: number;
-    /** 任务标识，用于日志 */
     taskId?: string;
   }
 ): Promise<T> {
@@ -177,15 +191,12 @@ export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // 调用 LLM 获取响应
       const response = await llmResponseFn();
       console.log(`[${taskId}] LLM 响应 (尝试 ${attempt + 1}/${maxRetries + 1}): ${response.substring(0, logLength)}...`);
 
-      // 解析 JSON
       const repairedJson = extractAndRepairJson(response);
       const parsed = JSON.parse(repairedJson) as Record<string, unknown>;
 
-      // 如果指定了根键，提取该键的值
       if (rootKey) {
         if (!(rootKey in parsed)) {
           throw new Error(`响应中未找到根键 "${rootKey}"`);
@@ -199,7 +210,6 @@ export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
-      // 增强错误信息，包含更多上下文
       const enhancedError = lastError.message.includes('原始响应预览')
         ? lastError
         : new Error(`${lastError.message} (尝试 ${attempt + 1}/${maxRetries + 1})`);
@@ -216,24 +226,16 @@ export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
     }
   }
 
-  // 理论上不会到这里
   throw lastError || new Error('未知错误');
 }
 
 /**
- * 解析 LLM 响应为 JSON 对象（单次尝试，不重试）
- *
- * @param response - LLM 的原始响应
- * @param options - 解析选项
- * @returns 解析后的 JSON 对象
- * @throws Error - 当解析失败时
+ * 解析 LLM 响应为 JSON 对象（单次尝试）
  */
 export function parseLLMJson<T = Record<string, unknown>>(
   response: string,
   options?: {
-    /** 期望的根键名，如果指定则从该键提取值 */
     rootKey?: string;
-    /** 打印日志的字符数 */
     logLength?: number;
   }
 ): T {
@@ -242,14 +244,11 @@ export function parseLLMJson<T = Record<string, unknown>>(
   console.log(`[LLM Parser] 原始响应: ${response.substring(0, logLength)}...`);
 
   try {
-    // 提取并修复 JSON
     const repairedJson = extractAndRepairJson(response);
     console.log(`[LLM Parser] 修复后: ${repairedJson.substring(0, logLength)}...`);
 
-    // 解析 JSON
     const parsed = JSON.parse(repairedJson) as Record<string, unknown>;
 
-    // 如果指定了根键，提取该键的值
     if (rootKey) {
       if (!(rootKey in parsed)) {
         throw new Error(`响应中未找到根键 "${rootKey}"`);
@@ -268,7 +267,7 @@ export function parseLLMJson<T = Record<string, unknown>>(
 }
 
 /**
- * 安全解析 LLM 响应 - 失败时返回 null 而不是抛出异常
+ * 安全解析 - 失败返回 null
  */
 export function parseLLMJsonSafe<T = Record<string, unknown>>(
   response: string,
