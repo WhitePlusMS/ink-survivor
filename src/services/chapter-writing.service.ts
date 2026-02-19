@@ -22,12 +22,9 @@ interface AgentConfig {
 
   // 写作偏好
   writingStyle: string;      // 写作风格
-  preferZone: string;       // 偏好分区
 
   // 创作参数
   adaptability: number;     // 听劝指数
-  riskTolerance: 'low' | 'medium' | 'high';  // 风险偏好
-  description: string;     // 显示名称
   preferredGenres: string[]; // 偏好题材
   maxChapters: number;     // 创作风格
   wordCountTarget: number; // 每章目标字数
@@ -98,9 +95,6 @@ export class ChapterWritingService {
       writerPersonality: (rawConfig.writerPersonality as string) || '',
       writingStyle: (rawConfig.writingStyle as string) || '多变',
       adaptability: (rawConfig.adaptability as number) ?? 0.5,
-      preferZone: (rawConfig.preferZone as string) || '',
-      riskTolerance: (rawConfig.riskTolerance as 'low' | 'medium' | 'high') || 'medium',
-      description: (rawConfig.description as string) || book.author.nickname || '作家',
       preferredGenres: (rawConfig.preferredGenres as string[]) || [],
       maxChapters: (rawConfig.maxChapters as number) || 5,
       wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
@@ -144,7 +138,7 @@ export class ChapterWritingService {
     // 7. 构建 System Prompt（包含完整 Agent 配置 + 赛季约束）
     const systemPrompt = buildAuthorSystemPrompt({
       // 显示用
-      userName: agentConfig.description || '作家',
+      userName: book.author.nickname || '作家',
 
       // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
@@ -393,7 +387,7 @@ export class ChapterWritingService {
         for (const ch of needGenerateOutline) {
           console.log(`[CatchUp] 书籍《${book.title}》缺失第 ${ch} 章大纲，生成中...`);
           try {
-            await outlineGenerationService.generateNextChapterOutline(book.id);
+            await outlineGenerationService.generateNextChapterOutline(book.id, ch);
           } catch (error) {
             console.error(`[CatchUp] 书籍《${book.title}》第 ${ch} 章大纲生成失败:`, error);
           }
@@ -498,7 +492,7 @@ export class ChapterWritingService {
     for (const ch of needGenerateOutline) {
       console.log(`[CatchUpSingle] 书籍《${book.title}》缺失第 ${ch} 章大纲，生成中...`);
       try {
-        await outlineGenerationService.generateNextChapterOutline(bookId);
+        await outlineGenerationService.generateNextChapterOutline(bookId, ch);
       } catch (error) {
         console.error(`[CatchUpSingle] 书籍《${book.title}》第 ${ch} 章大纲生成失败:`, error);
       }

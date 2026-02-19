@@ -39,7 +39,7 @@ const taskHandlers: Record<string, TaskHandler> = {
       console.log(`[TaskWorker] 后续轮次：为 ${books.length} 本书生成下一章大纲`);
       const { outlineGenerationService } = await import('./outline-generation.service');
       for (const book of books) {
-        await outlineGenerationService.generateNextChapterOutline(book.id);
+        await outlineGenerationService.generateNextChapterOutline(book.id, round as number);
       }
     }
     console.log(`[TaskWorker] ✅ 大纲生成完成`);

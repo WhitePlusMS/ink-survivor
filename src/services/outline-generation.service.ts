@@ -20,13 +20,10 @@ interface AgentConfig {
 
   // 写作偏好
   writingStyle: string;      // 写作风格：严肃/幽默/浪漫/悬疑/多变
-  preferZone: string;       // 偏好分区
 
   // 创作参数
   adaptability: number;     // 听劝指数：0-1
-  riskTolerance: 'low' | 'medium' | 'high';  // 风险偏好
-  description: string;      // 显示名称
-  preferredGenres: string[]; // 偏好题材：['urban', 'fantasy', 'scifi', ...]
+  preferredGenres: string[]; // 偏好题材：['都市', '玄幻', '科幻', ...]
   maxChapters: number;     // 创作风格：3=短篇, 5=中篇, 7=长篇
   wordCountTarget: number;  // 每章目标字数：1000/2000/3000
 }
@@ -99,9 +96,6 @@ export class OutlineGenerationService {
       writerPersonality: (rawConfig.writerPersonality as string) || '',
       writingStyle: (rawConfig.writingStyle as string) || '多变',
       adaptability: (rawConfig.adaptability as number) ?? 0.5,
-      preferZone: (rawConfig.preferZone as string) || '',
-      riskTolerance: (rawConfig.riskTolerance as 'low' | 'medium' | 'high') || 'medium',
-      description: (rawConfig.description as string) || book.author.nickname || '作家',
       preferredGenres: (rawConfig.preferredGenres as string[]) || [],
       maxChapters: (rawConfig.maxChapters as number) || 5,
       wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
@@ -139,7 +133,7 @@ export class OutlineGenerationService {
     // 4. 构建 System Prompt（包含完整 Agent 配置 + 赛季约束）
     const systemPrompt = buildAuthorSystemPrompt({
       // 显示用
-      userName: agentConfig.description || '作家',
+      userName: book.author.nickname || '作家',
 
       // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
@@ -215,8 +209,10 @@ export class OutlineGenerationService {
    * 3. 结合 adaptability（听劝程度）决定
    * 4. 如果改 → 修改大纲 → 保存新版本 → 生成第 N 章大纲
    * 5. 如果不改 → 直接生成第 N 章大纲
+   * @param bookId - 书籍ID
+   * @param targetRound - 目标轮次（可选，不传则根据章节数计算）
    */
-  async generateNextChapterOutline(bookId: string): Promise<void> {
+  async generateNextChapterOutline(bookId: string, targetRound?: number): Promise<void> {
     console.log(`[Outline] 开始为书籍 ${bookId} 生成下一章大纲`);
 
     // 1. 获取书籍信息和当前章节数
@@ -236,11 +232,12 @@ export class OutlineGenerationService {
       return;
     }
 
-    // 使用 chapters 数组长度作为当前章节数
+    // 计算目标章节号：如果传入了 targetRound 则使用，否则基于已有章节数计算
+    // 第N轮应该生成第N章大纲
     const currentChapterCount = book.chapters.length;
-    const nextChapterNumber = currentChapterCount + 1;
+    const nextChapterNumber = targetRound ?? currentChapterCount + 1;
 
-    console.log(`[Outline] 书籍《${book.title}》当前 ${currentChapterCount} 章，生成第 ${nextChapterNumber} 章大纲`);
+    console.log(`[Outline] 书籍《${book.title}》当前 ${currentChapterCount} 章，目标轮次 ${targetRound ?? '未指定'}，生成第 ${nextChapterNumber} 章大纲`);
 
     // 2. 获取现有大纲 - 从 Book 表获取
     const existingBook = await prisma.book.findUnique({
@@ -377,7 +374,7 @@ export class OutlineGenerationService {
     // 7. 构建 System Prompt（包含完整 Agent 配置）
     const systemPrompt = buildAuthorSystemPrompt({
       // 显示用
-      userName: agentConfig.description || '作家',
+      userName: book.author.nickname || '作家',
 
       // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
@@ -674,8 +671,13 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
   ): Promise<ChapterOutline[]> {
     console.log(`[Outline] 开始修改大纲，修改范围：第 ${currentRound} 章及以后`);
 
-    // 获取赛季信息
-    const book = await prisma.book.findUnique({ where: { id: bookId } });
+    // 获取赛季信息和作者信息
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      include: {
+        author: { select: { nickname: true } },
+      },
+    });
     if (!book?.seasonId) {
       throw new Error('书籍不存在或无赛季信息');
     }
@@ -688,7 +690,7 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
     // 构建修改大纲的 prompt（包含完整 Agent 配置）
     const systemPrompt = buildAuthorSystemPrompt({
       // 显示用
-      userName: agentConfig.description || '作家',
+      userName: book.author.nickname || '作家',
 
       // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',

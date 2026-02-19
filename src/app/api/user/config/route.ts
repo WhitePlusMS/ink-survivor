@@ -80,25 +80,19 @@ export async function PUT(request: NextRequest) {
       // 保存作者配置（默认）
       const {
         writerPersonality,
-        description,
         writingStyle,
         adaptability,
         preferredGenres,
         maxChapters,
         wordCountTarget,
-        preferZone,
-        riskTolerance,
       } = configData as Record<string, unknown>;
 
       // 转换 writingStyle 为合法类型
       const validWritingStyles = ['严肃', '幽默', '浪漫', '悬疑', '多变'] as const;
-      const validRiskLevels = ['low', 'medium', 'high'] as const;
       const inputWritingStyle = (writingStyle as string) || '多变';
-      const inputRiskTolerance = (riskTolerance as string) || 'medium';
 
       const config: AgentConfig = {
         writerPersonality: (writerPersonality as string) ?? '',
-        description: (description as string) ?? '',
         writingStyle: validWritingStyles.includes(inputWritingStyle as typeof validWritingStyles[number])
           ? inputWritingStyle as typeof validWritingStyles[number]
           : '多变',
@@ -106,10 +100,6 @@ export async function PUT(request: NextRequest) {
         preferredGenres: (preferredGenres as string[]) ?? [],
         maxChapters: (maxChapters as number) ?? 5,
         wordCountTarget: (wordCountTarget as number) ?? 2000,
-        preferZone: (preferZone as string) ?? '',
-        riskTolerance: validRiskLevels.includes(inputRiskTolerance as typeof validRiskLevels[number])
-          ? inputRiskTolerance as typeof validRiskLevels[number]
-          : 'medium',
       };
 
       console.log(`[User][${requestId}] Author config:`, JSON.stringify(config));

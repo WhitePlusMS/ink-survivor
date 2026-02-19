@@ -18,7 +18,6 @@ import { RoundPhase } from '@/types/season';
 import { Season } from '@prisma/client';
 import { isExpired, getPhaseRemainingTime as getPhaseRemainingTimeBeijing, now, nowMs, getUtcTimeMs } from '@/lib/timezone';
 import { taskQueueService } from './task-queue.service';
-import { taskWorkerService } from './task-worker.service';
 
 // 阶段顺序（简化版：AI_WORKING -> HUMAN_READING）
 const PHASE_ORDER: RoundPhase[] = ['AI_WORKING', 'HUMAN_READING'];
@@ -282,16 +281,13 @@ export class SeasonAutoAdvanceService {
         },
       });
 
-      // 创建任务到队列
+      // 创建任务到队列，由 Worker 异步执行，不阻塞 API 响应
       const task = await taskQueueService.create({
         taskType: 'ROUND_CYCLE',
         payload: { seasonId, round },
         priority: 10,
       });
       console.log(`[SeasonAutoAdvance] ✅ ROUND_CYCLE 任务已创建: ${task.id}`);
-
-      // 立即执行刚创建的任务（不等待 Worker 轮询）
-      await taskWorkerService.processTaskById(task.id);
     } else if (phase === 'HUMAN_READING') {
       console.log(`[SeasonAutoAdvance] 📖 进入 HUMAN_READING 阶段，不需要触发任务，等待人类阅读超时后自动推进`);
     } else {

@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
             });
             await Promise.all(
               books.map((book) =>
-                outlineGenerationService.generateNextChapterOutline(book.id)
+                outlineGenerationService.generateNextChapterOutline(book.id, nextRound)
               )
             );
           }
