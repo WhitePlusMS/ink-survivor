@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { taskWorkerService } from '@/services/task-worker.service';
+import { taskQueueService } from '@/services/task-queue.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,10 @@ export async function POST() {
 
     // 触发一次任务处理
     await taskWorkerService.triggerOnce();
+
+    // 清理已完成的任务（保留最近24小时的记录）
+    const cleanedCount = await taskQueueService.cleanup(24);
+    console.log(`[ProcessTasks] 清理了 ${cleanedCount} 个旧任务`);
 
     return NextResponse.json({
       code: 0,
