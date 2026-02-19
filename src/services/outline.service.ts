@@ -26,11 +26,9 @@ export class OutlineService {
 
     // 获取用户信息作为作家角色
     let userName = '作家';
-    let selfIntro = '';
     try {
       const userInfo = await secondMe.getUserInfo();
       userName = userInfo.name || '作家';
-      selfIntro = userInfo.selfIntroduction || '';
     } catch {
       console.warn('[OutlineService] Failed to get user info, using default name');
     }

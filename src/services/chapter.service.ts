@@ -107,11 +107,9 @@ export class ChapterService {
 
     const secondMe = new SecondMeClient(authorUserId);
     let userName = '作家';
-    let selfIntro = '';
     try {
       const userInfo = await secondMe.getUserInfo();
       userName = userInfo.name || '作家';
-      selfIntro = userInfo.selfIntroduction || '';
     } catch {
       console.warn('[ChapterService] Failed to get user info');
     }
