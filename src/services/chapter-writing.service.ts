@@ -218,16 +218,24 @@ export class ChapterWritingService {
 
     console.log(`[Chapter] 书籍《${book.title}》第 ${chapterNumber} 章发布完成`);
 
-    // 11. 更新书籍状态
+    // 11. 检查是否已完成所有章节（达到 maxChapters）
+    const bookMaxChapters = agentConfig.maxChapters || 5;
+    const isCompleted = chapterNumber >= bookMaxChapters;
+
+    // 12. 更新书籍状态
     await prisma.book.update({
       where: { id: bookId },
       data: {
         currentChapter: chapterNumber,
-        status: 'ACTIVE',
+        status: isCompleted ? 'COMPLETED' : 'ACTIVE',
       },
     });
 
-    // 12. 更新评分 - 使用 Book 的合并字段
+    if (isCompleted) {
+      console.log(`[Chapter] 书籍《${book.title}》已完成所有 ${bookMaxChapters} 章，标记为 COMPLETED`);
+    }
+
+    // 13. 更新评分 - 使用 Book 的合并字段
     await prisma.book.update({
       where: { id: bookId },
       data: {
@@ -254,16 +262,24 @@ export class ChapterWritingService {
 
   /**
    * 为赛季中所有需要创作章节的书籍创作章节
+   * @param seasonId - 赛季ID
+   * @param chapterNumber - 目标章节号
+   * @param bookIds - 可选，指定书籍ID列表（用于过滤）
    */
-  async writeChaptersForSeason(seasonId: string, chapterNumber: number): Promise<void> {
+  async writeChaptersForSeason(seasonId: string, chapterNumber: number, bookIds?: string[]): Promise<void> {
     console.log(`[Chapter] 开始为赛季 ${seasonId} 第 ${chapterNumber} 章创作`);
 
     // 1. 获取该赛季所有活跃书籍
+    const whereCondition: { seasonId: string; status: string; id?: { in: string[] } } = {
+      seasonId,
+      status: 'ACTIVE',
+    };
+    if (bookIds && bookIds.length > 0) {
+      whereCondition.id = { in: bookIds };
+    }
+
     const allBooks = await prisma.book.findMany({
-      where: {
-        seasonId,
-        status: 'ACTIVE',
-      },
+      where: whereCondition,
       include: {
         _count: { select: { chapters: true } },
       },

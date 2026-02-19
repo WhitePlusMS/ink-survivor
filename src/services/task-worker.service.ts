@@ -22,12 +22,24 @@ const taskHandlers: Record<string, TaskHandler> = {
 
     if (!seasonId || !round) throw new Error('seasonId and round are required');
 
-    // 查询当前赛季的所有书籍
-    const books = await prisma.book.findMany({
+    // 查询当前赛季的所有活跃书籍（已完成的书籍不再参与）
+    const allBooks = await prisma.book.findMany({
       where: { seasonId: seasonId as string, status: 'ACTIVE' },
-      select: { id: true },
+      include: {
+        author: { select: { agentConfig: true } },
+        _count: { select: { chapters: true } },
+      },
     });
-    console.log(`[TaskWorker] 找到 ${books.length} 本活跃书籍`);
+
+    // 过滤掉已完成所有章节的书籍
+    const activeBooks = allBooks.filter(book => {
+      const agentConfig = book.author.agentConfig as unknown as { maxChapters?: number } | null;
+      const maxChapters = agentConfig?.maxChapters || 5;
+      const currentChapters = book._count.chapters as number;
+      return currentChapters < maxChapters;
+    });
+
+    console.log(`[TaskWorker] 找到 ${allBooks.length} 本书籍，其中 ${activeBooks.length} 本需要继续创作`);
 
     // 1. 大纲生成（第1轮生成整本，后续轮优化单章）
     console.log(`[TaskWorker] 📝 步骤1: 生成大纲`);
@@ -36,18 +48,18 @@ const taskHandlers: Record<string, TaskHandler> = {
       const { outlineGenerationService } = await import('./outline-generation.service');
       await outlineGenerationService.generateOutlinesForSeason(seasonId as string);
     } else {
-      console.log(`[TaskWorker] 后续轮次：为 ${books.length} 本书生成下一章大纲`);
+      console.log(`[TaskWorker] 后续轮次：为 ${activeBooks.length} 本书生成下一章大纲`);
       const { outlineGenerationService } = await import('./outline-generation.service');
-      for (const book of books) {
+      for (const book of activeBooks) {
         await outlineGenerationService.generateNextChapterOutline(book.id, round as number);
       }
     }
     console.log(`[TaskWorker] ✅ 大纲生成完成`);
 
-    // 2. 章节生成（并发处理所有书籍）
+    // 2. 章节生成（并发处理活跃书籍）
     console.log(`[TaskWorker] ✍️ 步骤2: 生成章节内容`);
     const { chapterWritingService } = await import('./chapter-writing.service');
-    await chapterWritingService.writeChaptersForSeason(seasonId as string, round as number);
+    await chapterWritingService.writeChaptersForSeason(seasonId as string, round as number, activeBooks.map(b => b.id));
     console.log(`[TaskWorker] ✅ 章节生成完成`);
 
     // 3. AI 评论
@@ -56,11 +68,13 @@ const taskHandlers: Record<string, TaskHandler> = {
 
     // 4. 落后检测
     console.log(`[TaskWorker] 🔍 步骤4: 落后检测`);
-    const allBooks = await prisma.book.findMany({
-      where: { seasonId: seasonId as string, status: 'ACTIVE' },
-      include: { _count: { select: { chapters: true } } },
+    // 使用之前查询的 activeBooks 进行落后检测
+    const behindBooks = activeBooks.filter(book => {
+      const agentConfig = book.author.agentConfig as unknown as { maxChapters?: number } | null;
+      const maxChapters = agentConfig?.maxChapters || 5;
+      const currentChapters = book._count.chapters as number;
+      return currentChapters < maxChapters && currentChapters < (round as number);
     });
-    const behindBooks = allBooks.filter(book => (book._count.chapters as number) < (round as number));
     console.log(`[TaskWorker] 落后书籍数量: ${behindBooks.length}`);
 
     if (behindBooks.length > 0) {

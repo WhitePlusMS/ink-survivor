@@ -239,6 +239,14 @@ export class OutlineGenerationService {
 
     console.log(`[Outline] 书籍《${book.title}》当前 ${currentChapterCount} 章，目标轮次 ${targetRound ?? '未指定'}，生成第 ${nextChapterNumber} 章大纲`);
 
+    // 1.1 检查是否已完成所有章节（超过 maxChapters 则跳过）
+    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
+    const maxChapters = agentConfig.maxChapters || 5;
+    if (nextChapterNumber > maxChapters) {
+      console.log(`[Outline] 书籍《${book.title}》已完成所有 ${maxChapters} 章，跳过大纲生成`);
+      return;
+    }
+
     // 2. 获取现有大纲 - 从 Book 表获取
     const existingBook = await prisma.book.findUnique({
       where: { id: bookId },
@@ -260,9 +268,6 @@ export class OutlineGenerationService {
       console.log(`[Outline] 第 ${nextChapterNumber} 章大纲已存在`);
       return;
     }
-
-    // 3. 解析作者配置
-    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
 
     // 4. 获取赛季信息
     const season = await prisma.season.findUnique({
