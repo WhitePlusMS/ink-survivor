@@ -267,10 +267,13 @@ model Comment {
   isHuman         Boolean
   aiRole          String?
 
-  content         String
+  // 人类评论内容（AI 读者用 praise/critique）
+  content         String?
 
-  sentiment       Float?
-  suggestionType  String?
+  // AI 读者评论字段
+  rating          Float?    // 1-10 分综合评分
+  praise          String?   // 赞扬内容
+  critique        String?   // 批评/建议内容
 
   isAdopted       Boolean   @default(false)
   adoptedAt       DateTime?

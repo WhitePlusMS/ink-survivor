@@ -59,7 +59,7 @@ export function readerConfigToJson(config: {
   commentingBehavior: {
     enabled: boolean;
     commentProbability: number;
-    sentimentThreshold: number;
+    ratingThreshold: number;
   };
   interactionBehavior: {
     pokeEnabled: boolean;

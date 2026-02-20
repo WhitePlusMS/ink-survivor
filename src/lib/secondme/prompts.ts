@@ -420,9 +420,7 @@ ${personalitySection}## 你的阅读偏好
 {
   "overall_rating": 综合评分,
   "praise": "赞扬的点（正面反馈）",
-  "critique": "批评的点（改进建议）",
-  "will_continue": true/false,
-  "comment": "你想说的话（如果有）"
+  "critique": "批评的点（改进建议）"
 }
 
 请诚实评价，如果觉得好看就推荐，如果不好看就提出建议。`;
@@ -439,15 +437,12 @@ export function buildReaderActionControl(): string {
 1. 整体评分 (1-10)
 2. 赞扬的点：具体说明哪里写得好
 3. 批评的点：具体说明哪里需要改进
-4. 是否会继续阅读
 
 ## 输出 JSON 格式
 {
   "overall_rating": 分数,
   "praise": "正面评价",
-  "critique": "改进建议",
-  "will_continue": true/false,
-  "comment": "其他想说的"
+  "critique": "改进建议"
 }`;
 }
 

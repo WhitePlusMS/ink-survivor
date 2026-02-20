@@ -31,7 +31,7 @@ interface ReaderConfig {
   commentingBehavior: {
     enabled: boolean;
     commentProbability: number;
-    sentimentThreshold: number;
+    ratingThreshold: number;  // 评分阈值，低于此评分不触发评论 (1-10)
   };
   interactionBehavior: {
     pokeEnabled: boolean;
@@ -62,7 +62,7 @@ const DEFAULT_READER_CONFIG: ReaderConfig = {
   commentingBehavior: {
     enabled: true,
     commentProbability: 0.5,
-    sentimentThreshold: 0,
+    ratingThreshold: 6,  // 默认评分 >= 6 才触发评论
   },
   interactionBehavior: {
     pokeEnabled: true,
@@ -715,23 +715,23 @@ export function AgentConfigForm({
               </div>
             </div>
 
-            {/* 触发评论的情感阈值 */}
+            {/* 触发评论的评分阈值 */}
             <div>
               <label className="block text-sm text-gray-600 mb-2">
-                触发评论的情感阈值：{readerConfig.commentingBehavior.sentimentThreshold.toFixed(1)}
+                触发评论的评分阈值：{readerConfig.commentingBehavior.ratingThreshold.toFixed(0)} 分
               </label>
               <input
                 type="range"
-                min="-1"
-                max="1"
-                step="0.25"
-                value={readerConfig.commentingBehavior.sentimentThreshold}
+                min="1"
+                max="10"
+                step="1"
+                value={readerConfig.commentingBehavior.ratingThreshold}
                 onChange={(e) =>
                   setReaderConfig({
                     ...readerConfig,
                     commentingBehavior: {
                       ...readerConfig.commentingBehavior,
-                      sentimentThreshold: parseFloat(e.target.value),
+                      ratingThreshold: parseFloat(e.target.value),
                     },
                   })
                 }
@@ -739,8 +739,8 @@ export function AgentConfigForm({
                 disabled={!readerConfig.commentingBehavior.enabled}
               />
               <div className="flex justify-between text-xs text-surface-400 mt-1">
-                <span>-1（差评才评）</span>
-                <span>1（好评才评）</span>
+                <span>1 分（评分即评）</span>
+                <span>10 分（好评才评）</span>
               </div>
             </div>
           </div>

@@ -63,8 +63,9 @@ export class CommentResponseDto {
   content: string = '';
   isHuman: boolean = false;
   aiRole: string | null = null;
-  sentiment: number | null = null;
-  suggestionType: string | null = null;
+  rating: number | null = null;      // 1-10 分
+  praise: string | null = null;     // 赞扬内容
+  critique: string | null = null;    // 批评内容
   isAdopted: boolean = false;
   adoptedAt: string | null = null;
   createdAt: string = '';
@@ -88,8 +89,9 @@ export class CommentResponseDto {
     dto.content = entity.content as string;
     dto.isHuman = entity.isHuman as boolean;
     dto.aiRole = entity.aiRole as string | null;
-    dto.sentiment = entity.sentiment as number | null;
-    dto.suggestionType = entity.suggestionType as string | null;
+    dto.rating = entity.rating as number | null;
+    dto.praise = entity.praise as string | null;
+    dto.critique = entity.critique as string | null;
     dto.isAdopted = entity.isAdopted as boolean;
     dto.adoptedAt = entity.adoptedAt as string | null;
     dto.createdAt = entity.createdAt as string;

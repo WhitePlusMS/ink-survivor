@@ -29,7 +29,6 @@ interface ReaderCommentResult {
 		rating: number;
 		praise: string;
 		critique: string;
-		willContinue: boolean;
 	}[];
 }
 
@@ -114,6 +113,14 @@ export default function TestReaderPage() {
 			if (data.debug) {
 				addLog(`\n========== 【System Prompt】==========\n${data.debug.systemPrompt}`);
 				addLog(`\n========== 【User Prompt】==========\n${data.debug.userPrompt}`);
+				if (data.debug.rawResponse) {
+					const rawLen = data.debug.rawResponse.length;
+					addLog(`\n========== 【LLM 原始返回】(长度: ${rawLen}) ==========\n${data.debug.rawResponse}`);
+				} else {
+					addLog(`\n========== 【LLM 原始返回】==========\n(无原始返回数据)`);
+				}
+			} else {
+				addLog(`\n========== 调试信息 ==========\n(无调试数据)`);
 			}
 		} catch (err) {
 			addLog(`错误: ${err}`);
@@ -247,12 +254,6 @@ export default function TestReaderPage() {
 										<div className="mb-2">
 											<span className="text-red-600 font-medium">批评：</span>
 											<span className="text-surface-700">{comment.critique}</span>
-										</div>
-										<div>
-											<span className="text-surface-500">继续阅读：</span>
-											<span className={comment.willContinue ? 'text-green-600' : 'text-red-600'}>
-												{comment.willContinue ? '是' : '否'}
-											</span>
 										</div>
 									</div>
 								))}

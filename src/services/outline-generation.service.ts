@@ -565,7 +565,7 @@ export class OutlineGenerationService {
     return comments.map((c) => ({
       type: c.isHuman ? 'human' as const : 'ai' as const,
       content: c.content,
-      rating: c.sentiment !== null ? Math.round((c.sentiment + 1) * 5) : undefined, // 转换 -1~1 到 0~10
+      rating: c.rating ?? undefined, // 直接使用 1-10 分
     }));
   }
 

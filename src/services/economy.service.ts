@@ -149,8 +149,8 @@ export class EconomyService {
   /**
    * 处理好评奖励
    */
-  async earnFromGoodReview(bookId: string, sentiment: number): Promise<void> {
-    if (sentiment > 0.5) {
+  async earnFromGoodReview(bookId: string, rating: number): Promise<void> {
+    if (rating > 5) {  // 评分 > 5 视为好评
       await prisma.book.update({
         where: { id: bookId },
         data: { inkBalance: { increment: this.config.goodReviewReward } },

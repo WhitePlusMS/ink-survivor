@@ -22,8 +22,6 @@ interface ReaderFeedback {
   overall_rating: number;      // 综合评分 (1-10)
   praise: string;              // 赞扬的点
   critique: string;            // 批评的点
-  will_continue: boolean;      // 是否继续阅读
-  comment: string;             // 评论内容
 }
 
 export class ReaderAgentService {
@@ -278,26 +276,25 @@ ${actionControl}`;
       }
     );
 
-    // 5. 根据情感阈值判断是否触发评论
-    const sentimentScore = this.calculateSentiment(feedback);
-    if (sentimentScore < readerConfig.commentingBehavior.sentimentThreshold) {
-      console.log(`[ReaderAgent] Agent ${agentNickname} 情感分数 ${sentimentScore} 低于阈值，跳过评论`);
+    // 5. 根据评分阈值判断是否触发评论（评分 >= 6 才评论）
+    const rating = feedback.overall_rating;
+    const ratingThreshold = 6; // 评分低于 6 分不触发评论
+    if (rating < ratingThreshold) {
+      console.log(`[ReaderAgent] Agent ${agentNickname} 评分 ${rating} 低于阈值 ${ratingThreshold}，跳过评论`);
       return;
     }
 
-    // 6. 构建评论内容
-    const commentContent = this.buildCommentContent(feedback);
-
-    // 7. 保存评论到数据库
+    // 6. 保存评论到数据库（直接存储 praise、critique、rating）
     const comment = await prisma.comment.create({
       data: {
         bookId,
         chapterId,
         userId: agentUserId,
-        content: commentContent,
         isHuman: false,
         aiRole: 'Reader',
-        sentiment: sentimentScore,
+        rating: feedback.overall_rating,
+        praise: feedback.praise || null,
+        critique: feedback.critique || null,
       },
       include: {
         user: { select: { id: true, nickname: true, avatar: true } },
@@ -315,7 +312,7 @@ ${actionControl}`;
     // 9. 发送 WebSocket 事件
     wsEvents.newComment(bookId, {
       id: comment.id,
-      content: comment.content,
+      content: `${comment.praise || ''} ${comment.critique || ''}`.trim() || 'AI 读者评论',
       isHuman: false,
       user: {
         nickname: agentNickname,
@@ -397,15 +394,6 @@ ${actionControl}`;
   }
 
   /**
-   * 根据 LLM 反馈计算情感分数 (-1 ~ 1)
-   */
-  private calculateSentiment(feedback: ReaderFeedback): number {
-    // 基于评分计算：1-10 分映射到 -1 ~ 1
-    // 1分 -> -1, 5分 -> 0, 10分 -> 1
-    return (feedback.overall_rating - 5) / 5;
-  }
-
-  /**
    * 判断用户是否是 AI Agent
    * 有 agentConfig 的是 AI Agent
    */
@@ -417,29 +405,6 @@ ${actionControl}`;
     return !!user?.agentConfig;
   }
 
-  /**
-   * 构建评论内容
-   */
-  private buildCommentContent(feedback: ReaderFeedback): string {
-    const parts: string[] = [];
-
-    // 添加评论内容
-    if (feedback.comment) {
-      parts.push(feedback.comment);
-    }
-
-    // 添加赞扬
-    if (feedback.praise) {
-      parts.push(`[赞扬] ${feedback.praise}`);
-    }
-
-    // 添加批评
-    if (feedback.critique) {
-      parts.push(`[建议] ${feedback.critique}`);
-    }
-
-    return parts.join('\n') || '这本书还不错，继续加油！';
-  }
 }
 
 export const readerAgentService = new ReaderAgentService();

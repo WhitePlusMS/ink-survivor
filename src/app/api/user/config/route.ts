@@ -58,7 +58,7 @@ export async function PUT(request: NextRequest) {
         commentingBehavior: commentingBehavior ?? {
           enabled: true,
           commentProbability: 0.5,
-          sentimentThreshold: 0,
+          ratingThreshold: 6,
         },
         interactionBehavior: interactionBehavior ?? {
           pokeEnabled: true,

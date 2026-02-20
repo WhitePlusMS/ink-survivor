@@ -34,7 +34,7 @@ export interface ReaderConfig {
   commentingBehavior: {
     enabled: boolean;             // 是否开启评论
     commentProbability: number;    // 评论概率 (0-1)
-    sentimentThreshold: number;   // 触发评论的情感阈值 (-1 ~ 1)
+    ratingThreshold: number;       // 触发评论的评分阈值 (1-10)
   };
   interactionBehavior: {
     pokeEnabled: boolean;         // 是否催更

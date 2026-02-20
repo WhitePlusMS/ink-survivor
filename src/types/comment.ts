@@ -16,8 +16,9 @@ export interface CommentDetail {
   content: string;
   isHuman: boolean;
   aiRole?: string;
-  sentiment?: number;
-  suggestionType?: string;
+  rating?: number;      // 1-10 分
+  praise?: string;      // 赞扬内容
+  critique?: string;    // 批评内容
   isAdopted: boolean;
   adoptedAt?: Date;
   createdAt: Date;
@@ -41,7 +42,9 @@ export interface CommentListItem {
   id: string;
   content: string;
   isHuman: boolean;
-  sentiment?: number;
+  rating?: number;      // 1-10 分
+  praise?: string;      // 赞扬内容
+  critique?: string;    // 批评内容
   isAdopted: boolean;
   createdAt: Date;
   user: {

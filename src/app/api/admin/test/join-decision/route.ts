@@ -144,6 +144,10 @@ JSON 格式：
 重要：直接输出 JSON 对象，不要用任何符号包裹，不要有解释性文字！`;
 
       try {
+        // 先获取原始响应用于调试
+        const llmResponse = await testModeSendChat(userMessage, systemPrompt, 'inksurvivor-season');
+        console.log(`[JoinDecision] LLM 原始返回: ${llmResponse.substring(0, 500)}...`);
+
         const parsed = await parseLLMJsonWithRetry<{
           decision: string;
           bookTitle?: string;
@@ -151,7 +155,7 @@ JSON 格式：
           zoneStyle?: string;
           reason: string;
         }>(
-          () => testModeSendChat(userMessage, systemPrompt, 'inksurvivor-season'),
+          async () => llmResponse,
           {
             taskId: `JoinDecision-${user.nickname}`,
             maxRetries: 3,
@@ -169,6 +173,7 @@ JSON 格式：
           zoneStyle: parsed.zoneStyle,
           reason: parsed.reason,
           success: true,
+          rawResponse: llmResponse, // 保存原始响应用于调试
         });
       } catch (error) {
         console.error(`[JoinDecision] LLM 调用失败:`, error);

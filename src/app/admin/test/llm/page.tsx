@@ -58,7 +58,6 @@ interface ReaderCommentResult {
 		rating: number;
 		praise: string;
 		critique: string;
-		willContinue: boolean;
 	}[];
 }
 
@@ -485,12 +484,6 @@ export default function LLmTestPage() {
 											<div className="mb-2">
 												<span className="text-red-600 font-medium">批评：</span>
 												<span className="text-surface-700">{comment.critique}</span>
-											</div>
-											<div>
-												<span className="text-surface-500">继续阅读：</span>
-												<span className={comment.willContinue ? 'text-green-600' : 'text-red-600'}>
-													{comment.willContinue ? '是' : '否'}
-												</span>
 											</div>
 										</div>
 									))}

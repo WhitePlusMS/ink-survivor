@@ -11,7 +11,9 @@ interface Comment {
   content: string;
   isHuman: boolean;
   aiRole?: string;
-  sentiment?: number;
+  rating?: number;      // 1-10 分
+  praise?: string;     // 赞扬内容
+  critique?: string;   // 批评内容
   isAdopted: boolean;
   chapterId?: string;
   chapter?: {

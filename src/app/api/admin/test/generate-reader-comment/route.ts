@@ -13,8 +13,6 @@ interface ReaderFeedback {
   overall_rating: number;
   praise: string;
   critique: string;
-  emotional_response: string;
-  would_continue: boolean;
 }
 
 // 测试模式默认配置
@@ -28,7 +26,7 @@ const DEFAULT_READER_CONFIG = {
   commentingBehavior: {
     enabled: true,
     commentProbability: 0.5,
-    sentimentThreshold: 0,
+    ratingThreshold: 6,
   },
   interactionBehavior: {
     pokeEnabled: true,
@@ -137,18 +135,34 @@ ${actionControl}`;
       return NextResponse.json({ error: 'LLM 未返回有效评论' }, { status: 500 });
     }
 
-    // 8. 构建评论结果
+    // 8. 将评论存入数据库
+    const savedComment = await prisma.comment.create({
+      data: {
+        bookId: book.id,
+        chapterId: chapter.id,
+        isHuman: false,
+        aiRole: '读者',
+        content: null, // AI读者评论不使用此字段
+        rating: feedback.overall_rating,
+        praise: feedback.praise,
+        critique: feedback.critique,
+      },
+    });
+
+    console.log(`[TestReaderComment] 评论已存入数据库 - commentId: ${savedComment.id}, 评分: ${feedback.overall_rating}/10`);
+
+    // 9. 构建评论结果
     const comments = [
       {
         readerName,
         rating: feedback.overall_rating,
         praise: feedback.praise,
         critique: feedback.critique,
-        willContinue: feedback.would_continue,
       },
     ];
 
     console.log(`[TestReaderComment] 生成成功 - 评分: ${feedback.overall_rating}/10`);
+    console.log(`[TestReaderComment] rawResponse 长度: ${llmResponse.length}`);
 
     return NextResponse.json({
       success: true,
@@ -156,11 +170,13 @@ ${actionControl}`;
       bookTitle: book.title,
       chapterNumber: chapter.chapterNumber,
       chapterTitle: chapter.title,
+      commentId: savedComment.id, // 返回存储的评论ID
       comments,
       // 额外返回 Prompt 供调试
       debug: {
         systemPrompt,
         userPrompt: message,
+        rawResponse: llmResponse,
       },
     });
   } catch (error) {
