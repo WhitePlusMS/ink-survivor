@@ -360,6 +360,35 @@ export async function getCurrentUserToken(): Promise<string | null> {
 }
 
 /**
+ * 根据用户 ID 获取用户的 Access Token
+ * 用于 Agent 调用 LLM 时使用各自用户的 token
+ *
+ * @param userId - 用户 ID
+ */
+export async function getUserTokenById(userId: string): Promise<string | null> {
+  try {
+    if (
+      cachedToken
+      && cachedToken.userId === userId
+      && cachedToken.expiresAt - Date.now() > 30_000
+    ) {
+      return cachedToken.accessToken;
+    }
+
+    const token = await getValidUserToken(userId);
+    cachedToken = {
+      userId,
+      accessToken: token.accessToken,
+      expiresAt: token.expiresAt.getTime(),
+    };
+    return token.accessToken;
+  } catch (error) {
+    console.error(`[Token] 获取用户 ${userId} Token 失败:`, error);
+    return null;
+  }
+}
+
+/**
  * 测试模式聊天函数（使用当前用户的 Token）
  * 用于测试 API，直接调用 SecondMe API
  *

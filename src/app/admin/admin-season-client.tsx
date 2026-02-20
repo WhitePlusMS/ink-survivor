@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import { BookCard } from '@/components/home/book-card';
 import {
-  Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save, Trophy
+  Settings, ArrowRight, BookOpen, Play, Trash2, Sparkles, Calendar, Edit3, Save, Trophy, Zap, Clock, BookMarked
 } from 'lucide-react';
 import { ZONE_CONFIGS, ZONE_VALUES } from '@/lib/utils/zone';
 
@@ -149,6 +149,10 @@ export function AdminSeasonClient({
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionType, setActionType] = useState<'init' | 'start' | 'nextPhase' | 'endSeason' | null>(null);
   const [deletingSeason, setDeletingSeason] = useState<string | null>(null);
+  // 调试按钮加载状态
+  const [debugAction, setDebugAction] = useState<'processTasks' | 'autoAdvance' | 'readerAgents' | null>(null);
+  // 仅本地开发环境显示调试按钮
+  const isLocalDev = typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '3000';
   // 非管理员默认显示历史赛季 Tab
   const [activeTab, setActiveTab] = useState<'queue' | 'immediate' | 'history' | 'delete'>(isAdmin ? 'queue' : 'history');
 
@@ -561,6 +565,48 @@ export function AdminSeasonClient({
     } finally {
       setIsProcessing(false);
       setActionType(null);
+    }
+  };
+
+  // 调试：处理任务队列
+  const handleProcessTasks = async () => {
+    setDebugAction('processTasks');
+    try {
+      const response = await fetch('/api/tasks/process-tasks', { method: 'POST' });
+      const result = await response.json();
+      alert(result.message || '任务已触发');
+    } catch (err) {
+      alert('触发失败: ' + (err as Error).message);
+    } finally {
+      setDebugAction(null);
+    }
+  };
+
+  // 调试：赛季自动推进
+  const handleSeasonAutoAdvance = async () => {
+    setDebugAction('autoAdvance');
+    try {
+      const response = await fetch('/api/tasks/season-auto-advance', { method: 'GET' });
+      const result = await response.json();
+      alert(result.message || '执行完成');
+    } catch (err) {
+      alert('触发失败: ' + (err as Error).message);
+    } finally {
+      setDebugAction(null);
+    }
+  };
+
+  // 调试：Reader Agent
+  const handleReaderAgents = async () => {
+    setDebugAction('readerAgents');
+    try {
+      const response = await fetch('/api/tasks/reader-agents', { method: 'POST' });
+      const result = await response.json();
+      alert(result.message || '任务已触发');
+    } catch (err) {
+      alert('触发失败: ' + (err as Error).message);
+    } finally {
+      setDebugAction(null);
     }
   };
 
@@ -1463,6 +1509,60 @@ export function AdminSeasonClient({
             </>
           )}
         </Button>
+      )}
+
+      {/* 调试工具按钮 - 仅本地开发环境显示 */}
+      {isAdmin && isLocalDev && (
+        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            调试工具
+          </h3>
+          <div className="grid grid-cols-3 gap-3">
+            <Button
+              onClick={handleProcessTasks}
+              disabled={debugAction === 'processTasks'}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {debugAction === 'processTasks' ? (
+                <Spinner className="w-4 h-4" />
+              ) : (
+                <Zap className="w-4 h-4" />
+              )}
+              处理任务
+            </Button>
+            <Button
+              onClick={handleSeasonAutoAdvance}
+              disabled={debugAction === 'autoAdvance'}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {debugAction === 'autoAdvance' ? (
+                <Spinner className="w-4 h-4" />
+              ) : (
+                <Clock className="w-4 h-4" />
+              )}
+              自动推进
+            </Button>
+            <Button
+              onClick={handleReaderAgents}
+              disabled={debugAction === 'readerAgents'}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {debugAction === 'readerAgents' ? (
+                <Spinner className="w-4 h-4" />
+              ) : (
+                <BookMarked className="w-4 h-4" />
+              )}
+              Reader Agent
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

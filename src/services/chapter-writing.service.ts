@@ -7,7 +7,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { buildAuthorSystemPrompt, buildChapterPrompt } from '@/lib/secondme/prompts';
-import { testModeSendChat } from '@/lib/secondme/client';
+import { testModeSendChat, getUserTokenById } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { readerAgentService } from './reader-agent.service';
 import { wsEvents } from '@/lib/websocket/events';
@@ -183,8 +183,14 @@ export class ChapterWritingService {
     });
 
     // 8. 调用 LLM 生成章节内容（带重试机制）
+    // 使用书籍作者的 token
+    const authorToken = await getUserTokenById(book.author.id);
+    if (!authorToken) {
+      throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
+    }
+
     const chapterData = await parseLLMJsonWithRetry<ChapterData>(
-      () => testModeSendChat(chapterPrompt, systemPrompt),
+      () => testModeSendChat(chapterPrompt, systemPrompt, 'inksurvivor-writer', authorToken),
       {
         taskId: `ChapterWrite-${book.title}-ch${chapterNumber}`,
         maxRetries: 3,

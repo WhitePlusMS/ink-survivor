@@ -7,7 +7,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { buildAuthorSystemPrompt, buildOutlinePrompt } from '@/lib/secondme/prompts';
-import { testModeSendChat } from '@/lib/secondme/client';
+import { testModeSendChat, getUserTokenById } from '@/lib/secondme/client';
 import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
 import { toJsonValue } from '@/lib/utils/jsonb-utils';
 
@@ -174,8 +174,14 @@ export class OutlineGenerationService {
     });
 
     // 6. 调用 LLM 生成大纲（带重试机制）
+    // 使用书籍作者的 token
+    const authorToken = await getUserTokenById(book.author.id);
+    if (!authorToken) {
+      throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
+    }
+
     const outlineData = await parseLLMJsonWithRetry<BookOutline>(
-      () => testModeSendChat(outlinePrompt, systemPrompt),
+      () => testModeSendChat(outlinePrompt, systemPrompt, 'inksurvivor-outline', authorToken),
       {
         taskId: `OutlineGen-${book.title}`,
         maxRetries: 3,
@@ -411,9 +417,16 @@ export class OutlineGenerationService {
     });
 
     // 8. 调用 LLM 生成章节大纲
+    // 使用书籍作者的 token
+    const authorToken = await getUserTokenById(book.author.id);
+    if (!authorToken) {
+      console.error(`[Outline] 无法获取作者 ${book.author.nickname} 的 Token`);
+      return;
+    }
+
     let response: string;
     try {
-      response = await testModeSendChat(chapterPrompt, systemPrompt);
+      response = await testModeSendChat(chapterPrompt, systemPrompt, 'inksurvivor-outline', authorToken);
       console.log(`[Outline] LLM 返回: ${response.substring(0, 200)}...`);
     } catch (error) {
       console.error(`[Outline] LLM 调用失败:`, error);
@@ -558,6 +571,21 @@ export class OutlineGenerationService {
       };
     }
 
+    // 获取书籍作者信息以获取 token
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      include: { author: { select: { id: true, nickname: true } } },
+    });
+    if (!book) {
+      return { shouldModify: false, reason: '书籍不存在', changes: [] };
+    }
+
+    const authorToken = await getUserTokenById(book.author.id);
+    if (!authorToken) {
+      console.error(`[Outline] 无法获取作者 ${book.author.nickname} 的 Token`);
+      return { shouldModify: false, reason: '无法获取 Token', changes: [] };
+    }
+
     // 构建判断 prompt
     const systemPrompt = '你是本书的作者，你需要判断是否需要根据读者反馈修改故事大纲。';
     const prompt = this.buildModificationDecisionPrompt({
@@ -568,7 +596,7 @@ export class OutlineGenerationService {
     });
 
     try {
-      const response = await testModeSendChat(prompt, systemPrompt);
+      const response = await testModeSendChat(prompt, systemPrompt, 'inksurvivor-outline', authorToken);
       const decision = await parseLLMJsonWithRetry<OutlineModificationDecision>(
         () => Promise.resolve(response),
         {
@@ -680,7 +708,7 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
     const book = await prisma.book.findUnique({
       where: { id: bookId },
       include: {
-        author: { select: { nickname: true } },
+        author: { select: { id: true, nickname: true } },
       },
     });
     if (!book?.seasonId) {
@@ -690,6 +718,12 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
     const season = await prisma.season.findUnique({ where: { id: book.seasonId } });
     if (!season) {
       throw new Error('赛季不存在');
+    }
+
+    // 获取作者的 token
+    const authorToken = await getUserTokenById(book.author.id);
+    if (!authorToken) {
+      throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
     }
 
     // 构建修改大纲的 prompt（包含完整 Agent 配置）
@@ -722,7 +756,7 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
     });
 
     try {
-      const response = await testModeSendChat(prompt, systemPrompt);
+      const response = await testModeSendChat(prompt, systemPrompt, 'inksurvivor-outline', authorToken);
       const modifiedOutline = await parseLLMJsonWithRetry<BookOutline>(
         () => Promise.resolve(response),
         {

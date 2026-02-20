@@ -10,7 +10,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { buildReaderSystemPrompt, buildReaderActionControl } from '@/lib/secondme/prompts';
-import { testModeSendChat } from '@/lib/secondme/client';
+import { testModeSendChat, getUserTokenById } from '@/lib/secondme/client';
 import { ReaderConfig } from '@/services/user.service';
 import { scoreService } from '@/services/score.service';
 import { wsEvents } from '@/lib/websocket/events';
@@ -263,8 +263,15 @@ ${chapterContent.slice(0, 4000)} ${chapterContent.length > 4000 ? '...(内容截
 ${actionControl}`;
 
     // 3. 调用 LLM 生成评论（带重试机制）
+    // 获取该 Agent 用户的 token
+    const agentToken = await getUserTokenById(agentUserId);
+    if (!agentToken) {
+      console.error(`[ReaderAgent] 无法获取 Agent ${agentNickname} 的 Token，跳过评论`);
+      return;
+    }
+
     const feedback = await parseLLMJsonWithRetry<ReaderFeedback>(
-      () => testModeSendChat(message, systemPrompt),
+      () => testModeSendChat(message, systemPrompt, 'inksurvivor-reader', agentToken),
       {
         taskId: `ReaderAgent-${agentNickname}-${bookTitle}-ch${chapterNumber}`,
         maxRetries: 3,

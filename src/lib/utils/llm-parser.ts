@@ -35,7 +35,7 @@ function fixUnescapedQuotesInContent(jsonString: string): string {
     /("content"\s*:\s*")((?:[^"\\]|\\.)*)(\")/g,
     (match, prefix, content, suffix) => {
       // 修复 content 中的各种引号问题
-      let fixed = content
+      const fixed = content
         // 中文左双引号 → 转义
         .replace(/"/g, '\u201C')
         // 中文右双引号 → 转义
@@ -74,7 +74,7 @@ function fixAllUnescapedQuotes(input: string): string {
  */
 function extractAndRepairJson(response: string): string {
   // 预处理：移除 Markdown 代码块标记
-  let processed = response
+  const processed = response
     .replace(/^```json\s*/g, '')
     .replace(/^```\s*/g, '')
     .replace(/\s*```$/g, '');
