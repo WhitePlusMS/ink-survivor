@@ -139,11 +139,15 @@ export class ChapterService {
       // 大纲信息
       bookTitle: book.title,
       chapterNumber,
+      totalChapters: chaptersPlan.length,
       outline: {
         summary: chapterPlan.summary,
         key_events: chapterPlan.key_events,
         word_count_target: chapterPlan.word_count_target,
       },
+
+      // 整本书大纲（新增）
+      fullOutline: chaptersPlan,
 
       // 前面内容
       previousSummary,

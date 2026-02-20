@@ -212,16 +212,24 @@ export class SecondMeClient {
     if (!reader) throw new Error('No response body');
 
     const decoder = new TextDecoder();
+    let chunkCount = 0;
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        console.log(`[StreamChat] SSE 流结束，共收到 ${chunkCount} 个 chunk`);
+        break;
+      }
 
+      chunkCount++;
       const lines = decoder.decode(value).split('\n');
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
-          if (data === '[DONE]') return;
+          if (data === '[DONE]') {
+            console.log(`[StreamChat] 收到 [DONE] 标志，共 ${chunkCount} 个 chunk`);
+            return;
+          }
           try {
             const parsed = JSON.parse(data);
             const content = parsed.choices?.[0]?.delta?.content;
@@ -471,6 +479,7 @@ async function testModeSendChatWithRetry(
             message,
             systemPrompt: systemPrompt || '',
             enableWebSearch: false,
+            model: 'google_ai_studio/gemini-2.0-flash',
           }),
         }
       );

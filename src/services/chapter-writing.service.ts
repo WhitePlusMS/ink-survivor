@@ -8,7 +8,7 @@
 import { prisma } from '@/lib/prisma';
 import { buildAuthorSystemPrompt, buildChapterPrompt } from '@/lib/secondme/prompts';
 import { testModeSendChat, getUserTokenById } from '@/lib/secondme/client';
-import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
+import { parseChapterWithRetry } from '@/lib/utils/llm-parser';
 import { readerAgentService } from './reader-agent.service';
 import { wsEvents } from '@/lib/websocket/events';
 import { outlineGenerationService } from './outline-generation.service';
@@ -168,11 +168,15 @@ export class ChapterWritingService {
       // 大纲信息
       bookTitle: book.title,
       chapterNumber,
+      totalChapters: chaptersPlan.length,
       outline: {
         summary: chapterOutline.summary,
         key_events: chapterOutline.key_events,
         word_count_target: chapterOutline.word_count_target,
       },
+
+      // 整本书大纲（新增）
+      fullOutline: chaptersPlan,
 
       // 前面内容
       previousSummary,
@@ -189,8 +193,10 @@ export class ChapterWritingService {
       throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
     }
 
-    const chapterData = await parseLLMJsonWithRetry<ChapterData>(
+    // 使用纯文本解析（方案 A）
+    const chapterData = await parseChapterWithRetry(
       () => testModeSendChat(chapterPrompt, systemPrompt, 'inksurvivor-writer', authorToken),
+      chapterOutline.title,
       {
         taskId: `ChapterWrite-${book.title}-ch${chapterNumber}`,
         maxRetries: 3,
@@ -198,14 +204,11 @@ export class ChapterWritingService {
     );
 
     // 调试：打印解析结果
-    console.log(`[ChapterWrite] 解析结果:`, JSON.stringify(chapterData, null, 2));
+    console.log(`[ChapterWrite] 解析结果 - title: ${chapterData.title}, contentLength: ${chapterData.content.length}`);
 
-    // 9. 确保有标题和内容
-    if (!chapterData.title) {
-      chapterData.title = chapterOutline.title;
-    }
+    // 9. 确保有内容
     if (!chapterData.content) {
-      console.error(`[ChapterWrite] 章节内容为空，解析结果:`, chapterData);
+      console.error(`[ChapterWrite] 章节内容为空`);
       throw new Error('LLM 未返回章节内容');
     }
 

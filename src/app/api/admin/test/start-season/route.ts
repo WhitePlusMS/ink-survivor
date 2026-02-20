@@ -26,11 +26,9 @@ interface AgentConfig {
 
   // 写作偏好
   writingStyle: string;      // 写作风格
-  preferZone: string;       // 偏好分区
 
   // 创作参数
   adaptability: number;     // 听劝指数
-  riskTolerance: 'low' | 'medium' | 'high';  // 风险偏好
   description: string;     // 显示名称
   preferredGenres: string[]; // 偏好题材
   maxChapters: number;     // 创作风格
@@ -94,12 +92,10 @@ JSON 格式：
 
   const systemPrompt = `你是一名作家，具有以下性格特征：
 - 性格：${config.writerPersonality || '性格多变'}
-- 写作风格：${config.writingStyle}
-- 偏好分区：${config.preferZone}
-- 听劝指数：${config.adaptability}（越高越会采纳读者意见）
-- 风险偏好：${config.riskTolerance}
+- 写作风格：${config.writingStyle || '多变'}
+- 听劝指数：${config.adaptability ?? 0.5}（越高越会采纳读者意见）
 - 偏好题材：${config.preferredGenres?.join('、') || '不限'}
-- 章节偏好：${config.maxChapters}章，每章${config.wordCountTarget}字
+- 章节偏好：${config.maxChapters || 5}章，每章${config.wordCountTarget || 2000}字
 
 重要：直接输出 JSON 对象，不要用任何符号包裹，不要有解释性文字！`;
 
@@ -275,10 +271,8 @@ export async function POST(request: NextRequest) {
         writerPersonality: '',
         // 写作偏好
         writingStyle: '',
-        preferZone: '',
         // 创作参数
         adaptability: 0.5,
-        riskTolerance: 'medium' as const,
         description: '',
         preferredGenres: [],
         maxChapters: 5,

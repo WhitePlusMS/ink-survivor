@@ -62,9 +62,16 @@ interface OutlineModificationDecision {
 export class OutlineGenerationService {
   /**
    * 为单本书生成大纲（整本书的 5 章大纲）
+   * @param bookId - 书籍ID
+   * @param testMode - 测试模式：true 时跳过数据库检查，且不保存到数据库，直接返回大纲数据
    */
-  async generateOutline(bookId: string): Promise<void> {
-    console.log(`[Outline] 开始为书籍 ${bookId} 生成大纲`);
+  async generateOutline(bookId: string, testMode: boolean = false): Promise<{
+    title: string;
+    summary: string;
+    characters: unknown[];
+    chapters: unknown[];
+  } | null> {
+    console.log(`[Outline] 开始为书籍 ${bookId} 生成大纲${testMode ? ' (测试模式)' : ''}`);
 
     // 1. 获取书籍和作者信息
     const book = await prisma.book.findUnique({
@@ -76,18 +83,20 @@ export class OutlineGenerationService {
 
     if (!book) {
       console.error(`[Outline] 书籍不存在: ${bookId}`);
-      return;
+      return null;
     }
 
-    // 检查是否已有大纲 - 从 Book 表获取
-    const existingBook = await prisma.book.findUnique({
-      where: { id: bookId },
-      select: { chaptersPlan: true },
-    });
+    // 非测试模式：检查是否已有大纲
+    if (!testMode) {
+      const existingBook = await prisma.book.findUnique({
+        where: { id: bookId },
+        select: { chaptersPlan: true },
+      });
 
-    if (existingBook && existingBook.chaptersPlan) {
-      console.log(`[Outline] 书籍《${book.title}》已有大纲，跳过生成`);
-      return;
+      if (existingBook && existingBook.chaptersPlan) {
+        console.log(`[Outline] 书籍《${book.title}》已有大纲，跳过生成`);
+        return null;
+      }
     }
 
     // 2. 解析作者配置 - 使用数据库的 writerPersonality 字段
@@ -108,7 +117,7 @@ export class OutlineGenerationService {
 
     if (!season) {
       console.error(`[Outline] 赛季不存在: ${book.seasonId}`);
-      return;
+      return null;
     }
 
     const seasonInfo = {
@@ -170,7 +179,6 @@ export class OutlineGenerationService {
       minChapters: seasonInfo.minChapters,
       maxChapters: seasonInfo.maxChapters,
       chapterPreference: chapterPreferenceText,
-      endingType: '开放结局',
     });
 
     // 6. 调用 LLM 生成大纲（带重试机制）
@@ -188,7 +196,18 @@ export class OutlineGenerationService {
       }
     );
 
-    // 8. 保存大纲 - 使用 Book 的合并字段
+    // 8. 保存大纲 - 测试模式不保存到数据库
+    if (testMode) {
+      console.log(`[Outline] 测试模式：跳过保存，直接返回大纲数据`);
+      return {
+        title: outlineData.title,
+        summary: outlineData.summary,
+        characters: outlineData.characters,
+        chapters: outlineData.chapters,
+      };
+    }
+
+    // 正式模式：保存到数据库
     await prisma.book.update({
       where: { id: book.id },
       data: {
@@ -203,6 +222,7 @@ export class OutlineGenerationService {
 
     console.log(`[Outline] 书籍《${book.title}》大纲生成完成 - ${outlineData.chapters.length} 章`);
     console.log(`[Outline] 大纲章节列表:`, outlineData.chapters.map(c => c.number));
+    return null;
   }
 
   /**

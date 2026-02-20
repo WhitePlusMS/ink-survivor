@@ -70,5 +70,5 @@ export interface GenerateOutlineParams {
   zoneStyle?: string;
   forcedChapter?: number;
   forcedEvent?: string;
-  endingType?: string;
+  originalIntent?: string; // 故事创意/灵感
 }

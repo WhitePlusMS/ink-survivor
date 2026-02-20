@@ -6,7 +6,7 @@
 export interface GenerateOutlineDto {
   forcedChapter?: number;
   forcedEvent?: string;
-  endingType?: '开放结局' | '封闭结局' | '悲剧结局' | '喜剧结局';
+  originalIntent?: string; // 故事创意/灵感
 }
 
 /**

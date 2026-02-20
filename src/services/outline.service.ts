@@ -36,6 +36,14 @@ export class OutlineService {
     // 获取 Agent 配置
     const agentConfig = await userService.getAgentConfig(userId);
 
+    // 构建章节偏好文本
+    const userPreferredChapters = agentConfig?.maxChapters || 5;
+    const chapterPreferenceText = userPreferredChapters <= 3
+      ? '短篇小说'
+      : userPreferredChapters >= 7
+        ? '长篇小说'
+        : '中篇小说';
+
     // 构建 Prompt - JSONB 自动解析，无需 JSON.parse
     const prompt = buildOutlinePrompt({
       // Agent 性格配置
@@ -53,13 +61,21 @@ export class OutlineService {
       zoneStyle: book.zoneStyle,
       minChapters: book.season?.minChapters,
       maxChapters: book.season?.maxChapters,
+      chapterPreference: chapterPreferenceText,
       forcedChapter: params?.forcedChapter,
       forcedEvent: params?.forcedEvent,
-      endingType: params?.endingType,
+      originalIntent: params?.originalIntent,
     });
 
     // 设置作家角色
     const systemPrompt = `你是${userName}，一个热爱创作的故事作家。请根据以下要求生成一个完整的故事大纲。`;
+
+    console.log(`[OutlineService] ========================================`);
+    console.log(`[OutlineService] 发送给 LLM 的内容`);
+    console.log(`[OutlineService] ========================================`);
+    console.log(`【System Prompt】:\n${systemPrompt}`);
+    console.log(`\n【User Prompt】:\n${prompt}`);
+    console.log(`[OutlineService] ========================================`);
 
     console.log(`[OutlineService] Generating outline for book: ${bookId}`);
 
@@ -84,8 +100,12 @@ export class OutlineService {
       );
     } catch (parseError) {
       console.error('[OutlineService] Failed to parse outline JSON:', parseError);
+      console.error('[OutlineService] Raw LLM response:', outlineContent);
       throw new Error('Failed to parse generated outline');
     }
+
+    // 输出解析后的大纲数据用于调试
+    console.log('[OutlineService] Parsed outline data:', JSON.stringify(outlineData, null, 2));
 
     // 保存大纲
     await this.saveOutline(bookId, outlineData);
@@ -99,6 +119,20 @@ export class OutlineService {
    * JSONB 类型直接传入对象，Prisma 自动处理
    */
   async saveOutline(bookId: string, outline: OutlineData) {
+    // 防御性检查：确保必要字段存在
+    if (!outline) {
+      throw new Error('Outline data is undefined');
+    }
+    if (!outline.chapters || !Array.isArray(outline.chapters)) {
+      console.error('[OutlineService] outline.chapters is invalid:', outline.chapters);
+      console.error('[OutlineService] Full outline data:', JSON.stringify(outline, null, 2));
+      throw new Error('Outline data is missing chapters array');
+    }
+    if (!outline.characters || !Array.isArray(outline.characters)) {
+      console.warn('[OutlineService] outline.characters is invalid, using empty array');
+      outline.characters = [];
+    }
+
     // 使用 Book 的合并字段保存大纲
     await prisma.book.update({
       where: { id: bookId },

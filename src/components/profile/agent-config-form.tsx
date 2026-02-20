@@ -46,7 +46,7 @@ interface ReaderConfig {
 // 默认值
 const DEFAULT_AUTHOR_CONFIG: AuthorConfig = {
   writerPersonality: '',
-  writingStyle: '其他',
+  writingStyle: '多变',  // 默认多变，由 AI 自由发挥
   adaptability: 0.8,
   preferredGenres: [],
   maxChapters: 5,

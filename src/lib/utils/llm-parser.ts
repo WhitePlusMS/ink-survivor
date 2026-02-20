@@ -282,3 +282,90 @@ export function parseLLMJsonSafe<T = Record<string, unknown>>(
     return null;
   }
 }
+
+/**
+ * 解析纯文本格式的章节内容
+ *
+ * 格式：
+ * # 章节标题
+ *
+ * 章节正文内容...
+ *
+ * @param response - LLM 返回的纯文本
+ * @param fallbackTitle - 如果无法解析标题，使用此标题
+ */
+export function parseChapterFromPlainText(
+  response: string,
+  fallbackTitle: string
+): { title: string; content: string } {
+  const trimmed = response.trim();
+
+  // 匹配 # 标题 格式
+  const titleMatch = trimmed.match(/^#\s+(.+)$/m);
+
+  let title: string;
+  let content: string;
+
+  if (titleMatch) {
+    // 提取标题
+    title = titleMatch[1].trim();
+
+    // 移除标题行，获取内容
+    // 标题可能在第一行或最后一行
+    const withoutTitle = trimmed.replace(/^#\s+.+$/m, '').trim();
+
+    // 如果内容为空，尝试整个响应作为内容
+    content = withoutTitle || trimmed;
+  } else {
+    // 无法解析标题，使用 fallback
+    title = fallbackTitle;
+    content = trimmed;
+  }
+
+  // 清理内容：移除多余的空行
+  content = content.replace(/\n{3,}/g, '\n\n').trim();
+
+  console.log(`[LLM Parser] 纯文本解析成功 - title: ${title}, contentLength: ${content.length}`);
+
+  return { title, content };
+}
+
+/**
+ * 带重试的章节纯文本解析
+ */
+export async function parseChapterWithRetry(
+  llmResponseFn: () => Promise<string>,
+  fallbackTitle: string,
+  options?: {
+    maxRetries?: number;
+    taskId?: string;
+  }
+): Promise<{ title: string; content: string }> {
+  const maxRetries = options?.maxRetries ?? 3;
+  const taskId = options?.taskId ?? 'Chapter';
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await llmResponseFn();
+      console.log(`[${taskId}] LLM 响应 (尝试 ${attempt + 1}/${maxRetries + 1}): ${response.substring(0, 200)}...`);
+
+      return parseChapterFromPlainText(response, fallbackTitle);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < maxRetries) {
+        const delay = 1000 * Math.pow(2, attempt);
+        console.warn(`[${taskId}] 解析失败: ${lastError.message}`);
+        console.log(`[${taskId}] 等待 ${delay}ms 后进行第 ${attempt + 2} 次重试...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`[${taskId}] 重试次数用尽，解析最终失败: ${lastError.message}`);
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError || new Error('未知错误');
+}

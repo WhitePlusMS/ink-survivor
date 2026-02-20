@@ -1,0 +1,173 @@
+/**
+ * 测试读者评论生成 API
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { buildReaderSystemPrompt, buildReaderActionControl } from '@/lib/secondme/prompts';
+import { testModeSendChat } from '@/lib/secondme/client';
+import { parseLLMJsonWithRetry } from '@/lib/utils/llm-parser';
+import { safeJsonField } from '@/lib/utils/jsonb-utils';
+
+interface ReaderFeedback {
+  overall_rating: number;
+  praise: string;
+  critique: string;
+  emotional_response: string;
+  would_continue: boolean;
+}
+
+// 测试模式默认配置
+const DEFAULT_READER_CONFIG = {
+  readerPersonality: '喜欢分析故事结构和人物塑造，对文笔有较高要求',
+  readingPreferences: {
+    preferredGenres: [] as string[],
+    style: '客观中肯',
+    minRatingThreshold: 5,
+  },
+  commentingBehavior: {
+    enabled: true,
+    commentProbability: 0.5,
+    sentimentThreshold: 0,
+  },
+  interactionBehavior: {
+    pokeEnabled: true,
+    giftEnabled: true,
+  },
+};
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { bookId, chapterNumber, testMode } = body;
+
+    if (!bookId || !chapterNumber) {
+      return NextResponse.json(
+        { error: '缺少必要参数 bookId 和 chapterNumber' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[TestReaderComment] 开始测试 - bookId: ${bookId}, chapterNumber: ${chapterNumber}, testMode: ${testMode}`);
+
+    // 1. 获取书籍和章节信息（包括作者的读者配置）
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      include: {
+        author: {
+          select: {
+            id: true,
+            nickname: true,
+            readerConfig: true,
+          },
+        },
+        chapters: {
+          where: { chapterNumber },
+          take: 1,
+        },
+      },
+    });
+
+    if (!book) {
+      return NextResponse.json({ error: '书籍不存在' }, { status: 404 });
+    }
+
+    const chapter = book.chapters[0];
+    if (!chapter) {
+      return NextResponse.json({ error: '章节不存在' }, { status: 404 });
+    }
+
+    // 2. 获取读者配置（从书籍作者的配置中读取）
+    let readerConfig;
+    if (testMode) {
+      // 测试模式：使用默认配置
+      readerConfig = DEFAULT_READER_CONFIG;
+      console.log(`[TestReaderComment] 测试模式：使用默认读者配置`);
+    } else {
+      // 正式模式：从数据库读取作者配置的读者设置
+      readerConfig = safeJsonField(book.author.readerConfig, DEFAULT_READER_CONFIG);
+      console.log(`[TestReaderComment] 正式模式：使用数据库中的读者配置`);
+    }
+
+    const readerName = testMode ? '测试读者' : '读者';
+
+    // 3. 构建 System Prompt
+    const systemPrompt = buildReaderSystemPrompt({
+      readerName,
+      readerPersonality: readerConfig.readerPersonality,
+      preferences: {
+        genres: readerConfig.readingPreferences.preferredGenres,
+        style: readerConfig.readingPreferences.style,
+        minRating: readerConfig.readingPreferences.minRatingThreshold,
+      },
+    });
+
+    // 4. 构建用户消息（包含章节内容）
+    const actionControl = buildReaderActionControl();
+    const message = `你正在阅读《${book.title}》第 ${chapter.chapterNumber} 章 "${chapter.title}"，作者：${book.author.nickname}。
+
+## 章节内容
+${chapter.content.slice(0, 4000)} ${chapter.content.length > 4000 ? '...(内容截断)' : ''}
+
+${actionControl}`;
+
+    // 5. 调用 LLM 生成评论
+    console.log(`[TestReaderComment] 开始调用 LLM...`);
+
+    // 6. 调用 LLM 生成评论
+    const llmResponse = await testModeSendChat(
+      message,
+      systemPrompt,
+      'inksurvivor-reader',
+      undefined // 使用默认测试 token
+    );
+
+    console.log(`[TestReaderComment] LLM 响应长度: ${llmResponse.length}`);
+
+    // 7. 解析响应
+    const feedback = await parseLLMJsonWithRetry<ReaderFeedback>(
+      async () => llmResponse,
+      {
+        taskId: `TestReader-${book.title}-ch${chapterNumber}`,
+        maxRetries: 3,
+      }
+    );
+
+    if (!feedback) {
+      return NextResponse.json({ error: 'LLM 未返回有效评论' }, { status: 500 });
+    }
+
+    // 8. 构建评论结果
+    const comments = [
+      {
+        readerName,
+        rating: feedback.overall_rating,
+        praise: feedback.praise,
+        critique: feedback.critique,
+        willContinue: feedback.would_continue,
+      },
+    ];
+
+    console.log(`[TestReaderComment] 生成成功 - 评分: ${feedback.overall_rating}/10`);
+
+    return NextResponse.json({
+      success: true,
+      bookId: book.id,
+      bookTitle: book.title,
+      chapterNumber: chapter.chapterNumber,
+      chapterTitle: chapter.title,
+      comments,
+      // 额外返回 Prompt 供调试
+      debug: {
+        systemPrompt,
+        userPrompt: message,
+      },
+    });
+  } catch (error) {
+    console.error('[TestReaderComment] 生成失败:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '生成失败' },
+      { status: 500 }
+    );
+  }
+}

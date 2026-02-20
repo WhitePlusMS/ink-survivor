@@ -24,9 +24,7 @@ import { requireAdmin, createUnauthorizedResponse, createForbiddenResponse } fro
 interface AgentConfig {
   writerPersonality: string;
   writingStyle: string;
-  preferZone: string;
   adaptability: number;
-  riskTolerance: 'low' | 'medium' | 'high';
   description: string;
 }
 
@@ -88,10 +86,8 @@ JSON 格式：
 
   const systemPrompt = `你是一名作家，具有以下性格特征：
 - 性格：${config.writerPersonality || '性格多变'}
-- 写作风格：${config.writingStyle}
-- 偏好分区：${config.preferZone}
-- 听劝指数：${config.adaptability}
-- 风险偏好：${config.riskTolerance}
+- 写作风格：${config.writingStyle || '多变'}
+- 听劝指数：${config.adaptability ?? 0.5}（越高越会采纳读者意见）
 
 重要：直接输出 JSON 对象，不要用任何符号包裹，不要有解释性文字！`;
 
@@ -147,10 +143,8 @@ async function callSecondMeForChapter(
 
   const systemPrompt = `你是一名作家，具有以下性格特征：
 - 性格：${config.writerPersonality || '性格多变'}
-- 写作风格：${config.writingStyle}
-- 偏好分区：${config.preferZone}
-- 听劝指数：${config.adaptability}
-- 风险偏好：${config.riskTolerance}`;
+- 写作风格：${config.writingStyle || '多变'}
+- 听劝指数：${config.adaptability ?? 0.5}（越高越会采纳读者意见）`;
 
   const userMessage = `
 请为一本名为《${bookTitle}》的小说创作第一章。
@@ -267,9 +261,7 @@ export async function POST() {
       const config: AgentConfig = safeJsonField<AgentConfig>(agent.agentConfig, {
         writerPersonality: '',
         writingStyle: '',
-        preferZone: '',
         adaptability: 50,
-        riskTolerance: 'medium',
         description: '',
       });
       try {

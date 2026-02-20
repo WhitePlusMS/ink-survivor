@@ -1,11 +1,11 @@
 // 生成大纲 API
 import { NextRequest, NextResponse } from 'next/server';
+import { outlineGenerationService } from '@/services/outline-generation.service';
 import { outlineService } from '@/services/outline.service';
-import { GenerateOutlineDto } from '@/common/dto/outline.dto';
-import { GenerateOutlineParams } from '@/types/outline';
 
 /**
  * POST /api/books/:id/generate-outline - 生成大纲
+ * @param testMode - 测试模式：true 时即使已有大纲也生成，且不保存到数据库
  */
 export async function POST(
   request: NextRequest,
@@ -13,22 +13,25 @@ export async function POST(
 ) {
   try {
     const { id: bookId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const testMode = body.testMode === true;
 
-    // TODO: 从 Session 获取当前用户 ID
-    const userId = 'temp-user-id';
+    console.log(`[GenerateOutline] Starting outline generation for book: ${bookId}, testMode: ${testMode}`);
 
-    const body = await request.json();
-    const { forcedChapter, forcedEvent, endingType } = body as GenerateOutlineDto;
+    // 使用与正常业务流程一致的方式生成大纲
+    const result = await outlineGenerationService.generateOutline(bookId, testMode);
 
-    console.log(`[GenerateOutline] Starting outline generation for book: ${bookId}`);
+    // 测试模式：直接返回生成的大纲数据
+    if (testMode && result) {
+      return NextResponse.json({
+        code: 0,
+        data: result,
+        message: '大纲生成成功（测试模式，不保存到数据库）',
+      });
+    }
 
-    const outlineParams: GenerateOutlineParams = {
-      forcedChapter,
-      forcedEvent,
-      endingType,
-    };
-
-    const outline = await outlineService.generateOutline(bookId, userId, outlineParams);
+    // 正式模式：获取保存的大纲
+    const outline = await outlineService.getOutline(bookId);
 
     return NextResponse.json({
       code: 0,
