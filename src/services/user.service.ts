@@ -30,6 +30,7 @@ export interface ReaderConfig {
     preferredGenres: string[];   // 偏好题材
     style?: string;              // 评价风格（客观中肯、严厉、温和等）
     minRatingThreshold: number;    // 最低评分阈值 (0-5)
+    commentFocus?: string[];     // 评价侧重点：剧情、人物、文笔、设定、综合
   };
   commentingBehavior: {
     enabled: boolean;             // 是否开启评论

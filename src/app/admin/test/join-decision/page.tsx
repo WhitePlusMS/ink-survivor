@@ -4,16 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Play, Loader2 } from 'lucide-react';
 
-// 参赛决策结果
-interface JoinDecisionResult {
-	success: boolean;
-	decision: 'join' | 'skip';
-	bookTitle?: string;
-	shortDescription?: string;
-	zoneStyle?: string;
-	reason?: string;
-}
-
 // 单个用户决策
 interface UserDecision {
 	userId: string;

@@ -237,9 +237,15 @@ export class OutlineGenerationService {
    * 5. 如果不改 → 直接生成第 N 章大纲
    * @param bookId - 书籍ID
    * @param targetRound - 目标轮次（可选，不传则根据章节数计算）
+   * @param testMode - 测试模式：true 时即使大纲存在也重新生成，且不写入数据库，返回生成的大纲
    */
-  async generateNextChapterOutline(bookId: string, targetRound?: number): Promise<void> {
-    console.log(`[Outline] 开始为书籍 ${bookId} 生成下一章大纲`);
+  async generateNextChapterOutline(bookId: string, targetRound?: number, testMode?: boolean): Promise<{
+    title: string;
+    summary: string;
+    characters: unknown[];
+    chapters: unknown[];
+  } | null> {
+    console.log(`[Outline] 开始为书籍 ${bookId} 生成下一章大纲${testMode ? ' (测试模式)' : ''}`);
 
     // 1. 获取书籍信息和当前章节数
     const book = await prisma.book.findUnique({
@@ -255,7 +261,7 @@ export class OutlineGenerationService {
 
     if (!book) {
       console.error(`[Outline] 书籍不存在: ${bookId}`);
-      return;
+      return null;
     }
 
     // 计算目标章节号：如果传入了 targetRound 则使用，否则基于已有章节数计算
@@ -270,7 +276,7 @@ export class OutlineGenerationService {
     const maxChapters = agentConfig.maxChapters || 5;
     if (nextChapterNumber > maxChapters) {
       console.log(`[Outline] 书籍《${book.title}》已完成所有 ${maxChapters} 章，跳过大纲生成`);
-      return;
+      return null;
     }
 
     // 2. 获取现有大纲 - 从 Book 表获取
@@ -282,17 +288,20 @@ export class OutlineGenerationService {
     if (!existingBook || !existingBook.chaptersPlan) {
       // 如果没有大纲先生成整本大纲
       await this.generateOutline(bookId);
-      return;
+      return null;
     }
 
     // 解析现有大纲
     const chaptersPlan = existingBook.chaptersPlan as unknown as ChapterOutline[];
 
-    // 检查该章节是否已有大纲
+    // 检查该章节是否已有大纲（测试模式下跳过检查）
     const existingChapterOutline = chaptersPlan.find((c) => c.number === nextChapterNumber);
-    if (existingChapterOutline) {
+    if (existingChapterOutline && !testMode) {
       console.log(`[Outline] 第 ${nextChapterNumber} 章大纲已存在`);
-      return;
+      return null;
+    }
+    if (existingChapterOutline && testMode) {
+      console.log(`[Outline] 测试模式：第 ${nextChapterNumber} 章大纲已存在，仍重新生成`);
     }
 
     // 4. 获取赛季信息
@@ -302,7 +311,7 @@ export class OutlineGenerationService {
 
     if (!season) {
       console.error(`[Outline] 赛季不存在: ${book.seasonId}`);
-      return;
+      return null;
     }
 
     const seasonInfo = {
@@ -363,18 +372,22 @@ export class OutlineGenerationService {
         const oldChapters = chaptersPlan.filter(c => c.number < currentRound);
         updatedChapters = [...oldChapters, ...modifiedChapters].sort((a, b) => a.number - b.number);
 
-        // 保存新版本到数据库
-        const newVersion = await this.saveOutlineVersion(bookId, currentRound, decision.reason);
+        // 保存新版本到数据库（非测试模式）
+        if (!testMode) {
+          const newVersion = await this.saveOutlineVersion(bookId, currentRound, decision.reason);
 
-        // 更新 Book 表的当前大纲
-        await prisma.book.update({
-          where: { id: bookId },
-          data: {
-            chaptersPlan: toJsonValue(updatedChapters),
-          },
-        });
+          // 更新 Book 表的当前大纲
+          await prisma.book.update({
+            where: { id: bookId },
+            data: {
+              chaptersPlan: toJsonValue(updatedChapters),
+            },
+          });
 
-        console.log(`[Outline] 大纲已更新到版本 v${newVersion}`);
+          console.log(`[Outline] 大纲已更新到版本 v${newVersion}`);
+        } else {
+          console.log(`[Outline] 测试模式：跳过保存，大纲不写入数据库`);
+        }
       } catch (error) {
         console.error(`[Outline] 大纲修改失败，继续使用原大纲:`, error);
         // 出错时继续使用原大纲
@@ -441,7 +454,7 @@ export class OutlineGenerationService {
     const authorToken = await getUserTokenById(book.author.id);
     if (!authorToken) {
       console.error(`[Outline] 无法获取作者 ${book.author.nickname} 的 Token`);
-      return;
+      return null;
     }
 
     let response: string;
@@ -450,7 +463,7 @@ export class OutlineGenerationService {
       console.log(`[Outline] LLM 返回: ${response.substring(0, 200)}...`);
     } catch (error) {
       console.error(`[Outline] LLM 调用失败:`, error);
-      return;
+      return null;
     }
 
     // 9. 解析响应
@@ -465,21 +478,35 @@ export class OutlineGenerationService {
       );
     } catch (error) {
       console.error(`[Outline] 解析章节大纲失败:`, error);
-      return;
+      return null;
     }
 
-    // 10. 更新大纲中的章节计划
+    // 10. 更新大纲中的章节计划（非测试模式）
     const finalChapters = [...updatedChapters, newChapterOutline]
       .sort((a, b) => a.number - b.number);
 
+    // 测试模式：返回生成的大纲
+    if (testMode) {
+      console.log(`[Outline] 测试模式：第 ${nextChapterNumber} 章大纲生成完成（不写入数据库）`);
+      return {
+        title: book.title,
+        summary: existingBook?.originalIntent || '',
+        characters: (existingBook?.characters as unknown[]) || [],
+        chapters: finalChapters,
+      };
+    }
+
+    // 正常模式：保存到数据库
     await prisma.book.update({
       where: { id: bookId },
       data: {
         chaptersPlan: toJsonValue(finalChapters),
       },
     });
-
     console.log(`[Outline] 书籍《${book.title}》第 ${nextChapterNumber} 章大纲生成完成`);
+
+    // 正常模式也返回生成的大纲（可选）
+    return null;
   }
 
   /**
@@ -543,7 +570,9 @@ export class OutlineGenerationService {
     });
 
     // 提取评论内容作为反馈
-    return comments.map((c) => c.content).filter(Boolean);
+    return comments
+      .map((c) => c.content)
+      .filter((c): c is string => c !== null);
   }
 
   /**
@@ -562,11 +591,13 @@ export class OutlineGenerationService {
       take: 20,
     });
 
-    return comments.map((c) => ({
-      type: c.isHuman ? 'human' as const : 'ai' as const,
-      content: c.content,
-      rating: c.rating ?? undefined, // 直接使用 1-10 分
-    }));
+    return comments
+      .filter((c) => c.content !== null)
+      .map((c) => ({
+        type: c.isHuman ? 'human' as const : 'ai' as const,
+        content: c.content!,
+        rating: c.rating ?? undefined, // 直接使用 1-10 分
+      }));
   }
 
   /**

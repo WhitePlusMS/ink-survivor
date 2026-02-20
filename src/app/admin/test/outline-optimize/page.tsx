@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CircleDot, Loader2 } from 'lucide-react';
+import { ArrowLeft, CircleDot, Loader2, History } from 'lucide-react';
 
 // 书籍类型
 interface Book {
@@ -21,8 +21,32 @@ interface Book {
 	}[];
 }
 
-// 大纲结果
-interface OutlineResult {
+// 大纲版本
+interface OutlineVersion {
+	id: string;
+	version: number;
+	roundCreated: number;
+	reason: string | null;
+	createdAt: string;
+	chaptersPlan: {
+		number: number;
+		title: string;
+		summary: string;
+	}[];
+}
+
+// 章节评论
+interface ChapterComment {
+	chapterNumber: number;
+	comments: {
+		type: 'ai' | 'human';
+		content: string;
+		rating?: number;
+	}[];
+}
+
+// 优化结果
+interface OptimizeResult {
 	success: boolean;
 	title: string;
 	summary: string;
@@ -41,10 +65,19 @@ interface OutlineResult {
 export default function TestOutlineOptimizePage() {
 	const [books, setBooks] = useState<Book[]>([]);
 	const [selectedBook, setSelectedBook] = useState<string>('');
+	const [targetRound, setTargetRound] = useState<number>(0); // 0 = 自动计算
+	const [testMode, setTestMode] = useState<boolean>(true); // 测试模式默认开启
 	const [loading, setLoading] = useState(false);
-	const [result, setResult] = useState<OutlineResult | null>(null);
+	const [result, setResult] = useState<OptimizeResult | null>(null);
 	const [error, setError] = useState<string>('');
 	const [logs, setLogs] = useState<string[]>([]);
+
+	// 当前书籍详情
+	const [bookDetail, setBookDetail] = useState<{
+		versions: OutlineVersion[];
+		comments: ChapterComment[];
+	} | null>(null);
+	const [showDetail, setShowDetail] = useState(false);
 
 	// 添加日志
 	const addLog = (message: string) => {
@@ -72,10 +105,41 @@ export default function TestOutlineOptimizePage() {
 			});
 	}, []);
 
+	// 获取书籍详情（版本历史、评论）
+	const fetchBookDetail = async (bookId: string) => {
+		try {
+			// 获取大纲版本历史
+			const versionsRes = await fetch(`/api/books/${bookId}/outline-versions`);
+			const versionsData = await versionsRes.json();
+
+			// 获取章节评论
+			const commentsRes = await fetch(`/api/books/${bookId}/comments-summary`);
+			const commentsData = await commentsRes.json();
+
+			setBookDetail({
+				versions: versionsData.data || [],
+				comments: commentsData.data || [],
+			});
+			addLog(`获取到 ${versionsData.data?.length || 0} 个大纲版本，${commentsData.data?.length || 0} 章评论`);
+		} catch (err) {
+			addLog(`获取书籍详情失败: ${err}`);
+		}
+	};
+
 	// 切换书籍时重置
 	const handleBookChange = (bookId: string) => {
-		const book = books.find(b => b.id === bookId);
 		setSelectedBook(bookId);
+		setResult(null);
+		setBookDetail(null);
+		setShowDetail(false);
+	};
+
+	// 切换详情显示
+	const toggleDetail = () => {
+		if (!showDetail && selectedBook) {
+			fetchBookDetail(selectedBook);
+		}
+		setShowDetail(!showDetail);
 	};
 
 	// 测试大纲优化
@@ -85,29 +149,61 @@ export default function TestOutlineOptimizePage() {
 		setLoading(true);
 		setError('');
 		setResult(null);
-		addLog(`开始优化大纲 - bookId: ${selectedBook}`);
+		setLogs([]);
+		addLog(`========== 开始大纲优化测试 ==========`);
+		addLog(`书籍ID: ${selectedBook}`);
+		addLog(`目标轮次: ${targetRound === 0 ? '自动计算' : targetRound}`);
+		addLog(`测试模式: ${testMode ? '开启（不写入数据库）' : '关闭'}`);
 
 		try {
-			// 调用大纲优化 API（与正常业务流程一致）
+			// 构建请求体
+			const requestBody: Record<string, unknown> = {
+				testMode,
+			};
+			if (targetRound > 0) {
+				requestBody.round = targetRound;
+			}
+
+			addLog(`调用 API: POST /api/books/${selectedBook}/optimize-outline`);
+			addLog(`请求参数: ${JSON.stringify(requestBody)}`);
+
+			// 调用大纲优化 API
 			const response = await fetch(`/api/books/${selectedBook}/optimize-outline`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(requestBody),
 			});
 
 			const data = await response.json();
-			addLog(`大纲优化完成: ${response.status}`);
+			addLog(`API 返回状态: ${response.status}`);
 
 			if (!response.ok) {
-				throw new Error(data.error || data.message || '优化失败');
+				throw new Error(data.message || '优化失败');
 			}
 
 			setResult(data.data);
-			addLog(`大纲标题: ${data.data?.title}`);
+			addLog(`大纲优化成功`);
+			addLog(`书名: ${data.data?.title}`);
+			addLog(`章节数: ${data.data?.chapters?.length || 0}`);
 
-			// 显示调试信息
+			// 显示当前书籍的关键信息
+			const selectedBookData = books.find(b => b.id === selectedBook);
+			if (selectedBookData) {
+				addLog(`当前章节数: ${selectedBookData.currentChapter}`);
+				addLog(`大纲章节数: ${selectedBookData.totalChapters}`);
+			}
+
+			// 显示调试信息（如果有）
 			if (data.debug) {
 				addLog(`\n========== 【System Prompt】==========\n${data.debug.systemPrompt}`);
 				addLog(`\n========== 【User Prompt】==========\n${data.debug.userPrompt}`);
+			}
+
+			addLog(`========== 测试完成 ==========`);
+
+			// 刷新书籍详情
+			if (selectedBook) {
+				fetchBookDetail(selectedBook);
 			}
 		} catch (err) {
 			addLog(`错误: ${err}`);
@@ -117,7 +213,8 @@ export default function TestOutlineOptimizePage() {
 		}
 	};
 
-	const selectedBookData = books.find(b => b.id === selectedBook);
+	// 获取当前选中的书籍
+	const currentBook = books.find(b => b.id === selectedBook);
 
 	return (
 		<div className="min-h-screen bg-[#f5f5dc]">
@@ -139,7 +236,7 @@ export default function TestOutlineOptimizePage() {
 
 					<div className="flex flex-wrap gap-4 items-end">
 						{/* 选择书籍 */}
-						<div className="flex-1 min-w-[200px]">
+						<div className="flex-1 min-w-[250px]">
 							<label className="block text-sm font-medium text-surface-700 mb-1">
 								选择书籍
 							</label>
@@ -150,11 +247,51 @@ export default function TestOutlineOptimizePage() {
 							>
 								{books.map(book => (
 									<option key={book.id} value={book.id}>
-										{book.title} - {book.author.nickname} ({book.totalChapters}章)
+										{book.title} - {book.author.nickname} (已写{book.currentChapter}章/大纲{book.totalChapters}章)
 									</option>
 								))}
 							</select>
 						</div>
+
+						{/* 目标轮次 */}
+						<div className="w-[150px]">
+							<label className="block text-sm font-medium text-surface-700 mb-1">
+								目标轮次
+							</label>
+							<input
+								type="number"
+								min="0"
+								value={targetRound}
+								onChange={(e) => setTargetRound(parseInt(e.target.value) || 0)}
+								className="w-full px-3 py-2 border border-surface-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+								placeholder="0=自动"
+							/>
+							<p className="text-xs text-surface-500 mt-1">0 = 根据当前章节自动计算</p>
+						</div>
+
+						{/* 测试模式 */}
+						<div className="flex items-center gap-2">
+							<input
+								type="checkbox"
+								id="testMode"
+								checked={testMode}
+								onChange={(e) => setTestMode(e.target.checked)}
+								className="w-4 h-4 text-cyan-600 rounded"
+							/>
+							<label htmlFor="testMode" className="text-sm text-surface-700">
+								测试模式
+							</label>
+							<span className="text-xs text-surface-500">(不写入数据库)</span>
+						</div>
+
+						{/* 详情按钮 */}
+						<button
+							onClick={toggleDetail}
+							className="px-4 py-2 bg-surface-100 text-surface-700 rounded-lg hover:bg-surface-200 flex items-center gap-2"
+						>
+							<History className="w-4 h-4" />
+							{showDetail ? '隐藏详情' : '查看详情'}
+						</button>
 
 						{/* 测试按钮 */}
 						<button
@@ -170,7 +307,7 @@ export default function TestOutlineOptimizePage() {
 							) : (
 								<>
 									<CircleDot className="w-5 h-5" />
-									优化大纲
+									执行大纲优化
 								</>
 							)}
 						</button>
@@ -183,15 +320,74 @@ export default function TestOutlineOptimizePage() {
 					)}
 				</div>
 
+				{/* 书籍详情区域 */}
+				{showDetail && bookDetail && currentBook && (
+					<div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+						<h3 className="text-lg font-semibold mb-4">书籍详情 - {currentBook.title}</h3>
+
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							{/* 基本信息 */}
+							<div className="bg-surface-50 p-4 rounded-lg">
+								<h4 className="font-medium mb-2">基本信息</h4>
+								<div className="text-sm space-y-1">
+									<p>作者: {currentBook.author.nickname}</p>
+									<p>状态: {currentBook.status}</p>
+									<p>已写章节: {currentBook.currentChapter}</p>
+									<p>大纲章节: {currentBook.totalChapters}</p>
+								</div>
+							</div>
+
+							{/* 大纲版本历史 */}
+							<div className="bg-surface-50 p-4 rounded-lg">
+								<h4 className="font-medium mb-2">大纲版本 ({bookDetail.versions.length})</h4>
+								<div className="text-sm max-h-[200px] overflow-y-auto">
+									{bookDetail.versions.length === 0 ? (
+										<p className="text-surface-500">暂无版本历史</p>
+									) : (
+										bookDetail.versions.map(v => (
+											<div key={v.id} className="border-b border-surface-200 py-2 last:border-0">
+												<p className="font-medium">v{v.version} - 第{v.roundCreated}轮</p>
+												<p className="text-surface-500 text-xs">{v.reason || '初始版本'}</p>
+												<p className="text-xs text-surface-400">{new Date(v.createdAt).toLocaleString()}</p>
+											</div>
+										))
+									)}
+								</div>
+							</div>
+						</div>
+
+						{/* 评论摘要 */}
+						<div className="mt-4 bg-surface-50 p-4 rounded-lg">
+							<h4 className="font-medium mb-2">章节评论 ({bookDetail.comments.length}章有评论)</h4>
+							<div className="text-sm max-h-[200px] overflow-y-auto">
+								{bookDetail.comments.length === 0 ? (
+									<p className="text-surface-500">暂无评论</p>
+								) : (
+									bookDetail.comments.map(ch => (
+										<div key={ch.chapterNumber} className="border-b border-surface-200 py-2 last:border-0">
+											<p className="font-medium">第{ch.chapterNumber}章 ({ch.comments.length}条评论)</p>
+											{ch.comments.slice(0, 2).map((c, i) => (
+												<p key={i} className="text-xs text-surface-600 truncate">
+													{c.type === 'ai' ? '[AI]' : '[人类]'} {c.content}
+												</p>
+											))}
+										</div>
+									))
+								)}
+							</div>
+						</div>
+					</div>
+				)}
+
 				{/* 日志区域 */}
 				<div className="bg-surface-900 rounded-lg p-4 mb-6">
 					<h3 className="text-sm font-semibold text-surface-300 mb-2">控制台日志</h3>
 					<div className="flex-1 min-h-[400px] overflow-y-auto font-mono text-xs text-green-400 space-y-1">
 						{logs.length === 0 ? (
-							<div className="text-surface-500">点击测试按钮开始...</div>
+							<div className="text-surface-500">点击&quot;执行大纲优化&quot;按钮开始测试...</div>
 						) : (
 							logs.map((log, i) => (
-								<div key={i}>{log}</div>
+								<div key={i} className="whitespace-pre-wrap">{log}</div>
 							))
 						)}
 					</div>

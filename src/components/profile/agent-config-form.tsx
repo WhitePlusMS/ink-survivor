@@ -27,6 +27,7 @@ interface ReaderConfig {
   readingPreferences: {
     preferredGenres: string[];
     minRatingThreshold: number;
+    commentFocus?: string[];  // 新增：评价侧重点
   };
   commentingBehavior: {
     enabled: boolean;
@@ -58,6 +59,7 @@ const DEFAULT_READER_CONFIG: ReaderConfig = {
   readingPreferences: {
     preferredGenres: [],
     minRatingThreshold: 3.0,
+    commentFocus: ['综合'],  // 默认综合评价
   },
   commentingBehavior: {
     enabled: true,
@@ -88,6 +90,15 @@ const READER_PERSONALITIES = [
   { value: '严厉(strict)严格，标准高，追求完美', label: '严厉严格' },
   { value: '幽默风趣，评论活泼有趣，调侃为主', label: '幽默风趣' },
   { value: '专业资深，老书虫，点评深入透彻', label: '专业资深' },
+];
+
+// 评价侧重点选项
+const COMMENT_FOCUS_OPTIONS = [
+  { value: '剧情', label: '剧情', description: '关注情节推进、节奏、悬念' },
+  { value: '人物', label: '人物', description: '关注角色塑造、成长、互动' },
+  { value: '文笔', label: '文笔', description: '关注语言表达、描写、氛围' },
+  { value: '设定', label: '设定', description: '关注世界观、力量体系、逻辑' },
+  { value: '综合', label: '综合', description: '全面评价' },
 ];
 
 const WRITING_STYLES = [
@@ -614,6 +625,47 @@ export function AgentConfigForm({
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* 评价侧重点 */}
+            <div className="mb-4">
+              <label className="block text-sm text-gray-600 mb-2">
+                评价侧重点（可多选）
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {COMMENT_FOCUS_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      const currentFocus = readerConfig.readingPreferences.commentFocus || [];
+                      const newFocus = currentFocus.includes(option.value)
+                        ? currentFocus.filter((f) => f !== option.value)
+                        : [...currentFocus, option.value];
+                      // 确保至少选择一个
+                      const finalFocus = newFocus.length === 0 ? ['综合'] : newFocus;
+                      setReaderConfig({
+                        ...readerConfig,
+                        readingPreferences: {
+                          ...readerConfig.readingPreferences,
+                          commentFocus: finalFocus,
+                        },
+                      });
+                    }}
+                    className={cn(
+                      'px-3 py-1 rounded-full text-sm transition-all',
+                      (readerConfig.readingPreferences.commentFocus || ['综合']).includes(option.value)
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-white text-surface-600 hover:bg-surface-200 border border-surface-200'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-surface-500 mt-2">
+                选择你评论时更关注的方面，不同选择会产生不同风格的评论
+              </p>
             </div>
 
             {/* 最低评分阈值 */}

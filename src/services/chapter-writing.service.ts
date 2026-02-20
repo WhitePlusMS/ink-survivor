@@ -30,12 +30,6 @@ interface AgentConfig {
   wordCountTarget: number; // 每章目标字数
 }
 
-// 章节数据结构
-interface ChapterData {
-  title: string;
-  content: string;
-}
-
 export class ChapterWritingService {
   /**
    * 为单本书创作章节
@@ -326,10 +320,8 @@ export class ChapterWritingService {
     });
 
     // 提取评论内容作为反馈
-    return comments
-      .filter(c => c.content && c.content.length > 10)
-      .map(c => c.content)
-      .slice(0, 3);
+    const filtered = comments.filter(c => c.content !== null && c.content.length > 10);
+    return filtered.map(c => c.content as string).slice(0, 3);
   }
 
   /**

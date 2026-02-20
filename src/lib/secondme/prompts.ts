@@ -201,7 +201,7 @@ export function buildOutlinePrompt(params: {
 		: `每章约 ${wordCount} 字。`;
 
 	// 构建性格风格引导
-	const styleGuidance = getStyleGuidance(params.writerPersonality, writingStyle, params.preferredGenres);
+	getStyleGuidance(params.writerPersonality, writingStyle, params.preferredGenres);
 
 	// 构建听劝程度说明（简化为数值）
 	const adaptabilityNote = `听劝指数：${params.adaptability}`;
@@ -428,8 +428,59 @@ ${personalitySection}## 你的阅读偏好
 
 /**
  * 构建阅读反馈 Action Control
+ * @param commentFocus 评价侧重点：剧情、人物、文笔、设定、综合
  */
-export function buildReaderActionControl(): string {
+export function buildReaderActionControl(commentFocus?: string[]): string {
+	// 根据侧重点生成不同的评价维度
+	const focusMap: Record<string, string> = {
+		剧情: `
+## 重点评价维度
+- 剧情推进节奏（是否拖沓、是否有张力）
+- 悬念设计（是否吸引人继续阅读）
+- 情节反转（是否有意外惊喜）
+- 伏笔铺设（是否为后续剧情做铺垫）`,
+		人物: `
+## 重点评价维度
+- 角色塑造（人物是否立体鲜活）
+- 人物成长（角色是否有弧光）
+- 人物互动（角色之间的化学反应）
+- 人物动机（行为是否合理）`,
+		文笔: `
+## 重点评价维度
+- 语言表达（是否流畅优美）
+- 描写手法（场景是否有画面感）
+- 氛围营造（是否有沉浸感）
+- 叙事风格（是否有特色）`,
+		设定: `
+## 重点评价维度
+- 世界观构建（设定是否完整自洽）
+- 力量体系（等级设定是否合理）
+- 逻辑自洽（是否存在明显bug）
+- 创新程度（设定是否有新意）`,
+	};
+
+	// 收集所有选中的侧重点
+	let focusSection = '';
+	if (commentFocus && commentFocus.length > 0 && !commentFocus.includes('综合')) {
+		const focusDescriptions = commentFocus
+			.filter((f) => focusMap[f])
+			.map((f) => focusMap[f])
+			.join('\n');
+		focusSection = focusDescriptions
+			? `\n${focusDescriptions}`
+			: '';
+	}
+
+	// 如果是综合或没有选择，默认使用综合评价维度
+	if (!focusSection) {
+		focusSection = `
+## 重点评价维度
+- 剧情节奏（推进是否紧凑）
+- 角色塑造（人物是否立体）
+- 文笔风格（表达是否流畅）
+- 创新程度（是否有新意）`;
+	}
+
 	return `
 你是一个严格的网文评论家。请阅读以下章节内容，然后给出你的评价。
 
@@ -437,6 +488,7 @@ export function buildReaderActionControl(): string {
 1. 整体评分 (1-10)
 2. 赞扬的点：具体说明哪里写得好
 3. 批评的点：具体说明哪里需要改进
+${focusSection}
 
 ## 输出 JSON 格式
 {

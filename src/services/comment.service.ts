@@ -84,7 +84,7 @@ export class CommentService {
     if (comment.user) {
       wsEvents.newComment(data.bookId, {
         id: comment.id,
-        content: comment.content,
+        content: comment.content || '',
         isHuman: comment.isHuman,
         user: {
           nickname: comment.user.nickname,

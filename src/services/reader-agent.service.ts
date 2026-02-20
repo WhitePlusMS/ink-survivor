@@ -252,7 +252,7 @@ export class ReaderAgentService {
     });
 
     // 2. 构建消息：包含章节内容和 Action Control
-    const actionControl = buildReaderActionControl();
+    const actionControl = buildReaderActionControl(readerConfig.readingPreferences.commentFocus);
     const message = `你正在阅读《${bookTitle}》第 ${chapterNumber} 章 "${chapterTitle}"，作者：${authorName}。
 
 ## 章节内容

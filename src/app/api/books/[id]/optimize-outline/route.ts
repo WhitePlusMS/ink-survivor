@@ -5,6 +5,9 @@ import { outlineService } from '@/services/outline.service';
 
 /**
  * POST /api/books/:id/optimize-outline - 优化大纲（生成下一章大纲）
+ * Body: { round?: number, testMode?: boolean }
+ * - round: 可选，指定目标轮次
+ * - testMode: 可选，测试模式，即使大纲存在也重新生成，且不写入数据库
  */
 export async function POST(
   request: NextRequest,
@@ -12,11 +15,34 @@ export async function POST(
 ) {
   try {
     const { id: bookId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const targetRound = body.round; // 可选的目标轮次
+    const testMode = body.testMode ?? false; // 测试模式
 
-    console.log(`[OptimizeOutline] Starting outline optimization for book: ${bookId}`);
+    console.log(`[OptimizeOutline] Starting outline optimization for book: ${bookId}, targetRound: ${targetRound}, testMode: ${testMode}`);
 
-    // 调用 generateNextChapterOutline 生成下一章大纲
-    await outlineGenerationService.generateNextChapterOutline(bookId);
+    // 如果是测试模式，调用服务层生成大纲但不保存
+    if (testMode) {
+      // 调用 generateNextChapterOutline，传入 testMode=true
+      const result = await outlineGenerationService.generateNextChapterOutline(bookId, targetRound, true);
+
+      if (!result) {
+        return NextResponse.json({
+          code: 500,
+          data: null,
+          message: '测试模式：生成大纲失败',
+        });
+      }
+
+      return NextResponse.json({
+        code: 0,
+        data: result,
+        message: '测试模式：大纲生成完成（未写入数据库）',
+      });
+    }
+
+    // 正常模式：调用 generateNextChapterOutline 生成下一章大纲
+    await outlineGenerationService.generateNextChapterOutline(bookId, targetRound);
 
     // 获取优化后的大纲
     const outline = await outlineService.getOutline(bookId);
