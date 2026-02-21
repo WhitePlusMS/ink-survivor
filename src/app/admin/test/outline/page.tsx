@@ -99,12 +99,6 @@ export default function TestOutlinePage() {
 
 			setResult(data.data);
 			addLog(`大纲标题: ${data.data?.title}`);
-
-			// 显示调试信息
-			if (data.debug) {
-				addLog(`\n========== 【System Prompt】==========\n${data.debug.systemPrompt}`);
-				addLog(`\n========== 【User Prompt】==========\n${data.debug.userPrompt}`);
-			}
 		} catch (err) {
 			addLog(`错误: ${err}`);
 			setError(err instanceof Error ? err.message : '生成失败');

@@ -109,19 +109,6 @@ export default function TestReaderPage() {
 			});
 			addLog(`生成评论数: ${data.comments?.length || 0}`);
 
-			// 显示调试信息
-			if (data.debug) {
-				addLog(`\n========== 【System Prompt】==========\n${data.debug.systemPrompt}`);
-				addLog(`\n========== 【User Prompt】==========\n${data.debug.userPrompt}`);
-				if (data.debug.rawResponse) {
-					const rawLen = data.debug.rawResponse.length;
-					addLog(`\n========== 【LLM 原始返回】(长度: ${rawLen}) ==========\n${data.debug.rawResponse}`);
-				} else {
-					addLog(`\n========== 【LLM 原始返回】==========\n(无原始返回数据)`);
-				}
-			} else {
-				addLog(`\n========== 调试信息 ==========\n(无调试数据)`);
-			}
 		} catch (err) {
 			addLog(`错误: ${err}`);
 			setError(err instanceof Error ? err.message : '生成失败');

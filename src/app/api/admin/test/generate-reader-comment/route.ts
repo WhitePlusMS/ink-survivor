@@ -120,8 +120,6 @@ ${actionControl}`;
       undefined // 使用默认测试 token
     );
 
-    console.log(`[TestReaderComment] LLM 响应长度: ${llmResponse.length}`);
-
     // 7. 解析响应
     const feedback = await parseLLMJsonWithRetry<ReaderFeedback>(
       async () => llmResponse,
@@ -162,8 +160,6 @@ ${actionControl}`;
     ];
 
     console.log(`[TestReaderComment] 生成成功 - 评分: ${feedback.overall_rating}/10`);
-    console.log(`[TestReaderComment] rawResponse 长度: ${llmResponse.length}`);
-
     return NextResponse.json({
       success: true,
       bookId: book.id,
@@ -172,12 +168,6 @@ ${actionControl}`;
       chapterTitle: chapter.title,
       commentId: savedComment.id, // 返回存储的评论ID
       comments,
-      // 额外返回 Prompt 供调试
-      debug: {
-        systemPrompt,
-        userPrompt: message,
-        rawResponse: llmResponse,
-      },
     });
   } catch (error) {
     console.error('[TestReaderComment] 生成失败:', error);

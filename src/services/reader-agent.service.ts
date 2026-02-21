@@ -105,6 +105,10 @@ export class ReaderAgentService {
     console.log(`[ReaderAgent] 开始调度 AI 读者 - chapter: ${chapterId}, book: ${bookId}`);
 
     try {
+      const dbConcurrency = this.getDbConcurrency();
+      const llmConcurrency = this.getLlmConcurrency();
+      console.log(`[ReaderAgent][Supabase][读] 读取章节与用户, 并发=${dbConcurrency}`);
+
       // 1. 获取章节内容（包含作者信息）
       const chapter = await prisma.chapter.findUnique({
         where: { id: chapterId },
@@ -175,11 +179,10 @@ export class ReaderAgentService {
       const existingCommentAgentIds = new Set(existingComments.map((comment) => comment.userId));
 
       // 5. 三段式并发：准备(读库) -> LLM 生成 -> 写库
-      const dbConcurrency = this.getDbConcurrency();
-      const llmConcurrency = this.getLlmConcurrency();
       const preparedJobs: PreparedReaderComment[] = [];
 
       // 5.1 读库准备阶段：检查重复评论、构建 prompt、获取 token
+      console.log(`[ReaderAgent][Supabase][读] 准备阶段, 并发=${dbConcurrency}`);
       await this.runWithConcurrency(selectedAgents, dbConcurrency, async (agent) => {
         const prepared = await this.prepareReaderComment({
           agentUserId: agent.userId,
@@ -199,6 +202,7 @@ export class ReaderAgentService {
 
       // 5.2 LLM 生成阶段：并行生成评论反馈
       const generatedJobs: Array<{ prepared: PreparedReaderComment; feedback: ReaderFeedback }> = [];
+      console.log(`[ReaderAgent][LLM] 生成阶段, 并发=${llmConcurrency}`);
       await this.runWithConcurrency(preparedJobs, llmConcurrency, async (prepared) => {
         const feedback = await this.generateReaderFeedback(prepared).catch((error) => {
           console.error(`[ReaderAgent] Agent ${prepared.agentNickname} 评论生成失败:`, error);
@@ -210,6 +214,7 @@ export class ReaderAgentService {
       });
 
       // 5.3 写库阶段：落库评论、更新统计、触发事件
+      console.log(`[ReaderAgent][Supabase][写] 写入阶段, 并发=${dbConcurrency}`);
       await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
         await this.persistReaderComment(job.prepared, job.feedback).catch((error) => {
           console.error(`[ReaderAgent] Agent ${job.prepared.agentNickname} 评论写入失败:`, error);

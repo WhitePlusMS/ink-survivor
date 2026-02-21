@@ -121,12 +121,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '无法获取作者 Token' }, { status: 500 });
     }
 
-    // 打印发送给 LLM 的完整内容
-    console.log(`========== [TestChapter] 发送给 LLM 的内容 ==========`);
-    console.log(`【System Prompt】:\n${systemPrompt}`);
-    console.log(`\n【User Prompt】:\n${chapterPrompt}`);
-    console.log(`=====================================================`);
-
     console.log(`[TestChapter] 开始调用 LLM...`);
 
     // 7. 调用 LLM 生成章节
@@ -136,8 +130,6 @@ export async function POST(request: NextRequest) {
       'inksurvivor-test',
       authorToken
     );
-
-    console.log(`[TestChapter] LLM 响应长度: ${llmResponse.length}`);
 
     // 8. 解析响应
     const chapterData = parseChapterFromPlainText(llmResponse, chapterOutline.title);
@@ -157,11 +149,6 @@ export async function POST(request: NextRequest) {
       content: chapterData.content,
       contentLength: chapterData.content.length,
       author: book.author.nickname,
-      // 额外返回 Prompt 供调试
-      debug: {
-        systemPrompt,
-        userPrompt: chapterPrompt,
-      },
     });
   } catch (error) {
     console.error('[TestChapter] 生成失败:', error);

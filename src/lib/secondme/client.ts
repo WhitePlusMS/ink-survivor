@@ -460,16 +460,8 @@ async function testModeSendChatWithRetry(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // 只在第一次尝试时打印完整提示词，重试时只打印简要信息
       if (attempt === 1) {
         console.log(`[TestModeChat] 调用 SecondMe API (appId=${appId})...`);
-        console.log(`[TestModeChat] ====== System Prompt ======`);
-        console.log(systemPrompt || '(无)');
-        console.log(`[TestModeChat] ====== User Message ======`);
-        // 完整打印message，分段打印避免太长
-        const msgLines = message.split('\n');
-        msgLines.forEach(line => console.log(line));
-        console.log(`[TestModeChat] =======================`);
       } else {
         console.log(`[TestModeChat] 重试 (${attempt}/${maxRetries})...`);
       }
@@ -524,7 +516,7 @@ async function testModeSendChatWithRetry(
         }
       }
 
-      console.log(`[TestModeChat] API 调用成功 - 响应长度: ${content.length}`);
+      console.log(`[TestModeChat] API 调用成功`);
       return content;
     } catch (error) {
       lastError = error as Error;

@@ -437,6 +437,7 @@ export class ChapterWritingService {
     const preparedJobs: PreparedChapterGeneration[] = [];
 
     // 1) 读库准备阶段
+    console.log(`[Chapter][Supabase][读] 准备阶段, 并发=${dbConcurrency}`);
     await this.runWithConcurrency(snapshots, dbConcurrency, async (snapshot) => {
       const prepared = await this.prepareChapterGeneration(snapshot);
       if (prepared) {
@@ -446,6 +447,7 @@ export class ChapterWritingService {
 
     // 2) 模型生成阶段
     const generatedJobs: ChapterWriteJob[] = [];
+    console.log(`[Chapter][LLM] 生成阶段, 并发=${llmConcurrency}`);
     await this.runWithConcurrency(preparedJobs, llmConcurrency, async (prepared) => {
       const chapterData = await this.generateChapterContent(prepared).catch(error => {
         console.error(`[Chapter] 书籍 ${prepared.bookId} 第 ${chapterNumber} 章创作失败:`, error);
@@ -458,6 +460,7 @@ export class ChapterWritingService {
 
     // 3) 写库阶段
     const persistedChapters: Array<{ chapterId: string; bookId: string; chapterNumber: number; title: string }> = [];
+    console.log(`[Chapter][Supabase][写] 发布阶段, 并发=${dbConcurrency}`);
     await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
       const persisted = await this.persistGeneratedChapter(job.prepared, job.chapterData).catch(error => {
         console.error(`[Chapter] 书籍 ${job.prepared.bookId} 第 ${chapterNumber} 章发布失败:`, error);

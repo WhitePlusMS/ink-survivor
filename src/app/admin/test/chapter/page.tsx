@@ -24,10 +24,6 @@ interface ChapterData {
   content: string;
   contentLength: number;
   author: string;
-  debug?: {
-    systemPrompt: string;
-    userPrompt: string;
-  };
 }
 
 export default function TestChapterPage() {
@@ -103,10 +99,6 @@ export default function TestChapterPage() {
 
       setResult(data);
       addLog(`章节标题: ${data.title}, 字数: ${data.contentLength}`);
-      if (data.debug) {
-        addLog(`\n========== 【System Prompt】==========\n${data.debug.systemPrompt}`);
-        addLog(`\n========== 【User Prompt】==========\n${data.debug.userPrompt}`);
-      }
     } catch (err) {
       addLog(`错误: ${err}`);
       setError(err instanceof Error ? err.message : '生成失败');

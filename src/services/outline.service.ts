@@ -70,13 +70,6 @@ export class OutlineService {
     // 设置作家角色
     const systemPrompt = `你是${userName}，一个热爱创作的故事作家。请根据以下要求生成一个完整的故事大纲。`;
 
-    console.log(`[OutlineService] ========================================`);
-    console.log(`[OutlineService] 发送给 LLM 的内容`);
-    console.log(`[OutlineService] ========================================`);
-    console.log(`【System Prompt】:\n${systemPrompt}`);
-    console.log(`\n【User Prompt】:\n${prompt}`);
-    console.log(`[OutlineService] ========================================`);
-
     console.log(`[OutlineService] Generating outline for book: ${bookId}`);
 
     // 流式生成大纲
@@ -100,12 +93,8 @@ export class OutlineService {
       );
     } catch (parseError) {
       console.error('[OutlineService] Failed to parse outline JSON:', parseError);
-      console.error('[OutlineService] Raw LLM response:', outlineContent);
       throw new Error('Failed to parse generated outline');
     }
-
-    // 输出解析后的大纲数据用于调试
-    console.log('[OutlineService] Parsed outline data:', JSON.stringify(outlineData, null, 2));
 
     // 保存大纲
     await this.saveOutline(bookId, outlineData);

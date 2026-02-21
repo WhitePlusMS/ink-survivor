@@ -205,12 +205,6 @@ export default function TestOutlineOptimizePage() {
 				addLog(`大纲章节数: ${selectedBookData.totalChapters}`);
 			}
 
-			// 显示调试信息（如果有）
-			if (data.debug) {
-				addLog(`\n========== 【System Prompt】==========\n${data.debug.systemPrompt}`);
-				addLog(`\n========== 【User Prompt】==========\n${data.debug.userPrompt}`);
-			}
-
 			addLog(`========== 测试完成 ==========`);
 
 			// 刷新书籍详情

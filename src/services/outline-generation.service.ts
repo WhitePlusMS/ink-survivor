@@ -489,20 +489,27 @@ export class OutlineGenerationService {
   private async persistOutlineBatch(jobs: OutlineWriteJob[]): Promise<void> {
     if (jobs.length === 0) return;
     const dbConcurrency = this.getDbConcurrency();
+    console.log(`[Outline][Supabase][写] 批量写入 ${jobs.length} 本书大纲, 并发=${dbConcurrency}`);
     await this.runWithConcurrency(jobs, dbConcurrency, async (job) => {
+      const chapters = Array.isArray(job.outlineData.chapters) ? job.outlineData.chapters : [];
+      if (chapters.length === 0) {
+        throw new Error(`[Outline] 大纲缺少章节数据，无法保存: bookId=${job.bookId}`);
+      }
+      const characters = Array.isArray(job.outlineData.characters) ? job.outlineData.characters : [];
+
       await prisma.book.update({
         where: { id: job.bookId },
         data: {
           originalIntent: job.outlineData.summary,
-          chaptersPlan: toJsonValue(job.outlineData.chapters),
-          characters: toJsonValue(job.outlineData.characters),
+          chaptersPlan: toJsonValue(chapters),
+          characters: toJsonValue(characters),
         },
       });
 
       await this.saveOutlineVersion(job.bookId, job.roundCreated, job.reason);
 
-      console.log(`[Outline] 书籍 ${job.bookId} 大纲生成完成 - ${job.outlineData.chapters.length} 章`);
-      console.log(`[Outline] 大纲章节列表:`, job.outlineData.chapters.map(c => c.number));
+      console.log(`[Outline] 书籍 ${job.bookId} 大纲生成完成 - ${chapters.length} 章`);
+      console.log(`[Outline] 大纲章节列表:`, chapters.map(c => c.number));
     });
   }
 
@@ -825,6 +832,7 @@ export class OutlineGenerationService {
     const llmConcurrency = this.getLlmConcurrency();
     const preparedJobs: PreparedOutlineGeneration[] = [];
 
+    console.log(`[Outline][Supabase][读] 准备阶段, 并发=${dbConcurrency}`);
     await this.runWithConcurrency(booksNeedingOutline, dbConcurrency, async (snapshot) => {
       const prepared = await this.prepareOutlineGeneration(snapshot, false).catch((error) => {
         console.error(`[Outline] 书籍《${snapshot.bookTitle}》大纲准备失败:`, error);
@@ -836,6 +844,7 @@ export class OutlineGenerationService {
     });
 
     const generatedJobs: Array<{ prepared: PreparedOutlineGeneration; outlineData: BookOutline }> = [];
+    console.log(`[Outline][LLM] 生成阶段, 并发=${llmConcurrency}`);
     await this.runWithConcurrency(preparedJobs, llmConcurrency, async (prepared) => {
       const outlineData = await this.generateOutlineContent(prepared).catch((error) => {
         console.error(`[Outline] 书籍《${prepared.bookTitle}》大纲生成失败:`, error);
@@ -847,6 +856,7 @@ export class OutlineGenerationService {
     });
 
     const writeJobs: OutlineWriteJob[] = [];
+    console.log(`[Outline][Supabase][写] 预写阶段, 并发=${dbConcurrency}`);
     await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
       const result = await this.persistOutline(job.prepared, job.outlineData).catch((error) => {
         console.error(`[Outline] 书籍《${job.prepared.bookTitle}》大纲写入失败:`, error);

@@ -14,7 +14,6 @@ interface UserDecision {
 	zoneStyle?: string;
 	reason?: string;
 	success: boolean;
-	rawResponse?: string; // 原始 LLM 响应用于调试
 }
 
 // 批量决策结果
@@ -67,12 +66,6 @@ export default function TestJoinDecisionPage() {
 			setResult(data.data);
 			addLog(`总计：${data.data.totalUsers} 个用户，${data.data.joinCount} 个参赛，${data.data.skipCount} 个弃权`);
 
-			// 显示每个用户的原始 LLM 响应
-			for (const r of data.data.results) {
-				if (r.rawResponse) {
-					addLog(`\n========== 【${r.userName} 原始返回】==========\n${r.rawResponse}`);
-				}
-			}
 		} catch (err) {
 			addLog(`错误: ${err}`);
 			setError(err instanceof Error ? err.message : '测试失败');

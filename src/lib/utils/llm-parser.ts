@@ -185,14 +185,13 @@ export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
     taskId?: string;
   }
 ): Promise<T> {
-  const { rootKey, logLength = 200, maxRetries = RETRY_CONFIG.maxRetries, taskId = 'LLM' } = options || {};
+  const { rootKey, maxRetries = RETRY_CONFIG.maxRetries, taskId = 'LLM' } = options || {};
 
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await llmResponseFn();
-      console.log(`[${taskId}] LLM 响应 (尝试 ${attempt + 1}/${maxRetries + 1}): ${response.substring(0, logLength)}...`);
 
       const repairedJson = extractAndRepairJson(response);
       const parsed = JSON.parse(repairedJson) as Record<string, unknown>;
@@ -201,11 +200,8 @@ export async function parseLLMJsonWithRetry<T = Record<string, unknown>>(
         if (!(rootKey in parsed)) {
           throw new Error(`响应中未找到根键 "${rootKey}"`);
         }
-        console.log(`[${taskId}] ✓ 从根键 "${rootKey}" 解析成功`);
         return parsed[rootKey] as T;
       }
-
-      console.log(`[${taskId}] ✓ 解析成功`);
       return parsed as T;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -239,13 +235,10 @@ export function parseLLMJson<T = Record<string, unknown>>(
     logLength?: number;
   }
 ): T {
-  const { rootKey, logLength = 200 } = options || {};
-
-  console.log(`[LLM Parser] 原始响应: ${response.substring(0, logLength)}...`);
+  const { rootKey } = options || {};
 
   try {
     const repairedJson = extractAndRepairJson(response);
-    console.log(`[LLM Parser] 修复后: ${repairedJson.substring(0, logLength)}...`);
 
     const parsed = JSON.parse(repairedJson) as Record<string, unknown>;
 
@@ -253,11 +246,8 @@ export function parseLLMJson<T = Record<string, unknown>>(
       if (!(rootKey in parsed)) {
         throw new Error(`响应中未找到根键 "${rootKey}"`);
       }
-      console.log(`[LLM Parser] ✓ 从根键 "${rootKey}" 解析成功`);
       return parsed[rootKey] as T;
     }
-
-    console.log(`[LLM Parser] ✓ 解析成功`);
     return parsed as T;
   } catch (error) {
     const errorMsg = `[LLM Parser] 解析失败: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -349,7 +339,6 @@ export async function parseChapterWithRetry(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await llmResponseFn();
-      console.log(`[${taskId}] LLM 响应 (尝试 ${attempt + 1}/${maxRetries + 1}): ${response.substring(0, 200)}...`);
 
       return parseChapterFromPlainText(response, fallbackTitle);
     } catch (error) {
