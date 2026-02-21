@@ -2,7 +2,7 @@
  * 任务队列服务
  *
  * 管理异步任务的创建、处理和执行
- * 支持多种任务类型：OUTLINE, WRITE_CHAPTER, READER_AGENT 等
+ * 支持多种任务类型：ROUND_CYCLE, CATCH_UP, READER_AGENT
  */
 
 import { prisma } from '@/lib/prisma';
@@ -11,12 +11,8 @@ import { Prisma } from '@prisma/client';
 
 export type TaskType =
   | 'ROUND_CYCLE'       // 轮次完整流程：大纲→章节→AI评论（合并任务）
-  | 'OUTLINE'           // 大纲生成
-  | 'NEXT_OUTLINE'     // 下一章大纲
-  | 'WRITE_CHAPTER'    // 章节创作
   | 'CATCH_UP'         // 追赶写作
-  | 'READER_AGENT'     // Reader Agent 阅读
-  | 'SEASON_END';      // 赛季结束
+  | 'READER_AGENT';    // Reader Agent 阅读
 
 export type TaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 

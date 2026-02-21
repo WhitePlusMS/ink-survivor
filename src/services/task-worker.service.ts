@@ -2,7 +2,7 @@
  * 任务执行 Worker
  *
  * 从 TaskQueue 中获取任务并执行
- * 支持多种任务类型：OUTLINE, WRITE_CHAPTER, READER_AGENT 等
+ * 支持多种任务类型：ROUND_CYCLE, CATCH_UP, READER_AGENT
  */
 
 import { taskQueueService, TaskPayload } from './task-queue.service';
