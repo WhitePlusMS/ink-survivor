@@ -55,9 +55,8 @@ interface BookOutline {
 // 大纲修改判断结果
 interface OutlineModificationDecision {
   shouldModify: boolean;
-  reason: string;
-  changes: string[];
-  targetChapter?: number; // 明确要修改第几章（1-based）
+  targetChapters: number[];  // 要修改的章节列表，如 [2, 3]
+  changes: string;           // 修改意见（一段话描述如何修改）
 }
 
 export class OutlineGenerationService {
@@ -317,13 +316,7 @@ export class OutlineGenerationService {
       return null;
     }
 
-    const seasonInfo = {
-      themeKeyword: season.themeKeyword,
-      constraints: season.constraints as unknown as string[],
-    };
-
-    // ===== 获取评论（用于生成大纲的参考）=====
-    // 如果是测试模式且有测试评论，则使用测试评论；否则从数据库获取
+    // ===== 获取评论（用于LLM判断）=====
     let allComments: Array<{ type: 'ai' | 'human'; content: string; rating?: number }> = [];
     if (testMode && testComments && testComments.length > 0) {
       allComments = testComments;
@@ -335,29 +328,96 @@ export class OutlineGenerationService {
       }
     }
 
-    // ===== 直接生成下一章大纲（只调1次LLM）=====
-    // 获取上一章的详细内容（用于保持连贯性）
-    let previousChapterContent = '';
-    if (currentChapterCount > 0) {
-      const previousChapter = await prisma.chapter.findFirst({
-        where: { bookId, chapterNumber: currentChapterCount },
-        select: { title: true, content: true },
-      });
-      if (previousChapter?.content) {
-        previousChapterContent = `第${currentChapterCount}章"${previousChapter.title}"：` +
-          previousChapter.content.slice(0, 300) + '...';
-      }
+    // ===== 构建 BookOutline 对象 =====
+    const bookOutline: BookOutline = {
+      title: book.title,
+      summary: existingBook.originalIntent || '',
+      characters: (existingBook.characters as unknown as Array<{
+        name: string;
+        role: string;
+        description: string;
+        motivation: string;
+      }>) || [],
+      chapters: chaptersPlan,
+      themes: [],
+      tone: '',
+    };
+
+    // ===== 听劝指数判断（纯数学判断）=====
+    // 如果听劝指数 < 0.35（相当于3.5/10），直接跳过整个大纲修改流程
+    const adaptability = agentConfig.adaptability ?? 0.5;
+    const adaptabilityThreshold = 0.35;
+    if (adaptability < adaptabilityThreshold) {
+      console.log(`[Outline] 听劝指数 ${adaptability} < ${adaptabilityThreshold}，固执己见，直接返回原大纲，不进行LLM判断`);
+      return {
+        title: book.title,
+        summary: existingBook?.originalIntent || '',
+        characters: (existingBook?.characters as unknown[]) || [],
+        chapters: chaptersPlan,
+        originalChapters: chaptersPlan,
+      };
     }
 
-    // 构建 System Prompt
-    const systemPrompt = buildAuthorSystemPrompt({
-      userName: book.author.nickname || '作家',
-      writerPersonality: agentConfig.writerPersonality || '',
-      writingStyle: agentConfig.writingStyle || '多变',
-      adaptability: agentConfig.adaptability ?? 0.5,
-      preferredGenres: agentConfig.preferredGenres || [],
-      seasonTheme: seasonInfo.themeKeyword,
-      constraints: seasonInfo.constraints,
+    // ===== LLM 判断是否需要修改大纲 =====
+    const decision = await this.shouldModifyOutline(
+      bookId,
+      nextChapterNumber,
+      agentConfig.adaptability ?? 0.5,
+      bookOutline,
+      allComments
+    );
+
+    let updatedChapters = chaptersPlan;
+
+    // 如果判断需要修改大纲
+    if (decision.shouldModify && decision.targetChapters.length > 0) {
+      console.log(`[Outline] 判断需要修改大纲，targetChapters: ${decision.targetChapters}, changes: ${decision.changes}`);
+
+      try {
+        // 修改大纲，获取目标章节的新大纲
+        const modifiedChapters = await this.modifyOutline(
+          bookId,
+          nextChapterNumber,
+          agentConfig,
+          bookOutline,
+          decision
+        );
+
+        // 合并：保留其他章节的大纲，替换目标章节
+        const targetSet = new Set(decision.targetChapters);
+        const otherChapters = chaptersPlan.filter(c => !targetSet.has(c.number));
+        updatedChapters = [...otherChapters, ...modifiedChapters].sort((a, b) => a.number - b.number);
+
+        console.log(`[Outline] 目标章节大纲修改完成`);
+
+        // 测试模式返回
+        return {
+          title: book.title,
+          summary: existingBook?.originalIntent || '',
+          characters: (existingBook?.characters as unknown[]) || [],
+          chapters: updatedChapters,
+          originalChapters: chaptersPlan,
+        };
+      } catch (error) {
+        console.error(`[Outline] 大纲修改失败，继续生成新章节:`, error);
+      }
+    } else {
+      console.log(`[Outline] 判断不需要修改大纲，原因: ${decision.changes}`);
+    }
+
+    // ===== 如果不需要修改，直接返回原大纲 =====
+    console.log(`[Outline] 直接返回原大纲，不生成新章节`);
+    return {
+      title: book.title,
+      summary: existingBook?.originalIntent || '',
+      characters: (existingBook?.characters as unknown[]) || [],
+      chapters: chaptersPlan,
+      originalChapters: chaptersPlan,
+    };
+  }
+
+  /**
+   * 获取章节概要
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
       wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
@@ -550,12 +610,12 @@ export class OutlineGenerationService {
   ): Promise<OutlineModificationDecision> {
     console.log(`[Outline] 判断是否需要修改大纲 - adaptability: ${adaptability}, 评论数: ${recentComments.length}`);
 
-    // 如果没有评论或者 adaptability 很低，倾向于不修改
+    // 如果没有评论，倾向于不修改
     if (recentComments.length === 0) {
       return {
         shouldModify: false,
-        reason: '暂无读者反馈，暂不需要修改大纲',
-        changes: [],
+        targetChapters: [],
+        changes: '暂无读者反馈，暂不需要修改大纲',
       };
     }
 
@@ -565,13 +625,13 @@ export class OutlineGenerationService {
       include: { author: { select: { id: true, nickname: true } } },
     });
     if (!book) {
-      return { shouldModify: false, reason: '书籍不存在', changes: [] };
+      return { shouldModify: false, targetChapters: [], changes: '书籍不存在' };
     }
 
     const authorToken = await getUserTokenById(book.author.id);
     if (!authorToken) {
       console.error(`[Outline] 无法获取作者 ${book.author.nickname} 的 Token`);
-      return { shouldModify: false, reason: '无法获取 Token', changes: [] };
+      return { shouldModify: false, targetChapters: [], changes: '无法获取 Token' };
     }
 
     // 构建判断 prompt
@@ -593,14 +653,28 @@ export class OutlineGenerationService {
         }
       );
 
-      console.log(`[Outline] 大纲修改判断结果: shouldModify=${decision.shouldModify}, reason=${decision.reason}`);
+      console.log(`[Outline] 大纲修改判断结果: shouldModify=${decision.shouldModify}, targetChapters=${decision.targetChapters}, changes=${decision.changes.slice(0, 50)}...`);
+
+      // 代码层面强制验证：过滤掉小于 currentRound 的章节（第N轮时第N-1章及之前已写完不能修改）
+      if (decision.shouldModify && decision.targetChapters.length > 0) {
+        const validChapters = decision.targetChapters.filter(ch => ch >= currentRound);
+        if (validChapters.length !== decision.targetChapters.length) {
+          console.log(`[Outline] 过滤掉小于第${currentRound}章的章节后，targetChapters: ${validChapters}`);
+          decision.targetChapters = validChapters;
+          if (validChapters.length === 0) {
+            decision.shouldModify = false;
+            decision.changes = '过滤后的目标章节为空，无法修改';
+          }
+        }
+      }
+
       return decision;
     } catch (error) {
       console.error(`[Outline] 判断大纲修改失败，默认不修改:`, error);
       return {
         shouldModify: false,
-        reason: '判断过程出错，暂不修改大纲',
-        changes: [],
+        targetChapters: [],
+        changes: '判断过程出错，暂不修改大纲',
       };
     }
   }
@@ -617,65 +691,70 @@ export class OutlineGenerationService {
     const adaptabilityLevel = params.adaptability >= 0.7 ? '高度听劝' : params.adaptability >= 0.4 ? '中等听劝' : '固执己见';
 
     // 格式化评论
-    const aiComments = params.recentComments.filter(c => c.type === 'ai').slice(0, 3);
-    const humanComments = params.recentComments.filter(c => c.type === 'human').slice(0, 5);
+    const aiComments = params.recentComments.filter(c => c.type === 'ai').slice(0, 5);
+    const humanComments = params.recentComments.filter(c => c.type === 'human').slice(0, 3);
 
     let outlineInfo = '';
     if (params.existingOutline) {
+      // 输出完整的大纲详情
+      const chaptersFullDetail = params.existingOutline.chapters.map(c => {
+        return `### 第${c.number}章 "${c.title}"
+- 概要：${c.summary}
+- 关键事件：${c.key_events?.join('、') || '无'}
+- 字数目标：${c.word_count_target || 2000}`;
+      }).join('\n\n');
+
       outlineInfo = `
-## 当前大纲概要
+## 当前大纲
 - 书名：${params.existingOutline.title}
 - 主线：${params.existingOutline.summary}
 - 章节数：${params.existingOutline.chapters.length} 章
-- 主题：${params.existingOutline.themes.join(', ')}
-- 风格：${params.existingOutline.tone}
-- 关键人物：${params.existingOutline.characters.map(c => c.name).join(', ')}
+- 关键人物：${params.existingOutline.characters.map(c => `${c.name}(${c.role}): ${c.description}`).join('；')}
+
+## 各章节完整大纲
+
+${chaptersFullDetail}
 `;
     }
 
     return `## 任务
-判断是否需要根据读者反馈修改故事大纲，并确定要修改哪一章。
+判断是否需要根据读者反馈修改故事大纲。
 
 ## 作者信息
-- 听劝指数：${params.adaptability}（${adaptabilityLevel}，0-1 之间，越高越应该听取读者意见）
+- 听劝指数：${params.adaptability}（${adaptabilityLevel}）
 - 当前轮次：第 ${params.currentRound} 轮
 
 ${outlineInfo}
 ## 读者反馈
 
-### AI 读者评论（选 Top 3）
+### AI 读者评论（选 Top 5）
 ${aiComments.map((c, i) => `${i + 1}. ${c.content}${c.rating !== undefined ? `（评分: ${c.rating}/10）` : ''}`).join('\n')}
 
-### 人类读者评论（选 Top 5）
+### 人类读者评论（选 Top 3）
 ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}`).join('\n') : '暂无人类评论'}
 
 ## 修改规则
+### 轮次限制（强制）
+- **当前是第 ${params.currentRound} 轮**
+- **只能修改第 ${params.currentRound} 章及之后的大纲**
+- 第 ${params.currentRound - 1} 章及之前的章节已经写完，**绝对不能修改**
 
-### 绝对不能修改（核心资产）
+### 绝对不能修改
 - 故事主线/主题
 - 关键人物（名字、性格、核心设定）
-- 故事核心冲突
-- 已建立的背景设定
-- **章节总数（保持不变）**
+- 章节总数
 
 ### 可以根据反馈调整
 - 具体事件安排
 - 章节的情节走向
 - 配角命运/戏份
 - 悬念设置
-- 章节顺序
-
-### 听劝程度参考
-- 高度听劝（>=0.7）：应该认真考虑读者反馈，适当调整情节
-- 中等听劝（0.4-0.7）：选择性采纳反馈，只修改确实有问题的部分
-- 固执己见（<0.4）：除非有严重问题，否则保持原大纲
 
 ## 输出格式 (JSON)
 {
   "shouldModify": true/false,
-  "targetChapter": 2,  // 如果需要修改，指定要修改第几章（基于读者反馈中最相关的那一章），必须是一个具体数字
-  "reason": "判断原因（50字以内）",
-  "changes": ["如果要修改，说明具体改什么"]  // 例如：["调整该章的情节走向", "增加女配角的戏份"]
+  "targetChapters": [2, 3],  // 需要修改的章节列表，空数组表示不修改
+  "changes": "修改意见（一段话描述如何修改，如：'第二章增加女配角的戏份，第三章调整情节走向'）"
 }
 
 只输出 JSON，不要有其他内容。`;
@@ -718,47 +797,68 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
 
     // 构建修改大纲的 prompt（包含完整 Agent 配置）
     const systemPrompt = buildAuthorSystemPrompt({
-      // 显示用
       userName: book.author.nickname || '作家',
-
-      // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
-
-      // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
       adaptability: agentConfig.adaptability ?? 0.5,
       preferredGenres: agentConfig.preferredGenres || [],
-
-      // 赛季信息
       seasonTheme: season.themeKeyword,
       constraints: season.constraints as unknown as string[],
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
-
-      // 创作参数
       wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
+    // 一次性修改所有目标章节
+    // 代码层面强制过滤：只保留 >= currentRound 的章节
+    const validTargetChapters = decision.targetChapters.filter(ch => ch >= currentRound);
+    if (validTargetChapters.length === 0) {
+      console.log(`[Outline] 没有可修改的目标章节（第${currentRound}轮只允许修改第${currentRound}章及之后）`);
+      return [];
+    }
+    if (validTargetChapters.length !== decision.targetChapters.length) {
+      console.log(`[Outline] 过滤后的目标章节: ${validTargetChapters}（原: ${decision.targetChapters}）`);
+    }
+
     const prompt = this.buildModifyOutlinePrompt({
-      targetChapter: decision.targetChapter || currentRound,
+      currentRound,
+      targetChapters: validTargetChapters,
       existingOutline,
       changes: decision.changes,
-      reason: decision.reason,
     });
 
     try {
+      // 一次LLM调用返回多个章节
+      interface MultiChapterResponse {
+        chapters: Array<{
+          number: number;
+          title: string;
+          summary: string;
+          key_events?: string[];
+          word_count_target?: number;
+        }>;
+      }
+
       const response = await testModeSendChat(prompt, systemPrompt, 'inksurvivor-outline', authorToken);
-      const modifiedChapter = await parseLLMJsonWithRetry<ChapterOutline>(
+      const modifiedResult = await parseLLMJsonWithRetry<MultiChapterResponse>(
         () => Promise.resolve(response),
         {
-          taskId: `OutlineModify-${bookId}-ch${decision.targetChapter}`,
+          taskId: `OutlineModify-${bookId}-ch${decision.targetChapters.join('-')}`,
           maxRetries: 2,
         }
       );
 
-      console.log(`[Outline] 第 ${decision.targetChapter} 章大纲修改完成: ${modifiedChapter.title}`);
+      console.log(`[Outline] 多章节修改完成: ${modifiedResult.chapters.map(c => `第${c.number}章`).join(', ')}`);
 
-      // 只返回修改后的目标章节
-      return [modifiedChapter];
+      // 转换为ChapterOutline格式
+      const modifiedChapters: ChapterOutline[] = modifiedResult.chapters.map(c => ({
+        number: c.number,
+        title: c.title,
+        summary: c.summary,
+        key_events: c.key_events || [],
+        word_count_target: c.word_count_target || 2000,
+      }));
+
+      return modifiedChapters;
     } catch (error) {
       console.error(`[Outline] 大纲修改失败:`, error);
       throw error;
@@ -766,45 +866,47 @@ ${humanComments.length > 0 ? humanComments.map((c, i) => `${i + 1}. ${c.content}
   }
 
   /**
-   * 构建大纲修改的 prompt
+   * 构建大纲修改的 prompt（支持多章节）
    */
   private buildModifyOutlinePrompt(params: {
-    targetChapter: number;
+    currentRound: number;
+    targetChapters: number[];
     existingOutline: BookOutline;
-    changes: string[];
-    reason: string;
+    changes: string;
   }): string {
-    // 获取目标章节的当前大纲
-    const targetChapterOutline = params.existingOutline.chapters.find(c => c.number === params.targetChapter);
+    // 获取所有目标章节的当前大纲
+    const targetChaptersOutlines = params.targetChapters.map(chNum => ({
+      number: chNum,
+      outline: params.existingOutline.chapters.find(c => c.number === chNum),
+      prev: params.existingOutline.chapters.find(c => c.number === chNum - 1),
+      next: params.existingOutline.chapters.find(c => c.number === chNum + 1),
+    }));
 
-    // 准备前后章节作为上下文（用于保持连贯性）
-    const previousChapter = params.existingOutline.chapters.find(c => c.number === params.targetChapter - 1);
-    const nextChapter = params.existingOutline.chapters.find(c => c.number === params.targetChapter + 1);
+    // 构建每个目标章节的上下文
+    const chaptersContext = targetChaptersOutlines.map(t => {
+      return `### 第 ${t.number} 章（待修改）
+标题：${t.outline?.title || '无'}
+概要：${t.outline?.summary || '无'}
+关键事件：${t.outline?.key_events?.join(', ') || '无'}
+
+**上一章** ${t.prev ? `"${t.prev.title}": ${t.prev.summary}` : '（无）'}
+**下一章** ${t.next ? `"${t.next.title}": ${t.next.summary}` : '（无）'}`;
+    }).join('\n\n');
 
     return `## 任务
-根据读者反馈，修改第 ${params.targetChapter} 章的大纲。
+根据读者反馈，同时修改以下章节的大纲：第 ${params.targetChapters.join('、')} 章。
 
 ## 修改原因
-${params.reason}
-需要修改的具体点：
-${params.changes.map(c => `- ${c}`).join('\n')}
+${params.changes}
 
 ## 修改约束
-- **只能修改第 ${params.targetChapter} 章的大纲**
+- **只能修改第 ${params.targetChapters.join('、')} 章的大纲**
 - 其他章节的大纲必须保持原样
 - 章节总数保持 ${params.existingOutline.chapters.length} 章不变
 
-## 上下文（用于保持连贯性）
+## 目标章节上下文
 
-### 第 ${params.targetChapter - 1} 章（上一章）${previousChapter ? `"${previousChapter.title}": ${previousChapter.summary}` : '（无）'}
-
-### 第 ${params.targetChapter} 章（待修改）
-标题：${targetChapterOutline?.title || '无'}
-概要：${targetChapterOutline?.summary || '无'}
-关键事件：${targetChapterOutline?.key_events?.join(', ') || '无'}
-字数目标：${targetChapterOutline?.word_count_target || 2000}
-
-### 第 ${params.targetChapter + 1} 章（下一章）${nextChapter ? `"${nextChapter.title}": ${nextChapter.summary}` : '（无）'}
+${chaptersContext}
 
 ## 关键人物（不能修改）
 ${params.existingOutline.characters.map(c => `- ${c.name}: ${c.description}`).join('\n')}
@@ -815,13 +917,12 @@ ${params.existingOutline.characters.map(c => `- ${c.name}: ${c.description}`).jo
 3. 必须保持与上下文的连贯性
 
 ## 输出格式 (JSON)
-只输出修改后的第 ${params.targetChapter} 章大纲：
+同时输出所有修改后的章节大纲：
 {
-  "number": ${params.targetChapter},
-  "title": "新标题（如果需要）",
-  "summary": "新概要（100-150字）",
-  "key_events": ["事件1", "事件2"],
-  "word_count_target": 2000
+  "chapters": [
+    { "number": ${params.targetChapters[0]}, "title": "新标题", "summary": "新概要", "key_events": ["事件1"], "word_count_target": 2000 },
+    ...
+  ]
 }
 
 只输出 JSON，不要有其他内容。`;
