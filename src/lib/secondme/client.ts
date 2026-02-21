@@ -460,11 +460,16 @@ async function testModeSendChatWithRetry(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[TestModeChat] 调用 SecondMe API (尝试 ${attempt}/${maxRetries})...`);
-      console.log(`[TestModeChat] ====== 完整提示词 (appId=${appId}) ======`);
-      console.log(`[TestModeChat] [System Prompt]: ${systemPrompt || '(无)'}`);
-      console.log(`[TestModeChat] [User Message]: ${message}`);
-      console.log(`[TestModeChat] ===========================================`);
+      // 只在第一次尝试时打印完整提示词，重试时只打印简要信息
+      if (attempt === 1) {
+        console.log(`[TestModeChat] 调用 SecondMe API (appId=${appId})...`);
+        console.log(`[TestModeChat] ====== 完整提示词 ======`);
+        console.log(`[TestModeChat] [System Prompt]: ${systemPrompt || '(无)'}`);
+        console.log(`[TestModeChat] [User Message]: ${message.slice(0, 500)}...`);
+        console.log(`[TestModeChat] =======================`);
+      } else {
+        console.log(`[TestModeChat] 重试 (${attempt}/${maxRetries})...`);
+      }
 
       const response = await fetch(
         `${SECONDME_CONFIG.BASE_URL}${SECONDME_CONFIG.API.CHAT_STREAM}`,

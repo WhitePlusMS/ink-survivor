@@ -91,6 +91,10 @@ model Season {
   // AI 工作开始时间（用于计算人类阅读剩余时间）
   aiWorkStartTime DateTime?
 
+  // LLM 优化建议（赛季队列功能）
+  llmSuggestion String?
+  llmOptimized Boolean @default(false)
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

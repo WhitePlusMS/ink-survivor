@@ -60,6 +60,11 @@ interface OptimizeResult {
 		title: string;
 		summary: string;
 	}[];
+	originalChapters?: {  // 优化前的大纲（用于对比）
+		number: number;
+		title: string;
+		summary: string;
+	}[];
 }
 
 export default function TestOutlineOptimizePage() {
@@ -67,6 +72,7 @@ export default function TestOutlineOptimizePage() {
 	const [selectedBook, setSelectedBook] = useState<string>('');
 	const [targetRound, setTargetRound] = useState<number>(0); // 0 = 自动计算
 	const [testMode, setTestMode] = useState<boolean>(true); // 测试模式默认开启
+	const [testComments, setTestComments] = useState<string>(''); // 测试用的人类评论
 	const [loading, setLoading] = useState(false);
 	const [result, setResult] = useState<OptimizeResult | null>(null);
 	const [error, setError] = useState<string>('');
@@ -162,6 +168,12 @@ export default function TestOutlineOptimizePage() {
 			};
 			if (targetRound > 0) {
 				requestBody.round = targetRound;
+			}
+			// 添加测试评论（仅在测试模式且有评论时）
+			if (testMode && testComments.trim()) {
+				requestBody.testComments = [
+					{ type: 'human' as const, content: testComments.trim() }
+				];
 			}
 
 			addLog(`调用 API: POST /api/books/${selectedBook}/optimize-outline`);
@@ -284,6 +296,23 @@ export default function TestOutlineOptimizePage() {
 							<span className="text-xs text-surface-500">(不写入数据库)</span>
 						</div>
 
+						{/* 测试评论输入框（仅在测试模式显示） */}
+						{testMode && (
+							<div className="w-full">
+								<label className="block text-sm font-medium text-surface-700 mb-1">
+									人类评论（仅测试用）
+								</label>
+								<input
+									type="text"
+									value={testComments}
+									onChange={(e) => setTestComments(e.target.value)}
+									className="w-full px-3 py-2 border border-surface-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+									placeholder="输入测试用的人类评论..."
+								/>
+								<p className="text-xs text-surface-500 mt-1">不输入则使用数据库中的真实评论</p>
+							</div>
+						)}
+
 						{/* 详情按钮 */}
 						<button
 							onClick={toggleDetail}
@@ -397,7 +426,7 @@ export default function TestOutlineOptimizePage() {
 				{result && (
 					<div className="bg-white rounded-lg shadow-sm overflow-hidden">
 						<div className="bg-surface-50 px-6 py-4 border-b border-surface-200">
-							<h2 className="text-lg font-bold text-surface-900">优化后的大纲</h2>
+							<h2 className="text-lg font-bold text-surface-900">大纲优化结果</h2>
 						</div>
 
 						<div className="px-6 py-6">
@@ -418,16 +447,51 @@ export default function TestOutlineOptimizePage() {
 										))}
 									</div>
 								</div>
+
+								{/* 章节对比展示 */}
 								<div>
-									<h4 className="font-semibold mb-2">章节：</h4>
-									<div className="grid gap-2">
-										{result.chapters?.map((ch, i) => (
-											<div key={i} className="bg-surface-50 p-2 rounded">
-												<span className="font-medium">第{ch.number}章 {ch.title}</span>
-												<p className="text-surface-600 text-sm">{ch.summary}</p>
+									<h4 className="font-semibold mb-2">章节大纲对比：</h4>
+
+									{/* 有优化前大纲时显示对比 */}
+									{result.originalChapters && result.originalChapters.length > 0 ? (
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											{/* 优化前 */}
+											<div className="border border-red-200 rounded-lg p-3">
+												<h5 className="font-medium text-red-600 mb-2">优化前</h5>
+												<div className="space-y-2">
+													{result.originalChapters.map((ch, i) => (
+														<div key={i} className="bg-red-50 p-2 rounded text-sm">
+															<span className="font-medium">第{ch.number}章 {ch.title}</span>
+															<p className="text-surface-600 text-xs mt-1">{ch.summary}</p>
+														</div>
+													))}
+												</div>
 											</div>
-										))}
-									</div>
+
+											{/* 优化后 */}
+											<div className="border border-green-200 rounded-lg p-3">
+												<h5 className="font-medium text-green-600 mb-2">优化后</h5>
+												<div className="space-y-2">
+													{result.chapters.map((ch, i) => (
+														<div key={i} className="bg-green-50 p-2 rounded text-sm">
+															<span className="font-medium">第{ch.number}章 {ch.title}</span>
+															<p className="text-surface-600 text-xs mt-1">{ch.summary}</p>
+														</div>
+													))}
+												</div>
+											</div>
+										</div>
+									) : (
+										/* 无优化前大纲时只显示当前大纲 */
+										<div className="grid gap-2">
+											{result.chapters?.map((ch, i) => (
+												<div key={i} className="bg-surface-50 p-2 rounded">
+													<span className="font-medium">第{ch.number}章 {ch.title}</span>
+													<p className="text-surface-600 text-sm">{ch.summary}</p>
+												</div>
+											))}
+										</div>
+									)}
 								</div>
 							</div>
 						</div>
