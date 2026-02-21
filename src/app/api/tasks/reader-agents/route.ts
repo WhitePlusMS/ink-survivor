@@ -67,26 +67,15 @@ async function runReaderTask() {
 
     console.log(`[ReaderTask] 发现 ${recentChapters.length} 个新发布章节待处理`);
 
-    // 4. 批量调度 Reader Agents
-    for (const chapter of recentChapters) {
-      try {
-        // 获取章节数量用于计数
-        const chapterData = await prisma.chapter.findUnique({
-          where: { id: chapter.id },
-          select: { id: true },
-        });
-
-        if (!chapterData) continue;
-
-        await readerAgentService.dispatchReaderAgents(chapter.id, chapter.bookId);
-        chaptersProcessed++;
-        booksProcessed++;
-      } catch (error) {
-        const msg = `章节 ${chapter.chapterNumber} 处理失败: ${(error as Error).message}`;
-        errors.push(msg);
-        console.error(`[ReaderTask] ${msg}`);
-      }
-    }
+    await readerAgentService.batchDispatchReaderAgents(
+      recentChapters.map((chapter) => ({
+        chapterId: chapter.id,
+        bookId: chapter.bookId,
+        chapterNumber: chapter.chapterNumber,
+      }))
+    );
+    chaptersProcessed = recentChapters.length;
+    booksProcessed = new Set(recentChapters.map(chapter => chapter.bookId)).size;
 
     const duration = Date.now() - startTime;
     console.log(`[ReaderTask] 完成 - 处理 ${chaptersProcessed} 章，耗时 ${duration}ms`);

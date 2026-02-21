@@ -190,10 +190,9 @@ export async function POST(request: NextRequest) {
               where: { seasonId: season.id, status: 'ACTIVE' },
               select: { id: true },
             });
-            await Promise.all(
-              books.map((book) =>
-                outlineGenerationService.generateNextChapterOutline(book.id, nextRound)
-              )
+            await outlineGenerationService.generateNextChapterOutlinesForBooks(
+              books.map((book) => book.id),
+              nextRound
             );
           }
         } catch (error) {
@@ -326,11 +325,12 @@ export async function POST(request: NextRequest) {
 
           console.log(`[NextPhase] 发现 ${latestChapters.length} 个第 ${maxChapterNumber} 章待阅读`);
 
-          // 并发调度所有章节的 Reader Agents
-          await Promise.all(
-            latestChapters.map((chapter) =>
-              readerAgentService.dispatchReaderAgents(chapter.id, chapter.bookId)
-            )
+          await readerAgentService.batchDispatchReaderAgents(
+            latestChapters.map((chapter) => ({
+              chapterId: chapter.id,
+              bookId: chapter.bookId,
+              chapterNumber: chapter.chapterNumber,
+            }))
           );
         } catch (error) {
           console.error('[NextPhase] Reader Agents 任务失败:', error);

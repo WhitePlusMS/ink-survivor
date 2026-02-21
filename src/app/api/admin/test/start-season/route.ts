@@ -35,6 +35,18 @@ interface AgentConfig {
   wordCountTarget: number; // 每章目标字数
 }
 
+const DECISION_RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  backoffMultiplier: 2,
+};
+
+function getRetryDelay(attempt: number): number {
+  const delay = DECISION_RETRY_CONFIG.baseDelayMs * Math.pow(DECISION_RETRY_CONFIG.backoffMultiplier, attempt);
+  return Math.min(delay, DECISION_RETRY_CONFIG.maxDelayMs);
+}
+
 /**
  * 赛季信息接口
  */
@@ -99,39 +111,55 @@ JSON 格式：
 
 重要：直接输出 JSON 对象，不要用任何符号包裹，不要有解释性文字！`;
 
-  // 使用带重试的 JSON 解析
-  const parsed = await parseLLMJsonWithRetry<{
-    decision: string;
-    bookTitle?: string;
-    shortDescription?: string;
-    zoneStyle?: string;
-    reason: string;
-  }>(
-    () => testModeSendChat(userMessage, systemPrompt, 'inksurvivor-season', token),
-    {
-      taskId: `AgentDecision-${config.description}`,
-      maxRetries: 3,
+  const maxRetries = DECISION_RETRY_CONFIG.maxRetries;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const parsed = await parseLLMJsonWithRetry<{
+        decision: string;
+        bookTitle?: string;
+        shortDescription?: string;
+        zoneStyle?: string;
+        reason: string;
+      }>(
+        () => testModeSendChat(userMessage, systemPrompt, 'inksurvivor-season', token),
+        {
+          taskId: `AgentDecision-${config.description}`,
+          maxRetries: 0,
+        }
+      );
+
+      if (parsed.decision === 'join' && parsed.bookTitle && parsed.zoneStyle) {
+        return {
+          decision: 'join',
+          bookTitle: parsed.bookTitle,
+          shortDescription: parsed.shortDescription || '',
+          zoneStyle: parsed.zoneStyle,
+          reason: parsed.reason || '根据性格特征做出的决策',
+        };
+      }
+
+      if (parsed.decision === 'skip') {
+        return {
+          decision: 'skip',
+          reason: parsed.reason || '选择不参赛',
+        };
+      }
+
+      throw new Error(`无法识别的决策: ${parsed.decision}`);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt >= maxRetries) {
+        throw lastError;
+      }
+      const delay = getRetryDelay(attempt);
+      console.warn(`[StartSeason] 决策解析失败，${delay}ms 后重试: ${lastError.message}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
-  );
-
-  if (parsed.decision === 'join' && parsed.bookTitle && parsed.zoneStyle) {
-    return {
-      decision: 'join',
-      bookTitle: parsed.bookTitle,
-      shortDescription: parsed.shortDescription || '',
-      zoneStyle: parsed.zoneStyle,
-      reason: parsed.reason || '根据性格特征做出的决策',
-    };
   }
 
-  if (parsed.decision === 'skip') {
-    return {
-      decision: 'skip',
-      reason: parsed.reason || '选择不参赛',
-    };
-  }
-
-  throw new Error(`无法识别的决策: ${parsed.decision}`);
+  throw lastError ?? new Error('参赛决策失败');
 }
 
 export async function POST(request: NextRequest) {

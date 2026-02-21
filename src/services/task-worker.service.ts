@@ -33,6 +33,13 @@ const withDbRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
   }
 };
 
+let activeTaskId: string | null = null;
+const taskProgress = new Map<string, { step: string; detail?: string; updatedAt: Date }>();
+const setTaskProgress = (step: string, detail?: string): void => {
+  if (!activeTaskId) return;
+  taskProgress.set(activeTaskId, { step, detail, updatedAt: new Date() });
+};
+
 const taskHandlers: Record<string, TaskHandler> = {
   /**
    * 轮次完整流程：大纲 → 章节 → AI评论
@@ -41,6 +48,7 @@ const taskHandlers: Record<string, TaskHandler> = {
   ROUND_CYCLE: async (payload) => {
     const { seasonId, round } = payload;
     console.log(`[TaskWorker] 🚀 ROUND_CYCLE 开始: seasonId=${seasonId}, round=${round}`);
+    setTaskProgress('ROUND_CYCLE_START', `seasonId=${seasonId}, round=${round}`);
 
     if (!seasonId || !round) throw new Error('seasonId and round are required');
 
@@ -62,9 +70,11 @@ const taskHandlers: Record<string, TaskHandler> = {
     });
 
     console.log(`[TaskWorker] 找到 ${allBooks.length} 本书籍，其中 ${activeBooks.length} 本需要继续创作`);
+    setTaskProgress('ROUND_CYCLE_BOOKS_READY', `total=${allBooks.length}, active=${activeBooks.length}`);
 
     // 1. 大纲生成（第1轮生成整本，后续轮优化单章）
     console.log(`[TaskWorker] 📝 步骤1: 生成大纲`);
+    setTaskProgress('ROUND_CYCLE_OUTLINE_START');
     if (round === 1) {
       console.log(`[TaskWorker] 第1轮：生成整本书大纲`);
       const { outlineGenerationService } = await import('./outline-generation.service');
@@ -72,24 +82,29 @@ const taskHandlers: Record<string, TaskHandler> = {
     } else {
       console.log(`[TaskWorker] 后续轮次：为 ${activeBooks.length} 本书生成下一章大纲`);
       const { outlineGenerationService } = await import('./outline-generation.service');
-      for (const book of activeBooks) {
-        await outlineGenerationService.generateNextChapterOutline(book.id, round as number);
-      }
+      await outlineGenerationService.generateNextChapterOutlinesForBooks(
+        activeBooks.map((book) => book.id),
+        round as number
+      );
     }
     console.log(`[TaskWorker] ✅ 大纲生成完成`);
+    setTaskProgress('ROUND_CYCLE_OUTLINE_DONE');
 
     // 2. 章节生成（并发处理活跃书籍）
     console.log(`[TaskWorker] ✍️ 步骤2: 生成章节内容`);
+    setTaskProgress('ROUND_CYCLE_CHAPTER_START');
     const { chapterWritingService } = await import('./chapter-writing.service');
     await chapterWritingService.writeChaptersForSeason(seasonId as string, round as number, activeBooks.map(b => b.id));
     console.log(`[TaskWorker] ✅ 章节生成完成`);
+    setTaskProgress('ROUND_CYCLE_CHAPTER_DONE');
 
     // 3. AI 评论
-    // 注意：chapterWritingService.writeChapter 内部已通过 setTimeout 调用 readerAgentService
-    console.log(`[TaskWorker] 🤖 步骤3: AI评论 (由 writeChapter 内部触发)`);
+    console.log(`[TaskWorker] 🤖 步骤3: AI评论 (由 writeChaptersForSeason 内部触发)`);
+    setTaskProgress('ROUND_CYCLE_READER_TRIGGERED');
 
     // 4. 落后检测
     console.log(`[TaskWorker] 🔍 步骤4: 落后检测`);
+    setTaskProgress('ROUND_CYCLE_BEHIND_CHECK');
     // 使用之前查询的 activeBooks 进行落后检测
     const behindBooks = activeBooks.filter(book => {
       const agentConfig = book.author.agentConfig as unknown as { maxChapters?: number } | null;
@@ -98,6 +113,7 @@ const taskHandlers: Record<string, TaskHandler> = {
       return currentChapters < maxChapters && currentChapters < (round as number);
     });
     console.log(`[TaskWorker] 落后书籍数量: ${behindBooks.length}`);
+    setTaskProgress('ROUND_CYCLE_BEHIND_RESULT', `count=${behindBooks.length}`);
 
     if (behindBooks.length > 0) {
       // 有落后：创建 CATCH_UP 任务
@@ -113,15 +129,19 @@ const taskHandlers: Record<string, TaskHandler> = {
         priority: 5,
       });
       console.log(`[TaskWorker] CATCH_UP 任务已创建`);
+      setTaskProgress('ROUND_CYCLE_CATCHUP_CREATED');
     } else {
       // 无落后：直接进入 HUMAN_READING
       console.log(`[TaskWorker] ✅ 无落后书籍，准备调用 advanceToNextRound 切换到 HUMAN_READING`);
+      setTaskProgress('ROUND_CYCLE_ADVANCE_NEXT');
       const { seasonAutoAdvanceService } = await import('./season-auto-advance.service');
       await seasonAutoAdvanceService.advanceToNextRound(seasonId as string, round as number);
       console.log(`[TaskWorker] ✅ advanceToNextRound 调用完成`);
+      setTaskProgress('ROUND_CYCLE_ADVANCE_DONE');
     }
 
     console.log(`[TaskWorker] 🎉 ROUND_CYCLE 任务完成: round=${round}`);
+    setTaskProgress('ROUND_CYCLE_DONE');
   },
 
   /**
@@ -133,13 +153,16 @@ const taskHandlers: Record<string, TaskHandler> = {
 
     const { chapterWritingService } = await import('./chapter-writing.service');
     console.log(`[TaskWorker] 执行追赶任务 - Season ${seasonId}, Round ${round}`);
+    setTaskProgress('CATCH_UP_START', `seasonId=${seasonId}, round=${round}`);
 
     // 追赶所有落后书籍
     await chapterWritingService.catchUpBooks(seasonId as string, round as number);
+    setTaskProgress('CATCH_UP_WRITE_DONE');
 
     // 追赶完成后切换阶段
     const { seasonAutoAdvanceService } = await import('./season-auto-advance.service');
     await seasonAutoAdvanceService.advanceToNextRound(seasonId as string, round as number);
+    setTaskProgress('CATCH_UP_ADVANCE_DONE');
   },
 
   /**
@@ -151,7 +174,9 @@ const taskHandlers: Record<string, TaskHandler> = {
 
     const { readerAgentService } = await import('./reader-agent.service');
     console.log(`[TaskWorker] 执行 Reader Agent 任务 - Chapter ${chapterId}`);
+    setTaskProgress('READER_AGENT_START', `chapterId=${chapterId}`);
     await readerAgentService.dispatchReaderAgents(chapterId as string, bookId as string);
+    setTaskProgress('READER_AGENT_DONE', `chapterId=${chapterId}`);
   },
 };
 
@@ -222,7 +247,9 @@ export class TaskWorkerService {
         return;
       }
 
-      console.log(`[TaskWorker] 开始处理任务: ${task.taskType} (${task.id})`);
+      console.log(`[TaskWorker] 开始处理任务: ${task.taskType} (${task.id}) payload=${JSON.stringify(task.payload)}`);
+      activeTaskId = task.id;
+      setTaskProgress('TASK_START', `type=${task.taskType}`);
 
       const handler = taskHandlers[task.taskType];
 
@@ -236,6 +263,7 @@ export class TaskWorkerService {
         await handler(task.payload);
         await withDbRetry(() => taskQueueService.complete(task.id));
         console.log(`[TaskWorker] 任务完成: ${task.taskType} (${task.id})`);
+        setTaskProgress('TASK_DONE');
       } catch (error) {
         console.error(`[TaskWorker] 任务执行失败: ${task.id}`, error);
         if (isDbPoolError(error)) {
@@ -245,6 +273,11 @@ export class TaskWorkerService {
       }
     } catch (error) {
       console.error('[TaskWorker] 处理任务时发生错误:', error);
+    } finally {
+      if (activeTaskId) {
+        taskProgress.delete(activeTaskId);
+      }
+      activeTaskId = null;
     }
   }
 
@@ -254,7 +287,23 @@ export class TaskWorkerService {
   async processTasks(): Promise<void> {
     const locked = await this.tryAcquireLock();
     if (!locked) {
-      console.log('[TaskWorker] 已有任务处理中，跳过本次触发');
+      const [processingTask, stats] = await Promise.all([
+        prisma.taskQueue.findFirst({
+          where: { status: 'PROCESSING' },
+          orderBy: { startedAt: 'desc' },
+        }),
+        taskQueueService.getStats(),
+      ]);
+      if (processingTask) {
+        const progress = taskProgress.get(processingTask.id);
+        const progressText = progress
+          ? `step=${progress.step}, updatedAt=${progress.updatedAt.toISOString()}${progress.detail ? `, detail=${progress.detail}` : ''}`
+          : 'step=unknown';
+        console.log(`[TaskWorker] 已有任务处理中，跳过本次触发: ${processingTask.taskType} (${processingTask.id}) startedAt=${processingTask.startedAt?.toISOString()} attempts=${processingTask.attempts} payload=${JSON.stringify(processingTask.payload)} ${progressText}`);
+      } else {
+        console.log('[TaskWorker] 已有任务处理中，跳过本次触发: 未找到处理中任务');
+      }
+      console.log(`[TaskWorker] 任务统计: pending=${stats.pending}, processing=${stats.processing}, completed=${stats.completed}, failed=${stats.failed}`);
       return;
     }
 
@@ -263,10 +312,14 @@ export class TaskWorkerService {
       const task = await withDbRetry(() => taskQueueService.getNextTask());
 
       if (!task) {
+        const stats = await taskQueueService.getStats();
+        console.log(`[TaskWorker] 队列为空，任务统计: pending=${stats.pending}, processing=${stats.processing}, completed=${stats.completed}, failed=${stats.failed}`);
         return;
       }
 
-      console.log(`[TaskWorker] 开始处理任务: ${task.taskType} (${task.id})`);
+      console.log(`[TaskWorker] 开始处理任务: ${task.taskType} (${task.id}) payload=${JSON.stringify(task.payload)}`);
+      activeTaskId = task.id;
+      setTaskProgress('TASK_START', `type=${task.taskType}`);
 
       const handler = taskHandlers[task.taskType];
 
@@ -280,6 +333,7 @@ export class TaskWorkerService {
         await handler(task.payload);
         await withDbRetry(() => taskQueueService.complete(task.id));
         console.log(`[TaskWorker] 任务完成: ${task.taskType} (${task.id})`);
+        setTaskProgress('TASK_DONE');
       } catch (error) {
         console.error(`[TaskWorker] 任务执行失败: ${task.id}`, error);
         if (isDbPoolError(error)) {
@@ -295,6 +349,10 @@ export class TaskWorkerService {
       } catch (error) {
         console.error('[TaskWorker] 释放任务锁失败:', error);
       }
+      if (activeTaskId) {
+        taskProgress.delete(activeTaskId);
+      }
+      activeTaskId = null;
     }
   }
 

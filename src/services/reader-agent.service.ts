@@ -44,6 +44,17 @@ interface PreparedReaderComment {
   message: string;
 }
 
+interface ReaderDispatchSnapshot {
+  chapterId: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chapterContent: string;
+  bookId: string;
+  bookTitle: string;
+  authorId: string;
+  authorName: string;
+}
+
 export class ReaderAgentService {
   // 每个章节随机选择的 Agent 数量
   private readonly AGENTS_PER_CHAPTER = 3;
@@ -135,6 +146,34 @@ export class ReaderAgentService {
       const selectedAgents = this.selectRandomAgents(readerAgents, this.AGENTS_PER_CHAPTER);
       console.log(`[ReaderAgent] 选择了 ${selectedAgents.length} 个 AI 读者进行评论`);
 
+      const snapshot: ReaderDispatchSnapshot = {
+        chapterId: chapter.id,
+        chapterNumber: chapter.chapterNumber,
+        chapterTitle: chapter.title,
+        chapterContent: chapter.content,
+        bookId: chapter.bookId,
+        bookTitle: chapter.book.title,
+        authorId: chapter.book.author.id,
+        authorName: chapter.book.author.nickname || '作家',
+      };
+
+      const selectedAgentIds = selectedAgents.map((agent) => agent.userId);
+      const agentUsers = await prisma.user.findMany({
+        where: { id: { in: selectedAgentIds } },
+        select: { id: true, agentConfig: true },
+      });
+      const aiAgentIdSet = new Set(agentUsers.filter((user) => user.agentConfig).map((user) => user.id));
+
+      const existingComments = await prisma.comment.findMany({
+        where: {
+          chapterId,
+          userId: { in: selectedAgentIds },
+          isHuman: false,
+        },
+        select: { userId: true },
+      });
+      const existingCommentAgentIds = new Set(existingComments.map((comment) => comment.userId));
+
       // 5. 三段式并发：准备(读库) -> LLM 生成 -> 写库
       const dbConcurrency = this.getDbConcurrency();
       const llmConcurrency = this.getLlmConcurrency();
@@ -146,14 +185,9 @@ export class ReaderAgentService {
           agentUserId: agent.userId,
           agentNickname: agent.nickname,
           readerConfig: agent.readerConfig,
-          chapterId,
-          bookId,
-          chapterNumber: chapter.chapterNumber,
-          chapterTitle: chapter.title,
-          chapterContent: chapter.content,
-          bookTitle: chapter.book.title,
-          authorName: chapter.book.author.nickname,
-          authorId: chapter.book.author.id,
+          snapshot,
+          isAiAgent: aiAgentIdSet.has(agent.userId),
+          hasExistingComment: existingCommentAgentIds.has(agent.userId),
         }).catch((error) => {
           console.error(`[ReaderAgent] Agent ${agent.nickname} 评论准备失败:`, error);
           return null;
@@ -187,6 +221,16 @@ export class ReaderAgentService {
     } catch (error) {
       console.error('[ReaderAgent] 调度失败:', error);
     }
+  }
+
+  async batchDispatchReaderAgents(entries: Array<{ chapterId: string; bookId: string; chapterNumber: number }>): Promise<void> {
+    if (entries.length === 0) return;
+    const dbConcurrency = this.getDbConcurrency();
+    await this.runWithConcurrency(entries, dbConcurrency, async (entry) => {
+      await this.dispatchReaderAgents(entry.chapterId, entry.bookId).catch((error) => {
+        console.error(`[ReaderAgent] 章节 ${entry.chapterNumber} 调度失败:`, error);
+      });
+    });
   }
 
   /**
@@ -277,34 +321,21 @@ export class ReaderAgentService {
     agentUserId: string;
     agentNickname: string;
     readerConfig: ReaderConfig;
-    chapterId: string;
-    bookId: string;
-    chapterNumber: number;
-    chapterTitle: string;
-    chapterContent: string;
-    bookTitle: string;
-    authorName: string;
-    authorId: string;
+    snapshot: ReaderDispatchSnapshot;
+    isAiAgent: boolean;
+    hasExistingComment: boolean;
   }): Promise<PreparedReaderComment | null> {
-    const { agentUserId, agentNickname, readerConfig, chapterId, bookId, chapterNumber, chapterTitle, chapterContent, bookTitle, authorName } = params;
+    const { agentUserId, agentNickname, readerConfig, snapshot, isAiAgent, hasExistingComment } = params;
     // 作者本人不参与评论
-    if (agentUserId === params.authorId) {
+    if (agentUserId === snapshot.authorId) {
       console.log(`[ReaderAgent] Agent ${agentNickname} 是作者本人，跳过评分`);
       return null;
     }
 
     // AI Agent 避免重复评论同一章节
-    const isAiAgent = await this.isAiAgent(agentUserId);
     if (isAiAgent) {
-      const existingComment = await prisma.comment.findFirst({
-        where: {
-          chapterId,
-          userId: agentUserId,
-          isHuman: false,
-        },
-      });
-      if (existingComment) {
-        console.log(`[ReaderAgent] Agent ${agentNickname} 已评论过第 ${chapterNumber} 章，跳过`);
+      if (hasExistingComment) {
+        console.log(`[ReaderAgent] Agent ${agentNickname} 已评论过第 ${snapshot.chapterNumber} 章，跳过`);
         return null;
       }
     }
@@ -315,7 +346,7 @@ export class ReaderAgentService {
       return null;
     }
 
-    console.log(`[ReaderAgent] Agent ${agentNickname} 正在阅读《${bookTitle}》第 ${chapterNumber} 章...`);
+    console.log(`[ReaderAgent] Agent ${agentNickname} 正在阅读《${snapshot.bookTitle}》第 ${snapshot.chapterNumber} 章...`);
 
     // 组装系统提示词与读者引导
     const systemPrompt = buildReaderSystemPrompt({
@@ -329,10 +360,10 @@ export class ReaderAgentService {
     });
 
     const actionControl = buildReaderActionControl(readerConfig.readingPreferences.commentFocus);
-    const message = `你正在阅读《${bookTitle}》第 ${chapterNumber} 章 "${chapterTitle}"，作者：${authorName}。
+    const message = `你正在阅读《${snapshot.bookTitle}》第 ${snapshot.chapterNumber} 章 "${snapshot.chapterTitle}"，作者：${snapshot.authorName}。
 
 ## 章节内容
-${chapterContent.slice(0, 4000)} ${chapterContent.length > 4000 ? '...(内容截断)' : ''}
+${snapshot.chapterContent.slice(0, 4000)} ${snapshot.chapterContent.length > 4000 ? '...(内容截断)' : ''}
 
 ${actionControl}`;
 
@@ -347,14 +378,14 @@ ${actionControl}`;
       agentUserId,
       agentNickname,
       readerConfig,
-      chapterId,
-      bookId,
-      chapterNumber,
-      chapterTitle,
-      chapterContent,
-      bookTitle,
-      authorName,
-      authorId: params.authorId,
+      chapterId: snapshot.chapterId,
+      bookId: snapshot.bookId,
+      chapterNumber: snapshot.chapterNumber,
+      chapterTitle: snapshot.chapterTitle,
+      chapterContent: snapshot.chapterContent,
+      bookTitle: snapshot.bookTitle,
+      authorName: snapshot.authorName,
+      authorId: snapshot.authorId,
       agentToken,
       systemPrompt,
       message,
@@ -383,30 +414,29 @@ ${actionControl}`;
   }
 
   private async persistReaderComment(prepared: PreparedReaderComment, feedback: ReaderFeedback): Promise<void> {
-    // 保存评论
-    const comment = await prisma.comment.create({
-      data: {
-        bookId: prepared.bookId,
-        chapterId: prepared.chapterId,
-        userId: prepared.agentUserId,
-        isHuman: false,
-        aiRole: 'Reader',
-        rating: feedback.overall_rating,
-        praise: feedback.praise || null,
-        critique: feedback.critique || null,
-      },
-      include: {
-        user: { select: { id: true, nickname: true, avatar: true } },
-      },
-    });
+    const [comment] = await prisma.$transaction([
+      prisma.comment.create({
+        data: {
+          bookId: prepared.bookId,
+          chapterId: prepared.chapterId,
+          userId: prepared.agentUserId,
+          isHuman: false,
+          aiRole: 'Reader',
+          rating: feedback.overall_rating,
+          praise: feedback.praise || null,
+          critique: feedback.critique || null,
+        },
+        include: {
+          user: { select: { id: true, nickname: true, avatar: true } },
+        },
+      }),
+      prisma.chapter.update({
+        where: { id: prepared.chapterId },
+        data: { commentCount: { increment: 1 } },
+      }),
+    ]);
 
     console.log(`[ReaderAgent] Agent ${prepared.agentNickname} 评论完成 - 评分: ${feedback.overall_rating}/10`);
-
-    // 更新章节评论数
-    await prisma.chapter.update({
-      where: { id: prepared.chapterId },
-      data: { commentCount: { increment: 1 } },
-    });
 
     // 通知前端有新评论
     wsEvents.newComment(prepared.bookId, {
@@ -490,18 +520,6 @@ ${actionControl}`;
         console.error(`[ReaderAgent] Agent ${agentNickname} 自动打赏失败:`, error);
       }
     }
-  }
-
-  /**
-   * 判断用户是否是 AI Agent
-   * 有 agentConfig 的是 AI Agent
-   */
-  private async isAiAgent(userId: string): Promise<boolean> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { agentConfig: true },
-    });
-    return !!user?.agentConfig;
   }
 
 }

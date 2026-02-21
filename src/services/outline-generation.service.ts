@@ -70,6 +70,51 @@ interface PreparedOutlineGeneration {
   testMode: boolean;
 }
 
+interface OutlineReadSnapshot {
+  seasonId: string;
+  seasonTheme: string;
+  seasonConstraints: string[];
+  seasonZoneStyles: string[];
+  seasonMaxChapters: number;
+  seasonMinChapters: number;
+  bookId: string;
+  bookTitle: string;
+  zoneStyle: string;
+  chaptersPlan: unknown | null;
+  chaptersCount: number;
+  authorId: string;
+  authorNickname: string;
+  authorAgentConfig: Record<string, unknown>;
+}
+
+interface NextOutlineSnapshot {
+  seasonId: string;
+  seasonTheme: string;
+  seasonConstraints: string[];
+  seasonZoneStyles: string[];
+  seasonMaxChapters: number;
+  seasonMinChapters: number;
+  bookId: string;
+  bookTitle: string;
+  zoneStyle: string;
+  chaptersPlan: ChapterOutline[] | null;
+  originalIntent: string | null;
+  characters: unknown[] | null;
+  currentChapterCount: number;
+  nextChapterNumber: number;
+  comments: Array<{ type: 'ai' | 'human'; content: string; rating?: number }>;
+  authorId: string;
+  authorNickname: string;
+  authorAgentConfig: Record<string, unknown>;
+}
+
+interface OutlineWriteJob {
+  bookId: string;
+  outlineData: BookOutline;
+  roundCreated: number;
+  reason: string;
+}
+
 export class OutlineGenerationService {
   private getDbConcurrency(): number {
     const raw = Number(process.env.DB_CONCURRENCY || process.env.TASK_CONCURRENCY);
@@ -104,11 +149,52 @@ export class OutlineGenerationService {
     await Promise.all(workers);
   }
 
-  private async prepareOutlineGeneration(bookId: string, testMode: boolean): Promise<PreparedOutlineGeneration | null> {
+  private async buildOutlineSnapshots(seasonId: string): Promise<OutlineReadSnapshot[]> {
+    const season = await prisma.season.findUnique({
+      where: { id: seasonId },
+    });
+
+    if (!season) {
+      console.error(`[Outline] 赛季不存在: ${seasonId}`);
+      return [];
+    }
+
+    const books = await prisma.book.findMany({
+      where: {
+        seasonId,
+        status: 'ACTIVE',
+      },
+      include: {
+        author: { select: { id: true, nickname: true, agentConfig: true } },
+        _count: { select: { chapters: true } },
+      },
+      orderBy: { heatValue: 'desc' },
+    });
+
+    return books.map((book) => ({
+      seasonId,
+      seasonTheme: season.themeKeyword,
+      seasonConstraints: season.constraints as unknown as string[],
+      seasonZoneStyles: season.zoneStyles as unknown as string[],
+      seasonMaxChapters: season.maxChapters || 7,
+      seasonMinChapters: season.minChapters || 3,
+      bookId: book.id,
+      bookTitle: book.title,
+      zoneStyle: book.zoneStyle,
+      chaptersPlan: book.chaptersPlan,
+      chaptersCount: book._count?.chapters ?? 0,
+      authorId: book.author.id,
+      authorNickname: book.author.nickname || '作家',
+      authorAgentConfig: book.author.agentConfig as unknown as Record<string, unknown>,
+    }));
+  }
+
+  private async buildOutlineSnapshotForBook(bookId: string): Promise<OutlineReadSnapshot | null> {
     const book = await prisma.book.findUnique({
       where: { id: bookId },
       include: {
         author: { select: { id: true, nickname: true, agentConfig: true } },
+        _count: { select: { chapters: true } },
       },
     });
 
@@ -116,28 +202,6 @@ export class OutlineGenerationService {
       console.error(`[Outline] 书籍不存在: ${bookId}`);
       return null;
     }
-
-    if (!testMode) {
-      const existingBook = await prisma.book.findUnique({
-        where: { id: bookId },
-        select: { chaptersPlan: true },
-      });
-
-      if (existingBook && existingBook.chaptersPlan) {
-        console.log(`[Outline] 书籍《${book.title}》已有大纲，跳过生成`);
-        return null;
-      }
-    }
-
-    const rawConfig = book.author.agentConfig as unknown as Record<string, unknown>;
-    const agentConfig: AgentConfig = {
-      writerPersonality: (rawConfig.writerPersonality as string) || '',
-      writingStyle: (rawConfig.writingStyle as string) || '多变',
-      adaptability: (rawConfig.adaptability as number) ?? 0.5,
-      preferredGenres: (rawConfig.preferredGenres as string[]) || [],
-      maxChapters: (rawConfig.maxChapters as number) || 5,
-      wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
-    };
 
     const season = await prisma.season.findUnique({
       where: { id: book.seasonId ?? undefined },
@@ -148,12 +212,190 @@ export class OutlineGenerationService {
       return null;
     }
 
-    const seasonInfo = {
-      themeKeyword: season.themeKeyword,
-      constraints: season.constraints as unknown as string[],
-      zoneStyles: season.zoneStyles as unknown as string[],
-      maxChapters: season.maxChapters || 7,
-      minChapters: season.minChapters || 3,
+    return {
+      seasonId: season.id,
+      seasonTheme: season.themeKeyword,
+      seasonConstraints: season.constraints as unknown as string[],
+      seasonZoneStyles: season.zoneStyles as unknown as string[],
+      seasonMaxChapters: season.maxChapters || 7,
+      seasonMinChapters: season.minChapters || 3,
+      bookId: book.id,
+      bookTitle: book.title,
+      zoneStyle: book.zoneStyle,
+      chaptersPlan: book.chaptersPlan,
+      chaptersCount: book._count?.chapters ?? 0,
+      authorId: book.author.id,
+      authorNickname: book.author.nickname || '作家',
+      authorAgentConfig: book.author.agentConfig as unknown as Record<string, unknown>,
+    };
+  }
+
+  private async buildNextOutlineSnapshots(bookIds: string[], targetRound?: number): Promise<NextOutlineSnapshot[]> {
+    if (bookIds.length === 0) return [];
+    const books = await prisma.book.findMany({
+      where: { id: { in: bookIds } },
+      select: {
+        id: true,
+        title: true,
+        zoneStyle: true,
+        seasonId: true,
+        chaptersPlan: true,
+        originalIntent: true,
+        characters: true,
+        author: { select: { id: true, nickname: true, agentConfig: true } },
+        _count: { select: { chapters: true } },
+      },
+    });
+
+    if (books.length === 0) return [];
+
+    const seasonIds = Array.from(new Set(books.map((book) => book.seasonId).filter((id): id is string => Boolean(id))));
+    const seasons = await prisma.season.findMany({
+      where: { id: { in: seasonIds } },
+    });
+    const seasonMap = new Map(seasons.map((season) => [season.id, season]));
+
+    const chapterCountMap = new Map<string, number>();
+    books.forEach((book) => {
+      chapterCountMap.set(book.id, book._count?.chapters ?? 0);
+    });
+
+    const commentsMap = await this.buildAllChapterComments(bookIds, chapterCountMap);
+
+    const snapshots: NextOutlineSnapshot[] = [];
+    books.forEach((book) => {
+      if (!book.seasonId) {
+        console.error(`[Outline] 赛季不存在: ${book.seasonId}`);
+        return;
+      }
+      const season = seasonMap.get(book.seasonId);
+      if (!season) {
+        console.error(`[Outline] 赛季不存在: ${book.seasonId}`);
+        return;
+      }
+      const currentChapterCount = chapterCountMap.get(book.id) ?? 0;
+      const nextChapterNumber = targetRound ?? currentChapterCount + 1;
+      const comments = commentsMap.get(book.id) ?? [];
+
+      snapshots.push({
+        seasonId: season.id,
+        seasonTheme: season.themeKeyword,
+        seasonConstraints: season.constraints as unknown as string[],
+        seasonZoneStyles: season.zoneStyles as unknown as string[],
+        seasonMaxChapters: season.maxChapters || 7,
+        seasonMinChapters: season.minChapters || 3,
+        bookId: book.id,
+        bookTitle: book.title,
+        zoneStyle: book.zoneStyle,
+        chaptersPlan: book.chaptersPlan as unknown as ChapterOutline[] | null,
+        originalIntent: book.originalIntent,
+        characters: book.characters as unknown[] | null,
+        currentChapterCount,
+        nextChapterNumber,
+        comments,
+        authorId: book.author.id,
+        authorNickname: book.author.nickname || '作家',
+        authorAgentConfig: book.author.agentConfig as unknown as Record<string, unknown>,
+      });
+    });
+
+    return snapshots;
+  }
+
+  private async buildAllChapterComments(
+    bookIds: string[],
+    chapterCountMap: Map<string, number>
+  ): Promise<Map<string, Array<{ type: 'ai' | 'human'; content: string; rating?: number }>>> {
+    const maxChapterNumber = Math.max(0, ...Array.from(chapterCountMap.values()));
+    const result = new Map<string, Array<{ type: 'ai' | 'human'; content: string; rating?: number }>>();
+    bookIds.forEach((bookId) => result.set(bookId, []));
+    if (maxChapterNumber <= 0) return result;
+
+    const comments = await prisma.comment.findMany({
+      where: {
+        bookId: { in: bookIds },
+        chapter: { chapterNumber: { lte: maxChapterNumber } },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        bookId: true,
+        isHuman: true,
+        content: true,
+        rating: true,
+        createdAt: true,
+        chapter: { select: { chapterNumber: true } },
+      },
+    });
+
+    const grouped = new Map<string, Map<number, Array<{
+      type: 'ai' | 'human';
+      content: string;
+      rating?: number;
+      createdAt: Date;
+    }>>>();
+
+    comments.forEach((comment) => {
+      if (!comment.content) return;
+      const chapterNumber = comment.chapter?.chapterNumber;
+      if (!chapterNumber) return;
+      let byChapter = grouped.get(comment.bookId);
+      if (!byChapter) {
+        byChapter = new Map<number, Array<{
+          type: 'ai' | 'human';
+          content: string;
+          rating?: number;
+          createdAt: Date;
+        }>>();
+        grouped.set(comment.bookId, byChapter);
+      }
+      const list = byChapter.get(chapterNumber) ?? [];
+      list.push({
+        type: comment.isHuman ? 'human' : 'ai',
+        content: comment.content,
+        rating: comment.rating ?? undefined,
+        createdAt: comment.createdAt,
+      });
+      byChapter.set(chapterNumber, list);
+    });
+
+    bookIds.forEach((bookId) => {
+      const chapterCount = chapterCountMap.get(bookId) ?? 0;
+      const byChapter = grouped.get(bookId) ?? new Map<number, Array<{
+        type: 'ai' | 'human';
+        content: string;
+        rating?: number;
+        createdAt: Date;
+      }>>();
+      const merged: Array<{ type: 'ai' | 'human'; content: string; rating?: number }> = [];
+      for (let chapterNumber = 1; chapterNumber <= chapterCount; chapterNumber += 1) {
+        const items = byChapter.get(chapterNumber) ?? [];
+        items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        merged.push(...items.slice(0, 20).map((item) => ({
+          type: item.type,
+          content: item.content,
+          rating: item.rating,
+        })));
+      }
+      result.set(bookId, merged);
+    });
+
+    return result;
+  }
+
+  private async prepareOutlineGeneration(snapshot: OutlineReadSnapshot, testMode: boolean): Promise<PreparedOutlineGeneration | null> {
+    if (!testMode && snapshot.chaptersPlan) {
+      console.log(`[Outline] 书籍《${snapshot.bookTitle}》已有大纲，跳过生成`);
+      return null;
+    }
+
+    const rawConfig = snapshot.authorAgentConfig;
+    const agentConfig: AgentConfig = {
+      writerPersonality: (rawConfig.writerPersonality as string) || '',
+      writingStyle: (rawConfig.writingStyle as string) || '多变',
+      adaptability: (rawConfig.adaptability as number) ?? 0.5,
+      preferredGenres: (rawConfig.preferredGenres as string[]) || [],
+      maxChapters: (rawConfig.maxChapters as number) || 5,
+      wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
     };
 
     const userPreferredChapters = agentConfig.maxChapters || 5;
@@ -165,14 +407,14 @@ export class OutlineGenerationService {
         : '中篇小说风格（平衡适当，详略得当）';
 
     const systemPrompt = buildAuthorSystemPrompt({
-      userName: book.author.nickname || '作家',
+      userName: snapshot.authorNickname,
       writerPersonality: agentConfig.writerPersonality || '',
       writingStyle: agentConfig.writingStyle || '多变',
       adaptability: agentConfig.adaptability ?? 0.5,
       preferredGenres: agentConfig.preferredGenres || [],
-      seasonTheme: seasonInfo.themeKeyword,
-      constraints: seasonInfo.constraints,
-      zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
+      seasonTheme: snapshot.seasonTheme,
+      constraints: snapshot.seasonConstraints,
+      zoneStyle: this.normalizeZoneStyle(snapshot.zoneStyle),
       wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
@@ -182,24 +424,24 @@ export class OutlineGenerationService {
       adaptability: agentConfig.adaptability ?? 0.5,
       preferredGenres: agentConfig.preferredGenres || [],
       wordCountTarget: agentConfig.wordCountTarget || 2000,
-      seasonTheme: seasonInfo.themeKeyword,
-      constraints: seasonInfo.constraints,
-      zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
-      minChapters: seasonInfo.minChapters,
-      maxChapters: seasonInfo.maxChapters,
+      seasonTheme: snapshot.seasonTheme,
+      constraints: snapshot.seasonConstraints,
+      zoneStyle: this.normalizeZoneStyle(snapshot.zoneStyle),
+      minChapters: snapshot.seasonMinChapters,
+      maxChapters: snapshot.seasonMaxChapters,
       chapterPreference: chapterPreferenceText,
     });
 
-    const authorToken = await getUserTokenById(book.author.id);
+    const authorToken = await getUserTokenById(snapshot.authorId);
     if (!authorToken) {
-      throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
+      throw new Error(`无法获取作者 ${snapshot.authorNickname} 的 Token`);
     }
 
     return {
-      bookId: book.id,
-      bookTitle: book.title,
-      authorId: book.author.id,
-      authorNickname: book.author.nickname,
+      bookId: snapshot.bookId,
+      bookTitle: snapshot.bookTitle,
+      authorId: snapshot.authorId,
+      authorNickname: snapshot.authorNickname,
       authorToken,
       systemPrompt,
       outlinePrompt,
@@ -220,7 +462,7 @@ export class OutlineGenerationService {
   private async persistOutline(
     prepared: PreparedOutlineGeneration,
     outlineData: BookOutline
-  ): Promise<{
+  ): Promise<OutlineWriteJob | {
     title: string;
     summary: string;
     characters: unknown[];
@@ -236,20 +478,32 @@ export class OutlineGenerationService {
       };
     }
 
-    await prisma.book.update({
-      where: { id: prepared.bookId },
-      data: {
-        originalIntent: outlineData.summary,
-        chaptersPlan: toJsonValue(outlineData.chapters),
-        characters: toJsonValue(outlineData.characters),
-      },
+    return {
+      bookId: prepared.bookId,
+      outlineData,
+      roundCreated: 1,
+      reason: '初始版本',
+    };
+  }
+
+  private async persistOutlineBatch(jobs: OutlineWriteJob[]): Promise<void> {
+    if (jobs.length === 0) return;
+    const dbConcurrency = this.getDbConcurrency();
+    await this.runWithConcurrency(jobs, dbConcurrency, async (job) => {
+      await prisma.book.update({
+        where: { id: job.bookId },
+        data: {
+          originalIntent: job.outlineData.summary,
+          chaptersPlan: toJsonValue(job.outlineData.chapters),
+          characters: toJsonValue(job.outlineData.characters),
+        },
+      });
+
+      await this.saveOutlineVersion(job.bookId, job.roundCreated, job.reason);
+
+      console.log(`[Outline] 书籍 ${job.bookId} 大纲生成完成 - ${job.outlineData.chapters.length} 章`);
+      console.log(`[Outline] 大纲章节列表:`, job.outlineData.chapters.map(c => c.number));
     });
-
-    await this.saveOutlineVersion(prepared.bookId, 1, '初始版本');
-
-    console.log(`[Outline] 书籍《${prepared.bookTitle}》大纲生成完成 - ${outlineData.chapters.length} 章`);
-    console.log(`[Outline] 大纲章节列表:`, outlineData.chapters.map(c => c.number));
-    return null;
   }
 
   /**
@@ -264,12 +518,21 @@ export class OutlineGenerationService {
     chapters: unknown[];
   } | null> {
     console.log(`[Outline] 开始为书籍 ${bookId} 生成大纲${testMode ? ' (测试模式)' : ''}`);
-    const prepared = await this.prepareOutlineGeneration(bookId, testMode);
+    const snapshot = await this.buildOutlineSnapshotForBook(bookId);
+    if (!snapshot) {
+      return null;
+    }
+    const prepared = await this.prepareOutlineGeneration(snapshot, testMode);
     if (!prepared) {
       return null;
     }
     const outlineData = await this.generateOutlineContent(prepared);
-    return this.persistOutline(prepared, outlineData);
+    const result = await this.persistOutline(prepared, outlineData);
+    if (result && 'outlineData' in result) {
+      await this.persistOutlineBatch([result]);
+      return null;
+    }
+    return result;
   }
 
   /**
@@ -295,91 +558,65 @@ export class OutlineGenerationService {
     originalChapters?: unknown[]; // 优化前的大纲（用于对比）
   } | null> {
     console.log(`[Outline] 开始为书籍 ${bookId} 生成下一章大纲${testMode ? ' (测试模式)' : ''}`);
-
-    // 1. 获取书籍信息和当前章节数
-    const book = await prisma.book.findUnique({
-      where: { id: bookId },
-      include: {
-        author: { select: { id: true, nickname: true, agentConfig: true } },
-        chapters: {
-          orderBy: { chapterNumber: 'desc' },
-          take: 1,
-        },
-      },
-    });
-
-    if (!book) {
+    const snapshots = await this.buildNextOutlineSnapshots([bookId], targetRound);
+    const snapshot = snapshots[0];
+    if (!snapshot) {
       console.error(`[Outline] 书籍不存在: ${bookId}`);
       return null;
     }
+    return this.generateNextChapterOutlineFromSnapshot(snapshot, targetRound, testMode, testComments);
+  }
 
-    // 计算目标章节号：如果传入了 targetRound 则使用，否则基于已有章节数计算
-    // 第N轮应该生成第N章大纲
-    const currentChapterCount = book.chapters.length;
-    const nextChapterNumber = targetRound ?? currentChapterCount + 1;
+  private async generateNextChapterOutlineFromSnapshot(
+    snapshot: NextOutlineSnapshot,
+    targetRound?: number,
+    testMode?: boolean,
+    testComments?: Array<{ type: 'ai' | 'human'; content: string; rating?: number }>
+  ): Promise<{
+    title: string;
+    summary: string;
+    characters: unknown[];
+    chapters: unknown[];
+    originalChapters?: unknown[];
+  } | null> {
+    const bookId = snapshot.bookId;
 
-    console.log(`[Outline] 书籍《${book.title}》当前 ${currentChapterCount} 章，目标轮次 ${targetRound ?? '未指定'}，生成第 ${nextChapterNumber} 章大纲`);
+    console.log(`[Outline] 书籍《${snapshot.bookTitle}》当前 ${snapshot.currentChapterCount} 章，目标轮次 ${targetRound ?? '未指定'}，生成第 ${snapshot.nextChapterNumber} 章大纲`);
 
-    // 1.1 检查是否已完成所有章节（超过 maxChapters 则跳过）
-    const agentConfig: AgentConfig = book.author.agentConfig as unknown as AgentConfig;
+    const agentConfig: AgentConfig = snapshot.authorAgentConfig as unknown as AgentConfig;
     const maxChapters = agentConfig.maxChapters || 5;
-    if (nextChapterNumber > maxChapters) {
-      console.log(`[Outline] 书籍《${book.title}》已完成所有 ${maxChapters} 章，跳过大纲生成`);
+    if (snapshot.nextChapterNumber > maxChapters) {
+      console.log(`[Outline] 书籍《${snapshot.bookTitle}》已完成所有 ${maxChapters} 章，跳过大纲生成`);
       return null;
     }
 
-    // 2. 获取现有大纲 - 从 Book 表获取
-    const existingBook = await prisma.book.findUnique({
-      where: { id: bookId },
-      select: { chaptersPlan: true, originalIntent: true, characters: true },
-    });
-
-    if (!existingBook || !existingBook.chaptersPlan) {
-      // 如果没有大纲先生成整本大纲
+    if (!snapshot.chaptersPlan) {
       await this.generateOutline(bookId);
       return null;
     }
 
-    // 解析现有大纲
-    const chaptersPlan = existingBook.chaptersPlan as unknown as ChapterOutline[];
-
-    // 检查该章节是否已有大纲（测试模式下跳过检查）
-    const existingChapterOutline = chaptersPlan.find((c) => c.number === nextChapterNumber);
+    const chaptersPlan = snapshot.chaptersPlan;
+    const existingChapterOutline = chaptersPlan.find((c) => c.number === snapshot.nextChapterNumber);
     if (existingChapterOutline && !testMode) {
-      console.log(`[Outline] 第 ${nextChapterNumber} 章大纲已存在`);
+      console.log(`[Outline] 第 ${snapshot.nextChapterNumber} 章大纲已存在`);
       return null;
     }
     if (existingChapterOutline && testMode) {
-      console.log(`[Outline] 测试模式：第 ${nextChapterNumber} 章大纲已存在，仍重新生成`);
+      console.log(`[Outline] 测试模式：第 ${snapshot.nextChapterNumber} 章大纲已存在，仍重新生成`);
     }
 
-    // 4. 获取赛季信息
-    const season = await prisma.season.findUnique({
-      where: { id: book.seasonId ?? undefined },
-    });
-
-    if (!season) {
-      console.error(`[Outline] 赛季不存在: ${book.seasonId}`);
-      return null;
-    }
-
-    // ===== 获取评论（用于LLM判断）=====
     let allComments: Array<{ type: 'ai' | 'human'; content: string; rating?: number }> = [];
     if (testMode && testComments && testComments.length > 0) {
       allComments = testComments;
       console.log(`[Outline] 测试模式：使用传入的测试评论 ${allComments.length} 条`);
     } else {
-      for (let ch = 1; ch <= currentChapterCount; ch++) {
-        const chapterComments = await this.getAllChapterComments(bookId, ch);
-        allComments.push(...chapterComments);
-      }
+      allComments = snapshot.comments;
     }
 
-    // ===== 构建 BookOutline 对象 =====
     const bookOutline: BookOutline = {
-      title: book.title,
-      summary: existingBook.originalIntent || '',
-      characters: (existingBook.characters as unknown as Array<{
+      title: snapshot.bookTitle,
+      summary: snapshot.originalIntent || '',
+      characters: (snapshot.characters as unknown as Array<{
         name: string;
         role: string;
         description: string;
@@ -390,25 +627,22 @@ export class OutlineGenerationService {
       tone: '',
     };
 
-    // ===== 听劝指数判断（纯数学判断）=====
-    // 如果听劝指数 < 0.35（相当于3.5/10），直接跳过整个大纲修改流程
     const adaptability = agentConfig.adaptability ?? 0.5;
     const adaptabilityThreshold = 0.35;
     if (adaptability < adaptabilityThreshold) {
       console.log(`[Outline] 听劝指数 ${adaptability} < ${adaptabilityThreshold}，固执己见，直接返回原大纲，不进行LLM判断`);
       return {
-        title: book.title,
-        summary: existingBook?.originalIntent || '',
-        characters: (existingBook?.characters as unknown[]) || [],
+        title: snapshot.bookTitle,
+        summary: snapshot.originalIntent || '',
+        characters: (snapshot.characters as unknown[]) || [],
         chapters: chaptersPlan,
         originalChapters: chaptersPlan,
       };
     }
 
-    // ===== LLM 判断是否需要修改大纲 =====
     const decision = await this.shouldModifyOutline(
       bookId,
-      nextChapterNumber,
+      snapshot.nextChapterNumber,
       agentConfig.adaptability ?? 0.5,
       bookOutline,
       allComments
@@ -424,7 +658,7 @@ export class OutlineGenerationService {
         // 修改大纲，获取目标章节的新大纲
         const modifiedChapters = await this.modifyOutline(
           bookId,
-          nextChapterNumber,
+          snapshot.nextChapterNumber,
           agentConfig,
           bookOutline,
           decision
@@ -439,9 +673,9 @@ export class OutlineGenerationService {
 
         // 测试模式返回
         return {
-          title: book.title,
-          summary: existingBook?.originalIntent || '',
-          characters: (existingBook?.characters as unknown[]) || [],
+          title: snapshot.bookTitle,
+          summary: snapshot.originalIntent || '',
+          characters: (snapshot.characters as unknown[]) || [],
           chapters: updatedChapters,
           originalChapters: chaptersPlan,
         };
@@ -455,12 +689,26 @@ export class OutlineGenerationService {
     // ===== 如果不需要修改，直接返回原大纲 =====
     console.log(`[Outline] 直接返回原大纲，不生成新章节`);
     return {
-      title: book.title,
-      summary: existingBook?.originalIntent || '',
-      characters: (existingBook?.characters as unknown[]) || [],
+      title: snapshot.bookTitle,
+      summary: snapshot.originalIntent || '',
+      characters: (snapshot.characters as unknown[]) || [],
       chapters: chaptersPlan,
       originalChapters: chaptersPlan,
     };
+  }
+
+  async generateNextChapterOutlinesForBooks(bookIds: string[], targetRound?: number): Promise<void> {
+    const snapshots = await this.buildNextOutlineSnapshots(bookIds, targetRound);
+    if (snapshots.length === 0) {
+      console.log('[Outline] 没有需要生成下一章大纲的书籍');
+      return;
+    }
+    const llmConcurrency = this.getLlmConcurrency();
+    await this.runWithConcurrency(snapshots, llmConcurrency, async (snapshot) => {
+      await this.generateNextChapterOutlineFromSnapshot(snapshot, targetRound, false).catch((error) => {
+        console.error(`[Outline] 书籍《${snapshot.bookTitle}》下一章大纲生成失败:`, error);
+      });
+    });
   }
 
   /**
@@ -560,24 +808,11 @@ export class OutlineGenerationService {
   async generateOutlinesForSeason(seasonId: string): Promise<void> {
     console.log(`[Outline] 开始为赛季 ${seasonId} 生成下一章大纲`);
 
-    // 1. 获取该赛季所有活跃书籍
-    const books = await prisma.book.findMany({
-      where: {
-        seasonId,
-        status: 'ACTIVE',
-      },
-      include: {
-        // score 已合并到 Book 表，使用 Book 的直接字段
-        _count: { select: { chapters: true } },
-      },
-      // 按热度排序，优先处理热门书籍 - 使用 Book 的 heatValue 字段
-      orderBy: { heatValue: 'desc' },
-    });
-
-    console.log(`[Outline] 发现 ${books.length} 本活跃书籍`);
+    const snapshots = await this.buildOutlineSnapshots(seasonId);
+    console.log(`[Outline] 发现 ${snapshots.length} 本活跃书籍`);
 
     // 2. 只为第一章的书籍生成大纲（后续轮次按需处理）
-    const booksNeedingOutline = books.filter((b) => (b._count?.chapters ?? 0) === 0);
+    const booksNeedingOutline = snapshots.filter((b) => b.chaptersCount === 0);
 
     if (booksNeedingOutline.length === 0) {
       console.log(`[Outline] 所有书籍已有大纲`);
@@ -590,9 +825,9 @@ export class OutlineGenerationService {
     const llmConcurrency = this.getLlmConcurrency();
     const preparedJobs: PreparedOutlineGeneration[] = [];
 
-    await this.runWithConcurrency(booksNeedingOutline, dbConcurrency, async (book) => {
-      const prepared = await this.prepareOutlineGeneration(book.id, false).catch((error) => {
-        console.error(`[Outline] 书籍《${book.title}》大纲准备失败:`, error);
+    await this.runWithConcurrency(booksNeedingOutline, dbConcurrency, async (snapshot) => {
+      const prepared = await this.prepareOutlineGeneration(snapshot, false).catch((error) => {
+        console.error(`[Outline] 书籍《${snapshot.bookTitle}》大纲准备失败:`, error);
         return null;
       });
       if (prepared) {
@@ -611,59 +846,18 @@ export class OutlineGenerationService {
       }
     });
 
+    const writeJobs: OutlineWriteJob[] = [];
     await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
-      await this.persistOutline(job.prepared, job.outlineData).catch((error) => {
+      const result = await this.persistOutline(job.prepared, job.outlineData).catch((error) => {
         console.error(`[Outline] 书籍《${job.prepared.bookTitle}》大纲写入失败:`, error);
+        return null;
       });
+      if (result && 'outlineData' in result) {
+        writeJobs.push(result);
+      }
     });
+    await this.persistOutlineBatch(writeJobs);
     console.log(`[Outline] 赛季 ${seasonId} 大纲生成完成`);
-  }
-
-  /**
-   * 获取某章节的读者反馈
-   */
-  private async getChapterFeedbacks(bookId: string, chapterNumber: number): Promise<string[]> {
-    if (chapterNumber <= 0) return [];
-
-    const comments = await prisma.comment.findMany({
-      where: {
-        bookId,
-        chapter: { chapterNumber },
-        isHuman: false, // 只取 AI Reader 的评论
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
-
-    // 提取评论内容作为反馈
-    return comments
-      .map((c) => c.content)
-      .filter((c): c is string => c !== null);
-  }
-
-  /**
-   * 获取某章节的所有评论（AI + 人类）
-   * 返回格式：{ type: 'ai' | 'human', content: string, rating?: number }[]
-   */
-  private async getAllChapterComments(bookId: string, chapterNumber: number): Promise<Array<{ type: 'ai' | 'human'; content: string; rating?: number }>> {
-    if (chapterNumber <= 0) return [];
-
-    const comments = await prisma.comment.findMany({
-      where: {
-        bookId,
-        chapter: { chapterNumber },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
-
-    return comments
-      .filter((c) => c.content !== null)
-      .map((c) => ({
-        type: c.isHuman ? 'human' as const : 'ai' as const,
-        content: c.content!,
-        rating: c.rating ?? undefined, // 直接使用 1-10 分
-      }));
   }
 
   /**
