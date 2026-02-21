@@ -135,7 +135,7 @@ export class ChapterWritingService {
     const chapterOutline = chaptersPlan.find(c => c.number === chapterNumber);
 
     if (!chapterOutline) {
-      console.error(`[Chapter] 大纲中没有第 ${chapterNumber} 章的信息，大纲章节列表:`, chaptersPlan.map(c => c.number));
+      console.log(`[Chapter] 跳过第 ${chapterNumber} 章：大纲缺失该章信息，现有章节:`, chaptersPlan.map(c => c.number));
       return null;
     }
 

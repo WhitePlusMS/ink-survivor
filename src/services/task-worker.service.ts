@@ -136,6 +136,16 @@ const taskHandlers: Record<string, TaskHandler> = {
 export class TaskWorkerService {
   private isRunning = false;
   private interval: NodeJS.Timeout | null = null;
+  private readonly lockKey = 779187;
+
+  private async tryAcquireLock(): Promise<boolean> {
+    const result = await prisma.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_lock(${this.lockKey}) as locked`;
+    return result?.[0]?.locked === true;
+  }
+
+  private async releaseLock(): Promise<void> {
+    await prisma.$queryRaw`SELECT pg_advisory_unlock(${this.lockKey})`;
+  }
 
   /**
    * 启动 Worker
@@ -210,6 +220,12 @@ export class TaskWorkerService {
    * 处理队列中的任务
    */
   async processTasks(): Promise<void> {
+    const locked = await this.tryAcquireLock();
+    if (!locked) {
+      console.log('[TaskWorker] 已有任务处理中，跳过本次触发');
+      return;
+    }
+
     try {
       // 获取下一个待处理任务
       const task = await taskQueueService.getNextTask();
@@ -238,6 +254,12 @@ export class TaskWorkerService {
       }
     } catch (error) {
       console.error('[TaskWorker] 处理任务时发生错误:', error);
+    } finally {
+      try {
+        await this.releaseLock();
+      } catch (error) {
+        console.error('[TaskWorker] 释放任务锁失败:', error);
+      }
     }
   }
 
