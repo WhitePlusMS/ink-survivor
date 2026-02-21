@@ -33,6 +33,9 @@ const withDbRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
   }
 };
 
+const staleProcessingMs = Number(process.env.TASK_WORKER_STALE_MS || 10 * 60 * 1000);
+const terminateStaleLock = process.env.TASK_WORKER_TERMINATE_STALE !== 'false';
+
 let activeTaskId: string | null = null;
 const taskProgress = new Map<string, { step: string; detail?: string; updatedAt: Date }>();
 const setTaskProgress = (step: string, detail?: string): void => {
@@ -296,10 +299,53 @@ export class TaskWorkerService {
       ]);
       if (processingTask) {
         const progress = taskProgress.get(processingTask.id);
+        const durationMs = processingTask.startedAt ? Date.now() - processingTask.startedAt.getTime() : 0;
+        const durationSec = Math.max(0, Math.floor(durationMs / 1000));
         const progressText = progress
           ? `step=${progress.step}, updatedAt=${progress.updatedAt.toISOString()}${progress.detail ? `, detail=${progress.detail}` : ''}`
           : 'step=unknown';
-        console.log(`[TaskWorker] 已有任务处理中，跳过本次触发: ${processingTask.taskType} (${processingTask.id}) startedAt=${processingTask.startedAt?.toISOString()} attempts=${processingTask.attempts} payload=${JSON.stringify(processingTask.payload)} ${progressText}`);
+        console.log(`[TaskWorker] 已有任务处理中，跳过本次触发: ${processingTask.taskType} (${processingTask.id}) startedAt=${processingTask.startedAt?.toISOString()} durationSec=${durationSec} attempts=${processingTask.attempts} payload=${JSON.stringify(processingTask.payload)} ${progressText}`);
+        try {
+          const lockHolders = await prisma.$queryRaw<Array<{
+            pid: number;
+            state: string;
+            query_start: Date | null;
+            query: string | null;
+          }>>`
+            SELECT sa.pid, sa.state, sa.query_start, sa.query
+            FROM pg_stat_activity sa
+            WHERE sa.pid IN (
+              SELECT l.pid
+              FROM pg_locks l
+              WHERE l.locktype = 'advisory' AND l.objid = ${this.lockKey}
+            )
+          `;
+          if (lockHolders.length > 0) {
+            lockHolders.forEach(holder => {
+              const queryText = holder.query ? holder.query.replace(/\s+/g, ' ').slice(0, 200) : '';
+              console.log(`[TaskWorker] 锁占用进程: pid=${holder.pid} state=${holder.state} queryStart=${holder.query_start?.toISOString()} query=${queryText}`);
+            });
+            if (durationMs > staleProcessingMs) {
+              const holderPids = lockHolders.map(holder => holder.pid);
+              if (terminateStaleLock) {
+                for (const pid of holderPids) {
+                  try {
+                    await prisma.$executeRaw`SELECT pg_terminate_backend(${pid}::int)`;
+                    console.warn(`[TaskWorker] 已终止锁占用进程: pid=${pid}`);
+                  } catch (error) {
+                    console.warn(`[TaskWorker] 终止锁占用进程失败: pid=${pid}`, error);
+                  }
+                }
+              }
+              await withDbRetry(() => taskQueueService.fail(processingTask.id, `stale processing timeout: ${durationSec}s`));
+              console.warn(`[TaskWorker] 已重置超时任务: ${processingTask.id}`);
+            }
+          } else {
+            console.log('[TaskWorker] 未找到锁占用进程');
+          }
+        } catch (error) {
+          console.warn('[TaskWorker] 获取锁占用进程失败:', error);
+        }
       } else {
         console.log('[TaskWorker] 已有任务处理中，跳过本次触发: 未找到处理中任务');
       }
