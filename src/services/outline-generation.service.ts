@@ -59,21 +59,52 @@ interface OutlineModificationDecision {
   changes: string;           // 修改意见（一段话描述如何修改）
 }
 
-export class OutlineGenerationService {
-  /**
-   * 为单本书生成大纲（整本书的 5 章大纲）
-   * @param bookId - 书籍ID
-   * @param testMode - 测试模式：true 时跳过数据库检查，且不保存到数据库，直接返回大纲数据
-   */
-  async generateOutline(bookId: string, testMode: boolean = false): Promise<{
-    title: string;
-    summary: string;
-    characters: unknown[];
-    chapters: unknown[];
-  } | null> {
-    console.log(`[Outline] 开始为书籍 ${bookId} 生成大纲${testMode ? ' (测试模式)' : ''}`);
+interface PreparedOutlineGeneration {
+  bookId: string;
+  bookTitle: string;
+  authorId: string;
+  authorNickname: string;
+  authorToken: string;
+  systemPrompt: string;
+  outlinePrompt: string;
+  testMode: boolean;
+}
 
-    // 1. 获取书籍和作者信息
+export class OutlineGenerationService {
+  private getDbConcurrency(): number {
+    const raw = Number(process.env.DB_CONCURRENCY || process.env.TASK_CONCURRENCY);
+    const fallback = process.env.NODE_ENV === 'production' ? 1 : 2;
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return fallback;
+  }
+
+  private getLlmConcurrency(): number {
+    const raw = Number(process.env.LLM_CONCURRENCY || process.env.AI_CONCURRENCY);
+    const fallback = process.env.NODE_ENV === 'production' ? 2 : 3;
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return fallback;
+  }
+
+  private async runWithConcurrency<T>(
+    items: T[],
+    limit: number,
+    handler: (item: T) => Promise<void>
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const concurrency = Math.max(1, Math.min(limit, items.length));
+    let index = 0;
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (true) {
+        const current = index;
+        index += 1;
+        if (current >= items.length) break;
+        await handler(items[current]);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  private async prepareOutlineGeneration(bookId: string, testMode: boolean): Promise<PreparedOutlineGeneration | null> {
     const book = await prisma.book.findUnique({
       where: { id: bookId },
       include: {
@@ -86,7 +117,6 @@ export class OutlineGenerationService {
       return null;
     }
 
-    // 非测试模式：检查是否已有大纲
     if (!testMode) {
       const existingBook = await prisma.book.findUnique({
         where: { id: bookId },
@@ -99,7 +129,6 @@ export class OutlineGenerationService {
       }
     }
 
-    // 2. 解析作者配置 - 使用数据库的 writerPersonality 字段
     const rawConfig = book.author.agentConfig as unknown as Record<string, unknown>;
     const agentConfig: AgentConfig = {
       writerPersonality: (rawConfig.writerPersonality as string) || '',
@@ -110,7 +139,6 @@ export class OutlineGenerationService {
       wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
     };
 
-    // 3. 获取赛季信息
     const season = await prisma.season.findUnique({
       where: { id: book.seasonId ?? undefined },
     });
@@ -122,57 +150,38 @@ export class OutlineGenerationService {
 
     const seasonInfo = {
       themeKeyword: season.themeKeyword,
-      // Prisma JSONB 字段已自动解析，直接使用类型断言
       constraints: season.constraints as unknown as string[],
       zoneStyles: season.zoneStyles as unknown as string[],
       maxChapters: season.maxChapters || 7,
       minChapters: season.minChapters || 3,
     };
 
-    // 获取用户的个人倾向（3=短篇，5=中篇，7=长篇）
     const userPreferredChapters = agentConfig.maxChapters || 5;
 
-    // 构建章节倾向描述（只传递风格倾向，让AI自己决定章节数）
     const chapterPreferenceText = userPreferredChapters <= 3
       ? '短篇小说风格（精简干练，节奏快）'
       : userPreferredChapters >= 7
         ? '长篇小说风格（宏大叙事，细节丰富）'
         : '中篇小说风格（平衡适当，详略得当）';
 
-    // 4. 构建 System Prompt（包含完整 Agent 配置 + 赛季约束）
     const systemPrompt = buildAuthorSystemPrompt({
-      // 显示用
       userName: book.author.nickname || '作家',
-
-      // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
-
-      // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
       adaptability: agentConfig.adaptability ?? 0.5,
       preferredGenres: agentConfig.preferredGenres || [],
-
-      // 赛季信息
       seasonTheme: seasonInfo.themeKeyword,
       constraints: seasonInfo.constraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
-
-      // 创作参数
       wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
-    // 5. 构建大纲生成提示（包含 Agent 性格引导）
     const outlinePrompt = buildOutlinePrompt({
-      // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
       writingStyle: agentConfig.writingStyle || '多变',
-
-      // Agent 创作参数
       adaptability: agentConfig.adaptability ?? 0.5,
       preferredGenres: agentConfig.preferredGenres || [],
       wordCountTarget: agentConfig.wordCountTarget || 2000,
-
-      // 赛季信息
       seasonTheme: seasonInfo.themeKeyword,
       constraints: seasonInfo.constraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
@@ -181,23 +190,43 @@ export class OutlineGenerationService {
       chapterPreference: chapterPreferenceText,
     });
 
-    // 6. 调用 LLM 生成大纲（带重试机制）
-    // 使用书籍作者的 token
     const authorToken = await getUserTokenById(book.author.id);
     if (!authorToken) {
       throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
     }
 
-    const outlineData = await parseLLMJsonWithRetry<BookOutline>(
-      () => testModeSendChat(outlinePrompt, systemPrompt, 'inksurvivor-outline', authorToken),
+    return {
+      bookId: book.id,
+      bookTitle: book.title,
+      authorId: book.author.id,
+      authorNickname: book.author.nickname,
+      authorToken,
+      systemPrompt,
+      outlinePrompt,
+      testMode,
+    };
+  }
+
+  private async generateOutlineContent(prepared: PreparedOutlineGeneration): Promise<BookOutline> {
+    return parseLLMJsonWithRetry<BookOutline>(
+      () => testModeSendChat(prepared.outlinePrompt, prepared.systemPrompt, 'inksurvivor-outline', prepared.authorToken),
       {
-        taskId: `OutlineGen-${book.title}`,
+        taskId: `OutlineGen-${prepared.bookTitle}`,
         maxRetries: 3,
       }
     );
+  }
 
-    // 8. 保存大纲 - 测试模式不保存到数据库
-    if (testMode) {
+  private async persistOutline(
+    prepared: PreparedOutlineGeneration,
+    outlineData: BookOutline
+  ): Promise<{
+    title: string;
+    summary: string;
+    characters: unknown[];
+    chapters: unknown[];
+  } | null> {
+    if (prepared.testMode) {
       console.log(`[Outline] 测试模式：跳过保存，直接返回大纲数据`);
       return {
         title: outlineData.title,
@@ -207,9 +236,8 @@ export class OutlineGenerationService {
       };
     }
 
-    // 正式模式：保存到数据库
     await prisma.book.update({
-      where: { id: book.id },
+      where: { id: prepared.bookId },
       data: {
         originalIntent: outlineData.summary,
         chaptersPlan: toJsonValue(outlineData.chapters),
@@ -217,12 +245,31 @@ export class OutlineGenerationService {
       },
     });
 
-    // 9. 保存初始大纲版本
-    await this.saveOutlineVersion(book.id, 1, '初始版本');
+    await this.saveOutlineVersion(prepared.bookId, 1, '初始版本');
 
-    console.log(`[Outline] 书籍《${book.title}》大纲生成完成 - ${outlineData.chapters.length} 章`);
+    console.log(`[Outline] 书籍《${prepared.bookTitle}》大纲生成完成 - ${outlineData.chapters.length} 章`);
     console.log(`[Outline] 大纲章节列表:`, outlineData.chapters.map(c => c.number));
     return null;
+  }
+
+  /**
+   * 为单本书生成大纲（整本书的 5 章大纲）
+   * @param bookId - 书籍ID
+   * @param testMode - 测试模式：true 时跳过数据库检查，且不保存到数据库，直接返回大纲数据
+   */
+  async generateOutline(bookId: string, testMode: boolean = false): Promise<{
+    title: string;
+    summary: string;
+    characters: unknown[];
+    chapters: unknown[];
+  } | null> {
+    console.log(`[Outline] 开始为书籍 ${bookId} 生成大纲${testMode ? ' (测试模式)' : ''}`);
+    const prepared = await this.prepareOutlineGeneration(bookId, testMode);
+    if (!prepared) {
+      return null;
+    }
+    const outlineData = await this.generateOutlineContent(prepared);
+    return this.persistOutline(prepared, outlineData);
   }
 
   /**
@@ -539,14 +586,36 @@ export class OutlineGenerationService {
 
     console.log(`[Outline] 需要生成大纲的书籍: ${booksNeedingOutline.length} 本`);
 
-    // 3. 并发为这些书籍生成大纲
-    const promises = booksNeedingOutline.map((book) =>
-      this.generateOutline(book.id).catch((error) => {
-        console.error(`[Outline] 书籍《${book.title}》大纲生成失败:`, error);
-      })
-    );
+    const dbConcurrency = this.getDbConcurrency();
+    const llmConcurrency = this.getLlmConcurrency();
+    const preparedJobs: PreparedOutlineGeneration[] = [];
 
-    await Promise.all(promises);
+    await this.runWithConcurrency(booksNeedingOutline, dbConcurrency, async (book) => {
+      const prepared = await this.prepareOutlineGeneration(book.id, false).catch((error) => {
+        console.error(`[Outline] 书籍《${book.title}》大纲准备失败:`, error);
+        return null;
+      });
+      if (prepared) {
+        preparedJobs.push(prepared);
+      }
+    });
+
+    const generatedJobs: Array<{ prepared: PreparedOutlineGeneration; outlineData: BookOutline }> = [];
+    await this.runWithConcurrency(preparedJobs, llmConcurrency, async (prepared) => {
+      const outlineData = await this.generateOutlineContent(prepared).catch((error) => {
+        console.error(`[Outline] 书籍《${prepared.bookTitle}》大纲生成失败:`, error);
+        return null;
+      });
+      if (outlineData) {
+        generatedJobs.push({ prepared, outlineData });
+      }
+    });
+
+    await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
+      await this.persistOutline(job.prepared, job.outlineData).catch((error) => {
+        console.error(`[Outline] 书籍《${job.prepared.bookTitle}》大纲写入失败:`, error);
+      });
+    });
     console.log(`[Outline] 赛季 ${seasonId} 大纲生成完成`);
   }
 

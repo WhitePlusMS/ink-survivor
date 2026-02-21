@@ -30,14 +30,70 @@ interface AgentConfig {
   wordCountTarget: number; // 每章目标字数
 }
 
-export class ChapterWritingService {
-  /**
-   * 为单本书创作章节
-   */
-  async writeChapter(bookId: string, chapterNumber: number): Promise<void> {
-    console.log(`[Chapter] 开始为书籍 ${bookId} 创作第 ${chapterNumber} 章`);
+interface PreparedChapterGeneration {
+  // 书籍与作者基础信息
+  bookId: string;
+  bookTitle: string;
+  authorId: string;
+  authorNickname: string;
+  // 本章关键信息
+  chapterNumber: number;
+  chapterOutlineTitle: string;
+  // 模型调用所需提示词
+  systemPrompt: string;
+  chapterPrompt: string;
+  // 用于写库时判断书籍是否完结
+  bookMaxChapters: number;
+}
 
-    // 1. 获取书籍和作者信息
+interface GeneratedChapter {
+  // 模型生成的章节数据
+  title: string;
+  content: string;
+}
+
+export class ChapterWritingService {
+  // 数据库并发：控制 Prisma 读写数量，避免连接池耗尽
+  private getDbConcurrency(): number {
+    const raw = Number(process.env.DB_CONCURRENCY || process.env.TASK_CONCURRENCY);
+    const fallback = process.env.NODE_ENV === 'production' ? 1 : 2;
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return fallback;
+  }
+
+  // 模型并发：控制 LLM 请求并行数量
+  private getLlmConcurrency(): number {
+    const raw = Number(process.env.LLM_CONCURRENCY || process.env.AI_CONCURRENCY);
+    const fallback = process.env.NODE_ENV === 'production' ? 2 : 3;
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return fallback;
+  }
+
+  // 通用并发执行器，按固定并发跑队列任务
+  private async runWithConcurrency<T>(
+    items: T[],
+    limit: number,
+    handler: (item: T) => Promise<void>
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const concurrency = Math.max(1, Math.min(limit, items.length));
+    let index = 0;
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (true) {
+        const current = index;
+        index += 1;
+        if (current >= items.length) break;
+        await handler(items[current]);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  // 章节生成准备阶段：读库 + 组装提示词
+  private async prepareChapterGeneration(
+    bookId: string,
+    chapterNumber: number
+  ): Promise<PreparedChapterGeneration | null> {
     const book = await prisma.book.findUnique({
       where: { id: bookId },
       include: {
@@ -51,10 +107,10 @@ export class ChapterWritingService {
 
     if (!book) {
       console.error(`[Chapter] 书籍不存在: ${bookId}`);
-      return;
+      return null;
     }
 
-    // 获取最新大纲 - 从 Book 表获取合并的字段
+    // 获取整本书大纲与人物配置
     const latestOutline = await prisma.book.findUnique({
       where: { id: bookId },
       select: {
@@ -65,10 +121,10 @@ export class ChapterWritingService {
 
     if (!latestOutline || !latestOutline.chaptersPlan) {
       console.error(`[Chapter] 书籍 ${bookId} 没有可用的大纲`);
-      return;
+      return null;
     }
 
-    // 2. 解析大纲中的本章信息 - JSONB 自动解析
+    // 定位本章大纲
     const chaptersPlan = latestOutline.chaptersPlan as unknown as Array<{
       number: number;
       title: string;
@@ -80,10 +136,10 @@ export class ChapterWritingService {
 
     if (!chapterOutline) {
       console.error(`[Chapter] 大纲中没有第 ${chapterNumber} 章的信息，大纲章节列表:`, chaptersPlan.map(c => c.number));
-      return;
+      return null;
     }
 
-    // 3. 解析作者配置 - 使用数据库的 writerPersonality 字段
+    // 解析作者配置
     const rawConfig = (book.author.agentConfig as unknown as Record<string, unknown>) || {};
     const agentConfig: AgentConfig = {
       writerPersonality: (rawConfig.writerPersonality as string) || '',
@@ -94,14 +150,13 @@ export class ChapterWritingService {
       wordCountTarget: (rawConfig.wordCountTarget as number) || 2000,
     };
 
-    // 4. 获取赛季信息（用于 System Prompt 中的约束）
+    // 读取赛季约束
     const season = await prisma.season.findUnique({
       where: { id: book.seasonId ?? undefined },
     });
     const seasonConstraints = season ? (season.constraints as unknown as string[]) || [] : [];
     const seasonTheme = season?.themeKeyword || '';
 
-    // 5. 获取前几章的摘要（用于保持连贯性）
     const previousChapters = await prisma.chapter.findMany({
       where: {
         bookId,
@@ -116,7 +171,7 @@ export class ChapterWritingService {
       ? `前情：${previousChapters.map(c => c.title).join(' -> ')}`
       : '这是本书的第一章';
 
-    // 5.1 获取上一章详细内容（用于章节生成的连贯性）
+    // 取上一章内容片段，保持连贯性
     let previousChapterContent = '';
     if (previousChapters.length > 0) {
       const latestChapter = previousChapters[0];
@@ -126,40 +181,28 @@ export class ChapterWritingService {
       }
     }
 
-    // 6. 获取本章的读者反馈（如果有，用于优化）
+    // 读取读者反馈作为本章参考
     const feedbacks = await this.getChapterFeedbacks(bookId, chapterNumber - 1);
 
-    // 7. 构建 System Prompt（包含完整 Agent 配置 + 赛季约束）
+    // 构建系统提示词
     const systemPrompt = buildAuthorSystemPrompt({
-      // 显示用
       userName: book.author.nickname || '作家',
-
-      // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
-
-      // Agent 写作偏好
       writingStyle: agentConfig.writingStyle || '多变',
       adaptability: agentConfig.adaptability ?? 0.5,
       preferredGenres: agentConfig.preferredGenres || [],
-
-      // 赛季信息
       seasonTheme,
       constraints: seasonConstraints,
       zoneStyle: this.normalizeZoneStyle(book.zoneStyle),
-
-      // 创作参数
       wordCountTarget: agentConfig.wordCountTarget || 2000,
     });
 
-    // 8. 构建章节创作提示（包含 Agent 性格引导和上一章详细内容）
+    // 构建章节提示词
     const chapterPrompt = buildChapterPrompt({
-      // Agent 性格配置
       writerPersonality: agentConfig.writerPersonality || '',
       selfIntro: agentConfig.selfIntro || '',
       writingStyle: agentConfig.writingStyle || '多变',
       wordCountTarget: agentConfig.wordCountTarget || 2000,
-
-      // 大纲信息
       bookTitle: book.title,
       chapterNumber,
       totalChapters: chaptersPlan.length,
@@ -168,49 +211,62 @@ export class ChapterWritingService {
         key_events: chapterOutline.key_events,
         word_count_target: chapterOutline.word_count_target,
       },
-
-      // 整本书大纲（新增）
       fullOutline: chaptersPlan,
-
-      // 前面内容
       previousSummary,
       previousChapterContent: previousChapterContent || undefined,
-
-      // 反馈
       feedbacks,
     });
 
-    // 8. 调用 LLM 生成章节内容（带重试机制）
-    // 使用书籍作者的 token
-    const authorToken = await getUserTokenById(book.author.id);
+    // 返回可用于模型生成的数据包
+    return {
+      bookId: book.id,
+      bookTitle: book.title,
+      authorId: book.author.id,
+      authorNickname: book.author.nickname,
+      chapterNumber,
+      chapterOutlineTitle: chapterOutline.title,
+      systemPrompt,
+      chapterPrompt,
+      bookMaxChapters: agentConfig.maxChapters || 5,
+    };
+  }
+
+  // 模型生成阶段：只做 LLM 调用与解析
+  private async generateChapterContent(prepared: PreparedChapterGeneration): Promise<GeneratedChapter> {
+    const authorToken = await getUserTokenById(prepared.authorId);
     if (!authorToken) {
-      throw new Error(`无法获取作者 ${book.author.nickname} 的 Token`);
+      throw new Error(`无法获取作者 ${prepared.authorNickname} 的 Token`);
     }
 
-    // 使用纯文本解析（方案 A）
+    // 调用 LLM 并带重试
     const chapterData = await parseChapterWithRetry(
-      () => testModeSendChat(chapterPrompt, systemPrompt, 'inksurvivor-writer', authorToken),
-      chapterOutline.title,
+      () => testModeSendChat(prepared.chapterPrompt, prepared.systemPrompt, 'inksurvivor-writer', authorToken),
+      prepared.chapterOutlineTitle,
       {
-        taskId: `ChapterWrite-${book.title}-ch${chapterNumber}`,
+        taskId: `ChapterWrite-${prepared.bookTitle}-ch${prepared.chapterNumber}`,
         maxRetries: 3,
       }
     );
 
-    // 调试：打印解析结果
     console.log(`[ChapterWrite] 解析结果 - title: ${chapterData.title}, contentLength: ${chapterData.content.length}`);
 
-    // 9. 确保有内容
     if (!chapterData.content) {
       console.error(`[ChapterWrite] 章节内容为空`);
       throw new Error('LLM 未返回章节内容');
     }
 
-    // 10. 发布章节
+    return chapterData;
+  }
+
+  // 写库阶段：落库 + 书籍状态 + 评分 + WebSocket 通知
+  private async persistGeneratedChapter(
+    prepared: PreparedChapterGeneration,
+    chapterData: GeneratedChapter
+  ): Promise<void> {
     const newChapter = await prisma.chapter.create({
       data: {
-        bookId: book.id,
-        chapterNumber,
+        bookId: prepared.bookId,
+        chapterNumber: prepared.chapterNumber,
         title: chapterData.title,
         content: chapterData.content,
         status: 'PUBLISHED',
@@ -219,48 +275,61 @@ export class ChapterWritingService {
       },
     });
 
-    console.log(`[Chapter] 书籍《${book.title}》第 ${chapterNumber} 章发布完成`);
+    console.log(`[Chapter] 书籍《${prepared.bookTitle}》第 ${prepared.chapterNumber} 章发布完成`);
 
-    // 11. 检查是否已完成所有章节（达到 maxChapters）
-    const bookMaxChapters = agentConfig.maxChapters || 5;
-    const isCompleted = chapterNumber >= bookMaxChapters;
+    // 标记是否完结
+    const isCompleted = prepared.chapterNumber >= prepared.bookMaxChapters;
 
-    // 12. 更新书籍状态
+    // 更新书籍当前章节与状态
     await prisma.book.update({
-      where: { id: bookId },
+      where: { id: prepared.bookId },
       data: {
-        currentChapter: chapterNumber,
+        currentChapter: prepared.chapterNumber,
         status: isCompleted ? 'COMPLETED' : 'ACTIVE',
       },
     });
 
     if (isCompleted) {
-      console.log(`[Chapter] 书籍《${book.title}》已完成所有 ${bookMaxChapters} 章，标记为 COMPLETED`);
+      console.log(`[Chapter] 书籍《${prepared.bookTitle}》已完成所有 ${prepared.bookMaxChapters} 章，标记为 COMPLETED`);
     }
 
-    // 13. 更新评分 - 使用 Book 的合并字段
+    // 更新热度与评分
     await prisma.book.update({
-      where: { id: bookId },
+      where: { id: prepared.bookId },
       data: {
-        heatValue: { increment: 100 }, // 发布加成
+        heatValue: { increment: 100 },
         finalScore: { increment: 100 + Math.floor(Math.random() * 50) },
         viewCount: { increment: Math.floor(Math.random() * 50) },
       },
     });
 
-    // 13. 触发 Reader Agent 调度（异步，延迟触发）
+    // 异步触发读者 Agent 评论
     setTimeout(async () => {
       try {
-        await readerAgentService.dispatchReaderAgents(newChapter.id, bookId);
+        await readerAgentService.dispatchReaderAgents(newChapter.id, prepared.bookId);
       } catch (error) {
-        console.error(`[ReaderAgent] 章节 ${chapterNumber} 调度失败:`, error);
+        console.error(`[ReaderAgent] 章节 ${prepared.chapterNumber} 调度失败:`, error);
       }
     }, 100);
 
-    // 14. 发送 WebSocket 事件通知新章节
-    wsEvents.chapterPublished(bookId, newChapter.chapterNumber, newChapter.title);
+    // 通知前端章节已发布
+    wsEvents.chapterPublished(prepared.bookId, newChapter.chapterNumber, newChapter.title);
 
-    console.log(`[Chapter] 书籍《${book.title}》第 ${chapterNumber} 章创作完成`);
+    console.log(`[Chapter] 书籍《${prepared.bookTitle}》第 ${prepared.chapterNumber} 章创作完成`);
+  }
+
+  /**
+   * 为单本书创作章节
+   */
+  async writeChapter(bookId: string, chapterNumber: number): Promise<void> {
+    console.log(`[Chapter] 开始为书籍 ${bookId} 创作第 ${chapterNumber} 章`);
+    // 单本书写作仍保持顺序：准备 -> 生成 -> 写库
+    const prepared = await this.prepareChapterGeneration(bookId, chapterNumber);
+    if (!prepared) {
+      return;
+    }
+    const chapterData = await this.generateChapterContent(prepared);
+    await this.persistGeneratedChapter(prepared, chapterData);
   }
 
   /**
@@ -293,14 +362,37 @@ export class ChapterWritingService {
 
     console.log(`[Chapter] 发现 ${books.length} 本需要创作第 ${chapterNumber} 章的书籍`);
 
-    // 2. 并发创作章节
-    const promises = books.map(book =>
-      this.writeChapter(book.id, chapterNumber).catch(error => {
-        console.error(`[Chapter] 书籍 ${book.id} 第 ${chapterNumber} 章创作失败:`, error);
-      })
-    );
+    // 三段式并发：准备(读库) -> LLM生成 -> 写库
+    const dbConcurrency = this.getDbConcurrency();
+    const llmConcurrency = this.getLlmConcurrency();
+    const preparedJobs: PreparedChapterGeneration[] = [];
 
-    await Promise.all(promises);
+    // 1) 读库准备阶段
+    await this.runWithConcurrency(books, dbConcurrency, async (book) => {
+      const prepared = await this.prepareChapterGeneration(book.id, chapterNumber);
+      if (prepared) {
+        preparedJobs.push(prepared);
+      }
+    });
+
+    // 2) 模型生成阶段
+    const generatedJobs: Array<{ prepared: PreparedChapterGeneration; chapterData: GeneratedChapter }> = [];
+    await this.runWithConcurrency(preparedJobs, llmConcurrency, async (prepared) => {
+      const chapterData = await this.generateChapterContent(prepared).catch(error => {
+        console.error(`[Chapter] 书籍 ${prepared.bookId} 第 ${chapterNumber} 章创作失败:`, error);
+        return null;
+      });
+      if (chapterData) {
+        generatedJobs.push({ prepared, chapterData });
+      }
+    });
+
+    // 3) 写库阶段
+    await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
+      await this.persistGeneratedChapter(job.prepared, job.chapterData).catch(error => {
+        console.error(`[Chapter] 书籍 ${job.prepared.bookId} 第 ${chapterNumber} 章发布失败:`, error);
+      });
+    });
     console.log(`[Chapter] 赛季 ${seasonId} 第 ${chapterNumber} 章创作完成`);
   }
 
@@ -359,8 +451,8 @@ export class ChapterWritingService {
 
     console.log(`[CatchUp] 发现 ${books.length} 本需要追赶的书籍`);
 
-    // 2. 对每本落后书籍执行追赶
-    const promises = books.map(async (book) => {
+    const concurrency = this.getDbConcurrency();
+    await this.runWithConcurrency(books, concurrency, async (book) => {
       // 获取当前已有的章节编号集合
       const existingChapterNumbers = new Set(book.chapters.map(c => c.chapterNumber));
       // 计算缺失章节：1到targetRound中不存在的章节
@@ -412,19 +504,20 @@ export class ChapterWritingService {
 
         // 2.3 并发补齐缺失章节（按章节号顺序）
         // writeChapter 内部已有 API 级 + JSON 解析级重试，无需额外重试
-        const chapterPromises = [];
-        for (const chapterNum of missingChapters) {
-          chapterPromises.push(
-            this.writeChapter(book.id, chapterNum).catch((error) => {
+        const chapterConcurrency = process.env.NODE_ENV === 'production' ? 1 : Math.min(2, concurrency);
+        const results: Array<{ success?: boolean; chapterNum: number } | void> = [];
+        await this.runWithConcurrency(missingChapters, chapterConcurrency, async (chapterNum) => {
+          const result = await this.writeChapter(book.id, chapterNum)
+            .then(() => ({ success: true, chapterNum }))
+            .catch((error) => {
               console.error(`[CatchUp] 书籍《${book.title}》第 ${chapterNum} 章失败:`, error.message);
               return { success: false, chapterNum };
-            })
-          );
-        }
-        const results = await Promise.all(chapterPromises);
+            });
+          results.push(result);
+        });
 
         // 2.4 统计失败章节，输出警告
-        const failedChapters = results.filter(r => !r?.success);
+        const failedChapters = results.filter(r => r && !r.success);
         if (failedChapters.length > 0) {
           console.warn(`[CatchUp] 书籍《${book.title}》仍有 ${failedChapters.length} 章未完成:`, failedChapters);
         } else {
@@ -434,8 +527,6 @@ export class ChapterWritingService {
         console.error(`[CatchUp] 书籍《${book.title}》追赶失败:`, error);
       }
     });
-
-    await Promise.all(promises);
     console.log(`[CatchUp] 追赶模式完成 - ${books.length} 本书籍已处理`);
   }
 

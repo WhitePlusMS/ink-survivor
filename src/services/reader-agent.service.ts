@@ -24,11 +24,67 @@ interface ReaderFeedback {
   critique: string;            // 批评的点
 }
 
+interface PreparedReaderComment {
+  // Agent 基本信息
+  agentUserId: string;
+  agentNickname: string;
+  readerConfig: ReaderConfig;
+  // 章节与书籍信息
+  chapterId: string;
+  bookId: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chapterContent: string;
+  bookTitle: string;
+  authorName: string;
+  authorId: string;
+  // LLM 调用上下文
+  agentToken: string;
+  systemPrompt: string;
+  message: string;
+}
+
 export class ReaderAgentService {
   // 每个章节随机选择的 Agent 数量
   private readonly AGENTS_PER_CHAPTER = 3;
   // 只对排名前 N 的书籍进行 AI 评论
   private readonly TOP_BOOKS_COUNT = 10;
+
+  // DB 并发：控制读写库并发，防止连接池耗尽
+  private getDbConcurrency(): number {
+    const raw = Number(process.env.DB_CONCURRENCY || process.env.TASK_CONCURRENCY);
+    const fallback = process.env.NODE_ENV === 'production' ? 1 : 2;
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return fallback;
+  }
+
+  // LLM 并发：控制大模型请求并行量
+  private getLlmConcurrency(): number {
+    const raw = Number(process.env.LLM_CONCURRENCY || process.env.AI_CONCURRENCY);
+    const fallback = process.env.NODE_ENV === 'production' ? 2 : 3;
+    if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+    return fallback;
+  }
+
+  // 通用并发执行器：用固定并发跑队列任务
+  private async runWithConcurrency<T>(
+    items: T[],
+    limit: number,
+    handler: (item: T) => Promise<void>
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const concurrency = Math.max(1, Math.min(limit, items.length));
+    let index = 0;
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (true) {
+        const current = index;
+        index += 1;
+        if (current >= items.length) break;
+        await handler(items[current]);
+      }
+    });
+    await Promise.all(workers);
+  }
 
   /**
    * 调度所有启用的 Reader Agents 阅读新发布的章节
@@ -38,7 +94,7 @@ export class ReaderAgentService {
     console.log(`[ReaderAgent] 开始调度 AI 读者 - chapter: ${chapterId}, book: ${bookId}`);
 
     try {
-      // 1. 获取章节内容
+      // 1. 获取章节内容（包含作者信息）
       const chapter = await prisma.chapter.findUnique({
         where: { id: chapterId },
         include: {
@@ -79,9 +135,14 @@ export class ReaderAgentService {
       const selectedAgents = this.selectRandomAgents(readerAgents, this.AGENTS_PER_CHAPTER);
       console.log(`[ReaderAgent] 选择了 ${selectedAgents.length} 个 AI 读者进行评论`);
 
-      // 5. 让每个 Agent 阅读并评论（并发执行）
-      const commentPromises = selectedAgents.map((agent) =>
-        this.agentReadAndComment({
+      // 5. 三段式并发：准备(读库) -> LLM 生成 -> 写库
+      const dbConcurrency = this.getDbConcurrency();
+      const llmConcurrency = this.getLlmConcurrency();
+      const preparedJobs: PreparedReaderComment[] = [];
+
+      // 5.1 读库准备阶段：检查重复评论、构建 prompt、获取 token
+      await this.runWithConcurrency(selectedAgents, dbConcurrency, async (agent) => {
+        const prepared = await this.prepareReaderComment({
           agentUserId: agent.userId,
           agentNickname: agent.nickname,
           readerConfig: agent.readerConfig,
@@ -94,12 +155,32 @@ export class ReaderAgentService {
           authorName: chapter.book.author.nickname,
           authorId: chapter.book.author.id,
         }).catch((error) => {
-          console.error(`[ReaderAgent] Agent ${agent.nickname} 评论失败:`, error);
+          console.error(`[ReaderAgent] Agent ${agent.nickname} 评论准备失败:`, error);
           return null;
-        })
-      );
+        });
+        if (prepared) {
+          preparedJobs.push(prepared);
+        }
+      });
 
-      await Promise.all(commentPromises);
+      // 5.2 LLM 生成阶段：并行生成评论反馈
+      const generatedJobs: Array<{ prepared: PreparedReaderComment; feedback: ReaderFeedback }> = [];
+      await this.runWithConcurrency(preparedJobs, llmConcurrency, async (prepared) => {
+        const feedback = await this.generateReaderFeedback(prepared).catch((error) => {
+          console.error(`[ReaderAgent] Agent ${prepared.agentNickname} 评论生成失败:`, error);
+          return null;
+        });
+        if (feedback) {
+          generatedJobs.push({ prepared, feedback });
+        }
+      });
+
+      // 5.3 写库阶段：落库评论、更新统计、触发事件
+      await this.runWithConcurrency(generatedJobs, dbConcurrency, async (job) => {
+        await this.persistReaderComment(job.prepared, job.feedback).catch((error) => {
+          console.error(`[ReaderAgent] Agent ${job.prepared.agentNickname} 评论写入失败:`, error);
+        });
+      });
 
       const duration = Date.now() - startTime;
       console.log(`[ReaderAgent] 调度完成 - 耗时: ${duration}ms`);
@@ -192,11 +273,7 @@ export class ReaderAgentService {
     return shuffled.slice(0, Math.min(count, agents.length));
   }
 
-  /**
-   * 单个 Agent 阅读并评论章节
-   * 注意：AI Agent 评论过的章节会跳过，人类用户可以重复评论
-   */
-  private async agentReadAndComment(params: {
+  private async prepareReaderComment(params: {
     agentUserId: string;
     agentNickname: string;
     readerConfig: ReaderConfig;
@@ -208,50 +285,49 @@ export class ReaderAgentService {
     bookTitle: string;
     authorName: string;
     authorId: string;
-  }): Promise<void> {
+  }): Promise<PreparedReaderComment | null> {
     const { agentUserId, agentNickname, readerConfig, chapterId, bookId, chapterNumber, chapterTitle, chapterContent, bookTitle, authorName } = params;
+    // 作者本人不参与评论
     if (agentUserId === params.authorId) {
       console.log(`[ReaderAgent] Agent ${agentNickname} 是作者本人，跳过评分`);
-      return;
+      return null;
     }
 
-    // 0. 检查 AI Agent 是否已评论过（跳过重复评论）
+    // AI Agent 避免重复评论同一章节
     const isAiAgent = await this.isAiAgent(agentUserId);
     if (isAiAgent) {
       const existingComment = await prisma.comment.findFirst({
         where: {
           chapterId,
           userId: agentUserId,
-          isHuman: false,  // AI 评论
+          isHuman: false,
         },
       });
       if (existingComment) {
         console.log(`[ReaderAgent] Agent ${agentNickname} 已评论过第 ${chapterNumber} 章，跳过`);
-        return;
+        return null;
       }
     }
-    // 人类用户可以重复评论，不做检查
 
-    // 根据配置判断是否发表评论（评论概率）
+    // 按评论概率随机决定是否发表评论
     if (Math.random() > readerConfig.commentingBehavior.commentProbability) {
       console.log(`[ReaderAgent] Agent ${agentNickname} 随机跳过了评论`);
-      return;
+      return null;
     }
 
     console.log(`[ReaderAgent] Agent ${agentNickname} 正在阅读《${bookTitle}》第 ${chapterNumber} 章...`);
 
-    // 1. 构建个性化 System Prompt
+    // 组装系统提示词与读者引导
     const systemPrompt = buildReaderSystemPrompt({
       readerName: agentNickname,
       readerPersonality: readerConfig.readerPersonality,
       preferences: {
         genres: readerConfig.readingPreferences.preferredGenres,
-        style: undefined, // 可扩展
+        style: undefined,
         minRating: readerConfig.readingPreferences.minRatingThreshold,
       },
     });
 
-    // 2. 构建消息：包含章节内容和 Action Control
     const actionControl = buildReaderActionControl(readerConfig.readingPreferences.commentFocus);
     const message = `你正在阅读《${bookTitle}》第 ${chapterNumber} 章 "${chapterTitle}"，作者：${authorName}。
 
@@ -260,36 +336,59 @@ ${chapterContent.slice(0, 4000)} ${chapterContent.length > 4000 ? '...(内容截
 
 ${actionControl}`;
 
-    // 3. 调用 LLM 生成评论（带重试机制）
     // 获取该 Agent 用户的 token
     const agentToken = await getUserTokenById(agentUserId);
     if (!agentToken) {
       console.error(`[ReaderAgent] 无法获取 Agent ${agentNickname} 的 Token，跳过评论`);
-      return;
+      return null;
     }
 
+    return {
+      agentUserId,
+      agentNickname,
+      readerConfig,
+      chapterId,
+      bookId,
+      chapterNumber,
+      chapterTitle,
+      chapterContent,
+      bookTitle,
+      authorName,
+      authorId: params.authorId,
+      agentToken,
+      systemPrompt,
+      message,
+    };
+  }
+
+  private async generateReaderFeedback(prepared: PreparedReaderComment): Promise<ReaderFeedback | null> {
+    // LLM 生成评论（带重试）
     const feedback = await parseLLMJsonWithRetry<ReaderFeedback>(
-      () => testModeSendChat(message, systemPrompt, 'inksurvivor-reader', agentToken),
+      () => testModeSendChat(prepared.message, prepared.systemPrompt, 'inksurvivor-reader', prepared.agentToken),
       {
-        taskId: `ReaderAgent-${agentNickname}-${bookTitle}-ch${chapterNumber}`,
+        taskId: `ReaderAgent-${prepared.agentNickname}-${prepared.bookTitle}-ch${prepared.chapterNumber}`,
         maxRetries: 3,
       }
     );
 
-    // 5. 根据评分阈值判断是否触发评论（评分 >= 6 才评论）
     const rating = feedback.overall_rating;
-    const ratingThreshold = 6; // 评分低于 6 分不触发评论
+    const ratingThreshold = 6;
+    // 低分评论不触发落库
     if (rating < ratingThreshold) {
-      console.log(`[ReaderAgent] Agent ${agentNickname} 评分 ${rating} 低于阈值 ${ratingThreshold}，跳过评论`);
-      return;
+      console.log(`[ReaderAgent] Agent ${prepared.agentNickname} 评分 ${rating} 低于阈值 ${ratingThreshold}，跳过评论`);
+      return null;
     }
 
-    // 6. 保存评论到数据库（直接存储 praise、critique、rating）
+    return feedback;
+  }
+
+  private async persistReaderComment(prepared: PreparedReaderComment, feedback: ReaderFeedback): Promise<void> {
+    // 保存评论
     const comment = await prisma.comment.create({
       data: {
-        bookId,
-        chapterId,
-        userId: agentUserId,
+        bookId: prepared.bookId,
+        chapterId: prepared.chapterId,
+        userId: prepared.agentUserId,
         isHuman: false,
         aiRole: 'Reader',
         rating: feedback.overall_rating,
@@ -301,41 +400,41 @@ ${actionControl}`;
       },
     });
 
-    console.log(`[ReaderAgent] Agent ${agentNickname} 评论完成 - 评分: ${feedback.overall_rating}/10`);
+    console.log(`[ReaderAgent] Agent ${prepared.agentNickname} 评论完成 - 评分: ${feedback.overall_rating}/10`);
 
-    // 8. 更新章节评论数
+    // 更新章节评论数
     await prisma.chapter.update({
-      where: { id: chapterId },
+      where: { id: prepared.chapterId },
       data: { commentCount: { increment: 1 } },
     });
 
-    // 9. 发送 WebSocket 事件
-    wsEvents.newComment(bookId, {
+    // 通知前端有新评论
+    wsEvents.newComment(prepared.bookId, {
       id: comment.id,
       content: `${comment.praise || ''} ${comment.critique || ''}`.trim() || 'AI 读者评论',
       isHuman: false,
       user: {
-        nickname: agentNickname,
+        nickname: prepared.agentNickname,
       },
       createdAt: comment.createdAt.toISOString(),
     });
 
-    // 10. 重新计算书籍热度（评分会影响情感分和最终得分）
+    // 重新计算热度并推送更新
     try {
-      const scoreResult = await scoreService.calculateFullScore(bookId);
-      console.log(`[ReaderAgent] 热度已更新 - book: ${bookId}, heatValue: ${scoreResult.heatValue}, avgRating: ${feedback.overall_rating}/10`);
-      wsEvents.heatUpdate(bookId, scoreResult.heatValue);
+      const scoreResult = await scoreService.calculateFullScore(prepared.bookId);
+      console.log(`[ReaderAgent] 热度已更新 - book: ${prepared.bookId}, heatValue: ${scoreResult.heatValue}, avgRating: ${feedback.overall_rating}/10`);
+      wsEvents.heatUpdate(prepared.bookId, scoreResult.heatValue);
     } catch (error) {
       console.error(`[ReaderAgent] 热度计算失败:`, error);
     }
 
-    // 11. 根据评价质量发放 Ink 奖励给 Reader Agent，并自动打赏给作者
+    // 发放读者奖励并自动打赏作者
     await this.awardInkForComment({
-      agentUserId,
-      agentNickname,
-      readerConfig,
-      bookId,
-      authorId: params.authorId,
+      agentUserId: prepared.agentUserId,
+      agentNickname: prepared.agentNickname,
+      readerConfig: prepared.readerConfig,
+      bookId: prepared.bookId,
+      authorId: prepared.authorId,
       rating: feedback.overall_rating,
     });
   }
