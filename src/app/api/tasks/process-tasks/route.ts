@@ -15,11 +15,33 @@ import { taskWorkerService } from '@/services/task-worker.service';
 import { taskQueueService } from '@/services/task-queue.service';
 
 export const dynamic = 'force-dynamic';
+const globalState = globalThis as typeof globalThis & {
+  __processTasksRunning?: boolean;
+  __processTasksLastRun?: number;
+};
+const minIntervalMs = Number(process.env.PROCESS_TASKS_MIN_INTERVAL_MS || 20000);
 
 export async function POST() {
+  const nowMs = Date.now();
+  if (globalState.__processTasksRunning) {
+    return NextResponse.json({
+      code: 0,
+      data: { message: '任务处理中，跳过本次触发' },
+      message: 'skipped',
+    });
+  }
+  if (globalState.__processTasksLastRun && nowMs - globalState.__processTasksLastRun < minIntervalMs) {
+    return NextResponse.json({
+      code: 0,
+      data: { message: '触发过于频繁，跳过本次触发' },
+      message: 'skipped',
+    });
+  }
   // Fire-and-forget: 立即返回，任务在后台异步执行
   // 避免 Vercel 函数超时
   setImmediate(async () => {
+    globalState.__processTasksRunning = true;
+    globalState.__processTasksLastRun = Date.now();
     try {
       console.log('[ProcessTasks] 后台开始处理任务队列...');
 
@@ -33,6 +55,8 @@ export async function POST() {
       console.log('[ProcessTasks] 后台任务处理完成');
     } catch (error) {
       console.error('[ProcessTasks] 后台任务处理失败:', error);
+    } finally {
+      globalState.__processTasksRunning = false;
     }
   });
 

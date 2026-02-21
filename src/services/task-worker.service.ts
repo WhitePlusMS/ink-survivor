@@ -10,6 +10,28 @@ import { prisma } from '@/lib/prisma';
 
 // 任务处理器映射
 type TaskHandler = (payload: Record<string, unknown>) => Promise<void>;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const isDbPoolError = (error: unknown): boolean => {
+  const code = (error as { code?: string }).code;
+  return code === 'P2024' || code === 'P1017';
+};
+const withDbRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const maxRetries = process.env.NODE_ENV === 'test' ? 0 : 2;
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (isDbPoolError(error) && attempt < maxRetries) {
+        const delay = 500 * (attempt + 1);
+        attempt += 1;
+        await sleep(delay);
+        continue;
+      }
+      throw error;
+    }
+  }
+};
 
 const taskHandlers: Record<string, TaskHandler> = {
   /**
@@ -23,13 +45,13 @@ const taskHandlers: Record<string, TaskHandler> = {
     if (!seasonId || !round) throw new Error('seasonId and round are required');
 
     // 查询当前赛季的所有活跃书籍（已完成的书籍不再参与）
-    const allBooks = await prisma.book.findMany({
+    const allBooks = await withDbRetry(() => prisma.book.findMany({
       where: { seasonId: seasonId as string, status: 'ACTIVE' },
       include: {
         author: { select: { agentConfig: true } },
         _count: { select: { chapters: true } },
       },
-    });
+    }));
 
     // 过滤掉已完成所有章节的书籍
     const activeBooks = allBooks.filter(book => {
@@ -139,8 +161,15 @@ export class TaskWorkerService {
   private readonly lockKey = 779187;
 
   private async tryAcquireLock(): Promise<boolean> {
-    const result = await prisma.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_lock(${this.lockKey}) as locked`;
-    return result?.[0]?.locked === true;
+    try {
+      const result = await prisma.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_lock(${this.lockKey}) as locked`;
+      return result?.[0]?.locked === true;
+    } catch (error) {
+      if (isDbPoolError(error)) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   private async releaseLock(): Promise<void> {
@@ -186,7 +215,7 @@ export class TaskWorkerService {
   async processTaskById(taskId: string): Promise<void> {
     try {
       // 获取指定任务
-      const task = await taskQueueService.getTaskById(taskId);
+      const task = await withDbRetry(() => taskQueueService.getTaskById(taskId));
 
       if (!task) {
         console.error(`[TaskWorker] 任务不存在: ${taskId}`);
@@ -205,11 +234,14 @@ export class TaskWorkerService {
 
       try {
         await handler(task.payload);
-        await taskQueueService.complete(task.id);
+        await withDbRetry(() => taskQueueService.complete(task.id));
         console.log(`[TaskWorker] 任务完成: ${task.taskType} (${task.id})`);
       } catch (error) {
         console.error(`[TaskWorker] 任务执行失败: ${task.id}`, error);
-        await taskQueueService.fail(task.id, (error as Error).message);
+        if (isDbPoolError(error)) {
+          return;
+        }
+        await withDbRetry(() => taskQueueService.fail(task.id, (error as Error).message));
       }
     } catch (error) {
       console.error('[TaskWorker] 处理任务时发生错误:', error);
@@ -228,7 +260,7 @@ export class TaskWorkerService {
 
     try {
       // 获取下一个待处理任务
-      const task = await taskQueueService.getNextTask();
+      const task = await withDbRetry(() => taskQueueService.getNextTask());
 
       if (!task) {
         return;
@@ -246,11 +278,14 @@ export class TaskWorkerService {
 
       try {
         await handler(task.payload);
-        await taskQueueService.complete(task.id);
+        await withDbRetry(() => taskQueueService.complete(task.id));
         console.log(`[TaskWorker] 任务完成: ${task.taskType} (${task.id})`);
       } catch (error) {
         console.error(`[TaskWorker] 任务执行失败: ${task.id}`, error);
-        await taskQueueService.fail(task.id, (error as Error).message);
+        if (isDbPoolError(error)) {
+          return;
+        }
+        await withDbRetry(() => taskQueueService.fail(task.id, (error as Error).message));
       }
     } catch (error) {
       console.error('[TaskWorker] 处理任务时发生错误:', error);
