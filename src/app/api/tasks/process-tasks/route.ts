@@ -37,21 +37,38 @@ export async function POST() {
       message: 'skipped',
     });
   }
-  // Fire-and-forget: 立即返回，任务在后台异步执行
-  // 避免 Vercel 函数超时
-  setImmediate(async () => {
-    globalState.__processTasksRunning = true;
-    globalState.__processTasksLastRun = Date.now();
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+  globalState.__processTasksRunning = true;
+  globalState.__processTasksLastRun = Date.now();
+  if (isProduction) {
     try {
-      console.log('[ProcessTasks] 后台开始处理任务队列...');
-
-      // 触发一次任务处理
+      console.log('[ProcessTasks] 开始处理任务队列...');
       await taskWorkerService.triggerOnce();
-
-      // 清理已完成的任务（保留最近24小时的记录）
       const cleanedCount = await taskQueueService.cleanup(24);
       console.log(`[ProcessTasks] 清理了 ${cleanedCount} 个旧任务`);
+      console.log('[ProcessTasks] 任务处理完成');
+      return NextResponse.json({
+        code: 0,
+        data: { message: '任务处理完成' },
+        message: 'completed',
+      });
+    } catch (error) {
+      console.error('[ProcessTasks] 任务处理失败:', error);
+      return NextResponse.json(
+        { code: 500, data: null, message: '任务处理失败: ' + (error as Error).message },
+        { status: 500 }
+      );
+    } finally {
+      globalState.__processTasksRunning = false;
+    }
+  }
 
+  setImmediate(async () => {
+    try {
+      console.log('[ProcessTasks] 后台开始处理任务队列...');
+      await taskWorkerService.triggerOnce();
+      const cleanedCount = await taskQueueService.cleanup(24);
+      console.log(`[ProcessTasks] 清理了 ${cleanedCount} 个旧任务`);
       console.log('[ProcessTasks] 后台任务处理完成');
     } catch (error) {
       console.error('[ProcessTasks] 后台任务处理失败:', error);
@@ -60,7 +77,6 @@ export async function POST() {
     }
   });
 
-  // 立即返回，不等待任务完成
   return NextResponse.json({
     code: 0,
     data: { message: '任务已触发，将在后台异步执行' },

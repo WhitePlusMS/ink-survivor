@@ -7,6 +7,7 @@
 
 import { taskQueueService, TaskPayload } from './task-queue.service';
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 
 // 任务处理器映射
 type TaskHandler = (payload: Record<string, unknown>) => Promise<void>;
@@ -188,9 +189,9 @@ export class TaskWorkerService {
   private interval: NodeJS.Timeout | null = null;
   private readonly lockKey = 779187;
 
-  private async tryAcquireLock(): Promise<boolean> {
+  private async tryAcquireLock(tx: Prisma.TransactionClient): Promise<boolean> {
     try {
-      const result = await prisma.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_lock(${this.lockKey}) as locked`;
+      const result = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(${this.lockKey}) as locked`;
       return result?.[0]?.locked === true;
     } catch (error) {
       if (isDbPoolError(error)) {
@@ -198,10 +199,6 @@ export class TaskWorkerService {
       }
       throw error;
     }
-  }
-
-  private async releaseLock(): Promise<void> {
-    await prisma.$queryRaw`SELECT pg_advisory_unlock(${this.lockKey})`;
   }
 
   /**
@@ -288,8 +285,15 @@ export class TaskWorkerService {
    * 处理队列中的任务
    */
   async processTasks(): Promise<void> {
-    const locked = await this.tryAcquireLock();
-    if (!locked) {
+    const lockResult = await prisma.$transaction(async (tx) => {
+      const locked = await this.tryAcquireLock(tx);
+      if (!locked) {
+        return { locked: false, task: null };
+      }
+      const task = await taskQueueService.getNextTask(tx);
+      return { locked: true, task };
+    });
+    if (!lockResult.locked) {
       const [processingTask, stats, lockHolders, currentPidResult, connectionStats] = await Promise.all([
         prisma.taskQueue.findFirst({
           where: { status: 'PROCESSING' },
@@ -374,8 +378,7 @@ export class TaskWorkerService {
     }
 
     try {
-      // 获取下一个待处理任务
-      const task = await withDbRetry(() => taskQueueService.getNextTask());
+      const task = lockResult.task;
 
       if (!task) {
         const stats = await taskQueueService.getStats();
@@ -410,11 +413,6 @@ export class TaskWorkerService {
     } catch (error) {
       console.error('[TaskWorker] 处理任务时发生错误:', error);
     } finally {
-      try {
-        await this.releaseLock();
-      } catch (error) {
-        console.error('[TaskWorker] 释放任务锁失败:', error);
-      }
       if (activeTaskId) {
         taskProgress.delete(activeTaskId);
       }

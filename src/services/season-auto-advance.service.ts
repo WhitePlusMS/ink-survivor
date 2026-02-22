@@ -107,11 +107,19 @@ export class SeasonAutoAdvanceService {
     this.isRunning = true;
 
     // 立即执行一次检查
-    await this.checkAndAdvance();
+    try {
+      await this.checkAndAdvance();
+    } catch (error) {
+      console.error('[SeasonAutoAdvance] 检查失败:', error);
+    }
 
     // 启动定时检查
     this.timer = setInterval(async () => {
-      await this.checkAndAdvance();
+      try {
+        await this.checkAndAdvance();
+      } catch (error) {
+        console.error('[SeasonAutoAdvance] 检查失败:', error);
+      }
     }, CHECK_INTERVAL);
   }
 
@@ -131,23 +139,22 @@ export class SeasonAutoAdvanceService {
    * 检查并推进赛季阶段
    */
   async checkAndAdvance(): Promise<void> {
-    try {
-      // 获取当前活跃赛季
-      const season = await prisma.season.findFirst({
-        where: { status: 'ACTIVE' },
-        orderBy: { startTime: 'desc' },
-      });
+    // 获取当前活跃赛季
+    const season = await prisma.season.findFirst({
+      where: { status: 'ACTIVE' },
+      orderBy: { startTime: 'desc' },
+    });
 
-      if (!season) {
-        return;
-      }
+    if (!season) {
+      return;
+    }
 
-      // 检查是否需要结束赛季（使用北京时间）
-      if (isExpired(season.endTime)) {
-        console.log('[SeasonAutoAdvance] 赛季已结束时间（北京时区），自动结束赛季');
-        await this.endSeason(season.id);
-        return;
-      }
+    // 检查是否需要结束赛季（使用北京时间）
+    if (isExpired(season.endTime)) {
+      console.log('[SeasonAutoAdvance] 赛季已结束时间（北京时区），自动结束赛季');
+      await this.endSeason(season.id);
+      return;
+    }
 
       let currentPhase = (season.roundPhase as RoundPhase) || 'NONE';
       let currentRound = season.currentRound || 1;
@@ -217,11 +224,8 @@ export class SeasonAutoAdvanceService {
         }
       }
 
-      for (const transition of transitions) {
-        await this.advancePhase(season.id, transition.round, transition.phase, transition.startTime);
-      }
-    } catch (error) {
-      console.error('[SeasonAutoAdvance] 检查失败:', error);
+    for (const transition of transitions) {
+      await this.advancePhase(season.id, transition.round, transition.phase, transition.startTime);
     }
   }
 

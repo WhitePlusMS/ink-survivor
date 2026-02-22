@@ -69,11 +69,14 @@ export class TaskQueueService {
   /**
    * 获取下一个待处理任务
    */
-  async getNextTask(lockDurationMs: number = 5 * 60 * 1000): Promise<TaskItem | null> {
+  async getNextTask(
+    client: Prisma.TransactionClient | typeof prisma = prisma,
+    lockDurationMs: number = 5 * 60 * 1000
+  ): Promise<TaskItem | null> {
     const nowDate = now();
 
     // 查找状态为 PENDING 或 PROCESSING 但已超时的任务
-    const task = await prisma.taskQueue.findFirst({
+    const task = await client.taskQueue.findFirst({
       where: {
         OR: [
           { status: 'PENDING' },
@@ -97,7 +100,7 @@ export class TaskQueueService {
     }
 
     // 标记为处理中
-    await prisma.taskQueue.update({
+    await client.taskQueue.update({
       where: { id: task.id },
       data: {
         status: 'PROCESSING',
