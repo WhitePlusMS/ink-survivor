@@ -139,6 +139,8 @@ export class SeasonAutoAdvanceService {
    * 检查并推进赛季阶段
    */
   async checkAndAdvance(): Promise<void> {
+    const checkAt = new Date().toISOString();
+    console.log(`[SeasonAutoAdvance] checkAndAdvance start: ${checkAt}`);
     // 获取当前活跃赛季
     const season = await prisma.season.findFirst({
       where: { status: 'ACTIVE' },
@@ -146,8 +148,10 @@ export class SeasonAutoAdvanceService {
     });
 
     if (!season) {
+      console.log('[SeasonAutoAdvance] 未找到活跃赛季，跳过');
       return;
     }
+    console.log(`[SeasonAutoAdvance] 当前赛季: id=${season.id}, round=${season.currentRound}, phase=${season.roundPhase}, roundStartTime=${season.roundStartTime?.toISOString()}, aiWorkStartTime=${season.aiWorkStartTime?.toISOString()}, roundDuration=${season.roundDuration}, maxChapters=${season.maxChapters}`);
 
     // 检查是否需要结束赛季（使用北京时间）
     if (isExpired(season.endTime)) {
@@ -220,6 +224,7 @@ export class SeasonAutoAdvanceService {
       if (transitions.length === 0) {
         const remainingMs = getPhaseRemainingTime(season, currentPhase);
         if (remainingMs > 5000) {
+          console.log(`[SeasonAutoAdvance] 当前阶段剩余时间 > 5s，暂不推进: phase=${currentPhase}, remainingMs=${remainingMs}`);
           return;
         }
       }

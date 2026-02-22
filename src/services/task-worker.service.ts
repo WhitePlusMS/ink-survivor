@@ -285,45 +285,67 @@ export class TaskWorkerService {
    * 处理队列中的任务
    */
   async processTasks(): Promise<void> {
-    const lockResult = await prisma.$transaction(async (tx) => {
-      const locked = await this.tryAcquireLock(tx);
-      if (!locked) {
-        return { locked: false, task: null };
+    let lockResult: { locked: boolean; task: Awaited<ReturnType<typeof taskQueueService.getNextTask>> | null };
+    try {
+      lockResult = await withDbRetry(() => prisma.$transaction(async (tx) => {
+        const locked = await this.tryAcquireLock(tx);
+        if (!locked) {
+          return { locked: false, task: null };
+        }
+        const task = await taskQueueService.getNextTask(tx);
+        return { locked: true, task };
+      }));
+    } catch (error) {
+      if (isDbPoolError(error)) {
+        console.warn('[TaskWorker] 获取锁失败，数据库连接异常，跳过本次触发');
+        return;
       }
-      const task = await taskQueueService.getNextTask(tx);
-      return { locked: true, task };
-    });
+      throw error;
+    }
     if (!lockResult.locked) {
-      const [processingTask, stats, lockHolders, currentPidResult, connectionStats] = await Promise.all([
-        prisma.taskQueue.findFirst({
-          where: { status: 'PROCESSING' },
-          orderBy: { startedAt: 'desc' },
-        }),
-        taskQueueService.getStats(),
-        prisma.$queryRaw<Array<{
-          pid: number;
-          state: string;
-          query_start: Date | null;
-          query: string | null;
-        }>>`
-          SELECT sa.pid, sa.state, sa.query_start, sa.query
-          FROM pg_stat_activity sa
-          WHERE sa.pid IN (
-            SELECT l.pid
-            FROM pg_locks l
-            WHERE l.locktype = 'advisory' AND l.objid = ${this.lockKey}
-          )
-        `,
-        prisma.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() as pid`,
-        prisma.$queryRaw<Array<{ total: number; active: number; idle: number }>>`
-          SELECT
-            COUNT(*)::int AS total,
-            COUNT(*) FILTER (WHERE state = 'active')::int AS active,
-            COUNT(*) FILTER (WHERE state LIKE 'idle%')::int AS idle
-          FROM pg_stat_activity
-          WHERE datname = current_database()
-        `,
-      ]);
+      let processingTask;
+      let stats;
+      let lockHolders;
+      let currentPidResult;
+      let connectionStats;
+      try {
+        [processingTask, stats, lockHolders, currentPidResult, connectionStats] = await Promise.all([
+          prisma.taskQueue.findFirst({
+            where: { status: 'PROCESSING' },
+            orderBy: { startedAt: 'desc' },
+          }),
+          taskQueueService.getStats(),
+          prisma.$queryRaw<Array<{
+            pid: number;
+            state: string;
+            query_start: Date | null;
+            query: string | null;
+          }>>`
+            SELECT sa.pid, sa.state, sa.query_start, sa.query
+            FROM pg_stat_activity sa
+            WHERE sa.pid IN (
+              SELECT l.pid
+              FROM pg_locks l
+              WHERE l.locktype = 'advisory' AND l.objid = ${this.lockKey}
+            )
+          `,
+          prisma.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() as pid`,
+          prisma.$queryRaw<Array<{ total: number; active: number; idle: number }>>`
+            SELECT
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE state = 'active')::int AS active,
+              COUNT(*) FILTER (WHERE state LIKE 'idle%')::int AS idle
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+          `,
+        ]);
+      } catch (error) {
+        if (isDbPoolError(error)) {
+          console.warn('[TaskWorker] 诊断查询失败，数据库连接异常，跳过本次触发');
+          return;
+        }
+        throw error;
+      }
       const currentPid = currentPidResult?.[0]?.pid;
       const dbStats = connectionStats?.[0];
       if (dbStats) {
@@ -359,6 +381,9 @@ export class TaskWorkerService {
             await withDbRetry(() => taskQueueService.fail(processingTask.id, `stale processing timeout: ${durationSec}s`));
             console.warn(`[TaskWorker] 已重置超时任务: ${processingTask.id}`);
           }
+        } else if (durationMs > staleProcessingMs) {
+          await withDbRetry(() => taskQueueService.fail(processingTask.id, `stale processing without lock: ${durationSec}s`));
+          console.warn(`[TaskWorker] 已重置无锁超时任务: ${processingTask.id}`);
         } else {
           console.log('[TaskWorker] 未找到锁占用进程');
         }
